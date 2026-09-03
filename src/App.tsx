@@ -1,4 +1,4 @@
-import { CUBE_TYPES } from '@shared/types/cube';
+import { CUBE_TYPES } from '@/types/cube';
 
 export default function App() {
   return (
