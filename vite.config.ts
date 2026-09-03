@@ -8,7 +8,6 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
-      '@shared': fileURLToPath(new URL('../shared', import.meta.url)),
     },
   },
   // จำเป็น! ไม่งั้น scramble worker ของ cubing.js จะ 404 (บทเรียนจากเฟส 0)
