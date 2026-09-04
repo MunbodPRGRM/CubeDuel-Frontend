@@ -1,17 +1,23 @@
-import { CUBE_TYPES } from '@/types/cube';
+import { Route, Routes } from 'react-router-dom';
+import { AuthProvider } from '@/auth/AuthProvider';
+import HomePage from '@/pages/HomePage';
+import LoginPage from '@/pages/LoginPage';
+import RegisterPage from '@/pages/RegisterPage';
+import NotFoundPage from '@/pages/NotFoundPage';
 
+/**
+ * เส้นทางทั้งหมดของแอป
+ * หน้าที่ต้องล็อกอินก่อน ให้ห่อด้วย <RequireAuth> (ยังไม่มีหน้าไหนต้องใช้จนกว่าจะถึงเฟส 3)
+ */
 export default function App() {
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-4">
-      <h1 className="text-3xl font-bold">CubeDuel</h1>
-      <p className="text-sm opacity-70">โครงโปรเจกต์เฟส 1 — ยังไม่มีหน้าจอจริง</p>
-      <ul className="flex gap-3 text-sm">
-        {CUBE_TYPES.map((t) => (
-          <li key={t} className="rounded border px-2 py-1">
-            {t}
-          </li>
-        ))}
-      </ul>
-    </main>
+    <AuthProvider>
+      <Routes>
+        <Route path="/" element={<HomePage />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
+        <Route path="*" element={<NotFoundPage />} />
+      </Routes>
+    </AuthProvider>
   );
 }
