@@ -65,7 +65,7 @@ Vite อ่านเฉพาะตัวที่ขึ้นต้นด้ว
 
 | ตัวแปร | ค่าเริ่มต้น | ใช้ทำอะไร |
 |---|---|---|
-| `VITE_API_URL` | `http://localhost:4000/api` | ปลายทาง REST (`src/lib/api.ts`) |
+| `VITE_API_URL` | `http://localhost:4000/api/v1` | ปลายทาง REST (`src/lib/api.ts`) |
 | `VITE_SOCKET_URL` | `http://localhost:4000` | ปลายทาง Socket.IO (เฟส 4) |
 
 ## โครงสร้างโค้ด
