@@ -1,0 +1,52 @@
+import type { CubeType } from '@/types/cube';
+
+/**
+ * **interface กลางของคิวบ์ 3 มิติ** (roadmap เฟส 3 ข้อแรก · ADR-019)
+ *
+ * ข้างในมี 2 เส้นทางที่ต่างกันคนละโลก:
+ *   - 2x2x2 / 3x3x3 / Pyraminx → `<twisty-player>` ของ cubing.js
+ *   - Pyramorphix             → renderer ที่เขียนเองด้วย Three.js
+ *
+ * ส่วนที่เหลือของแอป (จับเวลา, นับ move, ส่ง move ขึ้น server ในเฟส 4) **ต้องไม่รู้**
+ * ว่าข้างในใช้ตัวไหน — คุยผ่าน interface นี้อย่างเดียว
+ */
+
+export interface CubeState {
+  /** move ที่ผู้เล่นหมุนหลังจาก scramble (ไม่รวม move ของ scramble เอง) */
+  moves: readonly string[];
+  /** คิวบ์ถูกแก้แล้วหรือยัง — Pyramorphix ใช้กติกาพิเศษตาม ADR-019 */
+  solved: boolean;
+}
+
+export type CubeStateListener = (state: CubeState) => void;
+
+export interface CubeView {
+  readonly cubeType: CubeType;
+
+  /**
+   * ตั้ง scramble ใหม่ — ใส่ให้ทันทีแบบไม่มีอนิเมชัน และล้าง move ของผู้เล่นทิ้ง
+   * scramble ต้องมาจาก server เสมอ (`GET /scramble`) ห้าม client สุ่มเอง
+   */
+  setScramble(scramble: string): Promise<void>;
+
+  /** หมุนตามคำสั่ง (มีอนิเมชัน) — ใช้ตอนเล่นซ้ำ/สั่งจากปุ่ม ไม่ใช่การหมุนของผู้เล่น */
+  applyMove(move: string): Promise<void>;
+
+  /** กลับไปสถานะทันทีหลัง scramble ล่าสุด (ปุ่ม "รีเซ็ต") */
+  reset(): Promise<void>;
+
+  /**
+   * เปิด/ปิดการหมุนหน้าคิวบ์ของผู้เล่น — **กล้องยังหมุนได้เสมอ**
+   * ใช้ช่วง inspection ที่กติกาให้พลิกดูได้แต่ห้ามหมุน (game-rules.md ข้อ 2)
+   */
+  setTurnsEnabled(enabled: boolean): void;
+
+  /** สถานะปัจจุบัน */
+  getState(): CubeState;
+
+  /** รับแจ้งทุกครั้งที่สถานะเปลี่ยน — คืนฟังก์ชันสำหรับเลิกรับแจ้ง */
+  subscribe(listener: CubeStateListener): () => void;
+
+  /** คืนทรัพยากรทั้งหมด (WebGL context, event listener, requestAnimationFrame) */
+  dispose(): void;
+}

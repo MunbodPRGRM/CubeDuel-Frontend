@@ -96,6 +96,12 @@ function HeroCard({ isLoggedIn }: { isLoggedIn: boolean }) {
             {isLoggedIn ? (
               <>
                 <ComingSoonButton primary label="จับคู่" phase="เฟส 5" />
+                <Link
+                  to="/practice"
+                  className="rounded-xl border border-line bg-navy-800 px-5 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-navy-700"
+                >
+                  ฝึกซ้อม
+                </Link>
                 <ComingSoonButton label="สร้างห้อง" phase="เฟส 4" />
                 <ComingSoonButton label="ใส่เลขห้อง" phase="เฟส 4" />
               </>
