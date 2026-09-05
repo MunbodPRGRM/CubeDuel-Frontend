@@ -1,34 +1,27 @@
 /**
- * เส้นทางที่ 2 ของ interface กลาง — **Pyramorphix เขียน renderer เองด้วย Three.js** (ADR-019)
+ * **ตัววาดคิวบ์ 3 มิติตัวเดียวของทั้งแอป** — Three.js + GSAP (ADR-026, เฟส 3.5 ก้อนที่ 1)
  *
- * `<twisty-player>` ใช้กับ Pyramorphix ไม่ได้ (โมเดล `"t e 0"` รับได้แค่ move 180°)
- * ที่นี่จึงแบ่งหน้าที่เป็น:
- *   - ตรรกะ/ผลแพ้ชนะ → `KPattern` ของ **2x2x2** (ชุดเดียวกับที่ server ใช้ replay)
- *   - ภาพ            → ชิ้นส่วน 8 ชิ้นที่หมุนด้วยเมทริกซ์จำนวนเต็ม (`PieceModel`)
+ * ยกมาจาก `PyramorphixCubeView` เดิมแล้วถอดส่วนที่รู้จัก Pyramorphix ออกให้หมด
+ * เหลือแต่งานที่ทุกประเภทใช้เหมือนกัน: ฉาก · กล้อง · OrbitControls · คิวอนิเมชัน ·
+ * resize · raycast · ลากเพื่อหมุนชั้น · ผูกสถานะกับ `KPattern`
  *
- * ทั้งสองฝั่งพิสูจน์แล้วว่าตรงกันเป๊ะทุก move — ดู `scripts/verify-pyramorphix.ts`
+ * แบ่งหน้าที่กับ `PuzzleModel` แบบนี้:
+ *   - **โมเดล** ตอบว่า move นี้หมุนชิ้นไหน รอบแกนไหน กี่องศา (ไม่รู้จัก three เลย)
+ *   - **ตัววาด** เอาไปเล่นอนิเมชันและรับ input (ไม่รู้ว่าเป็นลูกบาศก์หรือพีระมิด)
  *
- * **shape-shifting เกิดเอง** ไม่ต้องเขียนโค้ดพิเศษ เพราะแต่ละชิ้นเป็นของแข็งที่คงรูปตัวเอง
+ * ตรรกะที่ใช้ตัดสินผลจริงยังเป็น `KPattern` ของ cubing.js ที่เดินคู่กันไป — สคริปต์
+ * `verify-*` มีหน้าที่พิสูจน์ว่าภาพกับตรรกะไม่หลุดกัน
  */
 import gsap from 'gsap';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { Alg } from 'cubing/alg';
-import type { KPattern } from 'cubing/kpuzzle';
+import type { KPattern, KPuzzle } from 'cubing/kpuzzle';
 import type { CubeType } from '@/types/cube';
-import { isAllowedMove } from '../moves';
-import { deriveApexSlots, deriveSlotOctants, getKPuzzle, isPyramorphixSolved } from '../puzzle';
-import type { CubeState, CubeStateListener, CubeView } from '../types';
-import { buildPieceGeometry } from './tetra-geometry';
-import {
-  IDENTITY,
-  matEq,
-  moveNameFor,
-  parseMove,
-  PieceModel,
-  type Mat3,
-  type ParsedMove,
-} from './rotation';
+import { inverseMove, isAllowedMove } from '../moves.ts';
+import type { CubeState, CubeStateListener, CubeView } from '../types.ts';
+import type { Mat3 } from './lattice.ts';
+import type { PuzzleModel, TurnSpec } from './model.ts';
 
 /** ระยะเวลาอนิเมชันหมุนหนึ่งครั้ง — เร็วพอให้ speedcuber ไม่รู้สึกว่าคิวบ์หนืด */
 const TURN_DURATION_MS = 110;
@@ -39,28 +32,43 @@ const DIRECTION_MATCH_MIN = 0.3;
 /** ค้างคิวอนิเมชันได้มากสุดกี่ move ก่อนจะข้ามไปสถานะล่าสุดทันที */
 const MAX_PENDING_TURNS = 3;
 
-/** move ที่ลงบัญชีแล้ว รออนิเมชันอย่างเดียว */
-interface QueuedTurn {
-  parsed: ParsedMove;
-  /** ชิ้นที่ต้องหมุน — คิดไว้ตั้งแต่ตอนลงบัญชี เพราะตอนนั้นสถานะยังเป็นก่อนหมุน */
-  ids: number[];
+/** ทุกประเภทวาดในกล่อง [-1, 1] เท่ากันหมด กล้องจึงใช้ค่าชุดเดียวได้ */
+const CAMERA_POSITION: readonly [number, number, number] = [3.4, 2.6, 3.4];
+const MIN_CAMERA_DISTANCE = 3;
+const MAX_CAMERA_DISTANCE = 12;
+
+export interface ThreeCubeViewSpec {
+  cubeType: CubeType;
+  /** โมเดลตรรกะ/ภาพของประเภทนี้ */
+  model: PuzzleModel;
+  /** geometry ของแต่ละชิ้น เรียงตรงกับ id ของชิ้นในโมเดล */
+  geometries: THREE.BufferGeometry[];
+  /** KPuzzle ที่ใช้เดินสถานะจริง (Pyramorphix ใช้ของ 2x2x2 — ADR-019) */
+  kpuzzle: KPuzzle;
+  /** กติกา "แก้เสร็จ" ของประเภทนี้ */
+  isSolved(pattern: KPattern): boolean;
 }
 
-export class PyramorphixCubeView implements CubeView {
-  readonly cubeType: CubeType = 'pyramorphix';
+/** move ที่ลงบัญชีแล้ว รออนิเมชันอย่างเดียว */
+interface QueuedTurn {
+  turn: TurnSpec;
+}
 
+export class ThreeCubeView implements CubeView {
+  readonly cubeType: CubeType;
+
+  #spec: ThreeCubeViewSpec;
   #container: HTMLElement;
   #scene: THREE.Scene;
   #camera: THREE.PerspectiveCamera;
   #renderer: THREE.WebGLRenderer;
   #controls: OrbitControls;
+  #material: THREE.Material;
   #pivot: THREE.Group;
   #meshes: THREE.Mesh[] = [];
   #resizeObserver: ResizeObserver;
   #animationFrame = 0;
 
-  #model: PieceModel;
-  #apexSlots: readonly number[];
   #scrambledPattern: KPattern;
   #pattern: KPattern;
   #scramble = '';
@@ -69,6 +77,8 @@ export class PyramorphixCubeView implements CubeView {
   #listeners = new Set<CubeStateListener>();
   #queue: QueuedTurn[] = [];
   #animating = false;
+  /** ตัวที่ GSAP tween อยู่ — เก็บไว้เพื่อ kill ตอนถูกสั่ง scramble ใหม่ */
+  #progress = { t: 0 };
   /** ปิดอนิเมชันที่ค้างอยู่ตอนถูกสั่ง scramble ใหม่ ไม่งั้นคิว move จะค้างตลอดไป */
   #finishAnimation: (() => void) | null = null;
   #turnsEnabled = true;
@@ -78,24 +88,25 @@ export class PyramorphixCubeView implements CubeView {
   #drag: { pointerId: number; pieceId: number; point: THREE.Vector3; x: number; y: number } | null =
     null;
 
-  private constructor(
-    container: HTMLElement,
-    slotOctants: number[][],
-    apexSlots: number[],
-    solvedPattern: KPattern,
-  ) {
+  constructor(container: HTMLElement, spec: ThreeCubeViewSpec) {
+    if (spec.geometries.length !== spec.model.pieceCount) {
+      throw new Error(
+        `จำนวน geometry (${spec.geometries.length}) ไม่ตรงกับจำนวนชิ้นในโมเดล (${spec.model.pieceCount})`,
+      );
+    }
+
+    this.#spec = spec;
+    this.cubeType = spec.cubeType;
     this.#container = container;
-    this.#apexSlots = apexSlots;
-    this.#model = new PieceModel(slotOctants);
-    this.#scrambledPattern = solvedPattern;
-    this.#pattern = solvedPattern;
+    this.#scrambledPattern = spec.kpuzzle.defaultPattern();
+    this.#pattern = this.#scrambledPattern;
 
     const width = container.clientWidth || 400;
     const height = container.clientHeight || 400;
 
     this.#scene = new THREE.Scene();
     this.#camera = new THREE.PerspectiveCamera(38, width / height, 0.1, 100);
-    this.#camera.position.set(3.4, 2.6, 3.4);
+    this.#camera.position.set(...CAMERA_POSITION);
     this.#camera.lookAt(0, 0, 0);
 
     this.#renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -116,17 +127,17 @@ export class PyramorphixCubeView implements CubeView {
     this.#controls = new OrbitControls(this.#camera, this.#renderer.domElement);
     this.#controls.enableDamping = true;
     this.#controls.enablePan = false;
-    this.#controls.minDistance = 3;
-    this.#controls.maxDistance = 12;
+    this.#controls.minDistance = MIN_CAMERA_DISTANCE;
+    this.#controls.maxDistance = MAX_CAMERA_DISTANCE;
 
-    const material = new THREE.MeshStandardMaterial({
+    this.#material = new THREE.MeshStandardMaterial({
       vertexColors: true,
       roughness: 0.45,
       metalness: 0.02,
       flatShading: true,
     });
-    for (let i = 0; i < slotOctants.length; i++) {
-      const mesh = new THREE.Mesh(buildPieceGeometry(slotOctants[i]!), material);
+    for (let i = 0; i < spec.geometries.length; i++) {
+      const mesh = new THREE.Mesh(spec.geometries[i]!, this.#material);
       mesh.userData.pieceId = i;
       this.#scene.add(mesh);
       this.#meshes.push(mesh);
@@ -142,17 +153,6 @@ export class PyramorphixCubeView implements CubeView {
     container.addEventListener('pointerdown', this.#onPointerDown, { capture: true });
 
     this.#tick();
-  }
-
-  static async create(container: HTMLElement): Promise<PyramorphixCubeView> {
-    const kpuzzle = await getKPuzzle('pyramorphix');
-    const slotOctants = deriveSlotOctants(kpuzzle);
-    return new PyramorphixCubeView(
-      container,
-      slotOctants,
-      deriveApexSlots(slotOctants),
-      kpuzzle.defaultPattern(),
-    );
   }
 
   // ---------------------------------------------------------------- ฉาก
@@ -175,7 +175,7 @@ export class PyramorphixCubeView implements CubeView {
   /** บังคับให้ภาพตรงกับสถานะภายในเป๊ะ ๆ (กันทศนิยมสะสมจากอนิเมชัน — บทเรียนจากเฟส 0.5) */
   #syncMeshes(): void {
     for (let i = 0; i < this.#meshes.length; i++) {
-      const r: Mat3 = this.#model.pieceRotation[i]!;
+      const r: Mat3 = this.#spec.model.rotationOf(i);
       const matrix = new THREE.Matrix4().set(
         r[0]!,
         r[1]!,
@@ -211,19 +211,18 @@ export class PyramorphixCubeView implements CubeView {
   /**
    * ลงบัญชี move **ทันที** ทั้งฝั่งตรรกะและฝั่งภาพ แล้วค่อยไล่เล่นอนิเมชันตามหลัง
    *
-   * สำคัญมาก: ห้ามให้สถานะไปผูกกับ "อนิเมชันเล่นจบ" เพราะอนิเมชันของ GSAP เดินด้วย
-   * `requestAnimationFrame` ซึ่ง **หยุดเดินเมื่อแท็บถูกพักไว้เบื้องหลัง** ถ้าผูกไว้
+   * สำคัญมาก (ADR-025 ข้อ 3): ห้ามให้สถานะไปผูกกับ "อนิเมชันเล่นจบ" เพราะอนิเมชันของ GSAP
+   * เดินด้วย `requestAnimationFrame` ซึ่ง **หยุดเดินเมื่อแท็บถูกพักไว้เบื้องหลัง** ถ้าผูกไว้
    * คิว move จะค้าง สถานะภาพกับสถานะจริงจะแยกกันทันที (เจอจริงตอนทดสอบเฟส 3)
    */
   #commit(move: string): void {
-    const parsed = parseMove(move);
     // ต้องรู้ว่าชิ้นไหนอยู่ในชั้นนี้ *ก่อน* อัปเดตสถานะ เพราะอนิเมชันจะหมุนชิ้นเหล่านั้น
-    const ids = this.#model.piecesInLayer(parsed.axis, parsed.layerSign);
-    this.#model.applyParsed(parsed);
+    const turn = this.#spec.model.turnFor(move);
+    this.#spec.model.apply(move);
     this.#pattern = this.#pattern.applyMove(move);
     this.#moves = [...this.#moves, move];
 
-    this.#queue.push({ parsed, ids });
+    this.#queue.push({ turn });
     void this.#drainQueue();
     this.#emit();
   }
@@ -238,33 +237,47 @@ export class PyramorphixCubeView implements CubeView {
         this.#syncMeshes();
         break;
       }
-      await this.#animateTurn(this.#queue.shift()!);
+      await this.#animateTurn(this.#queue.shift()!.turn);
     }
     this.#animating = false;
   }
 
-  #animateTurn({ parsed, ids }: QueuedTurn): Promise<void> {
-    this.#pivot.rotation.set(0, 0, 0);
+  #animateTurn({ axis, angle, pieceIds }: TurnSpec): Promise<void> {
+    this.#pivot.quaternion.identity();
     this.#pivot.updateMatrixWorld(true);
-    for (const id of ids) this.#pivot.attach(this.#meshes[id]!);
+    for (const id of pieceIds) this.#pivot.attach(this.#meshes[id]!);
 
-    const axisName = (['x', 'y', 'z'] as const)[parsed.axis]!;
+    // แกนหมุนเป็นเวกเตอร์อะไรก็ได้ (Pyraminx ในก้อนที่ 2 ใช้แกนเอียง ไม่ใช่ x/y/z)
+    const axisVector = new THREE.Vector3(axis[0]!, axis[1]!, axis[2]!).normalize();
+    this.#progress.t = 0;
+
     return new Promise((resolve) => {
       const finish = () => {
         this.#finishAnimation = null;
-        for (const id of ids) this.#scene.attach(this.#meshes[id]!);
-        this.#pivot.rotation.set(0, 0, 0);
+        for (const id of pieceIds) this.#scene.attach(this.#meshes[id]!);
+        this.#pivot.quaternion.identity();
         this.#syncMeshes();
         resolve();
       };
       this.#finishAnimation = finish;
-      gsap.to(this.#pivot.rotation, {
-        [axisName]: (Math.PI / 2) * parsed.quarters,
+      gsap.to(this.#progress, {
+        t: 1,
         duration: TURN_DURATION_MS / 1000,
         ease: 'power2.inOut',
+        onUpdate: () =>
+          this.#pivot.quaternion.setFromAxisAngle(axisVector, angle * this.#progress.t),
         onComplete: finish,
       });
     });
+  }
+
+  /** ยกเลิกอนิเมชันที่ค้างอยู่ทั้งหมด แล้วคืน mesh กลับเข้าฉาก */
+  #cancelAnimations(): void {
+    this.#queue = [];
+    gsap.killTweensOf(this.#progress);
+    this.#finishAnimation?.();
+    this.#pivot.quaternion.identity();
+    for (const mesh of this.#meshes) this.#scene.attach(mesh);
   }
 
   // ---------------------------------------------------------------- ลากเพื่อหมุน
@@ -316,7 +329,7 @@ export class PyramorphixCubeView implements CubeView {
 
     this.#endDrag();
     const move = this.#moveForDrag(drag.pieceId, drag.point, dx / distance, dy / distance);
-    if (move) this.#commit(move);
+    if (move && isAllowedMove(this.cubeType, move)) this.#commit(move);
   };
 
   #onPointerUp = (): void => this.#endDrag();
@@ -331,22 +344,24 @@ export class PyramorphixCubeView implements CubeView {
   }
 
   /**
-   * แปลงทิศที่ลางบนจอ เป็น move
+   * แปลงทิศที่ลากบนจอ เป็น move
    *
-   * ชิ้นที่จับอยู่ในชั้นของทั้ง 3 แกนพร้อมกัน จึงต้องเดาว่าผู้เล่นหมายถึงแกนไหน:
-   * ลองหมุนรอบแต่ละแกนดูว่า **จุดที่จับ** จะเคลื่อนไปทางไหนบนจอ (`ω × r` แล้วฉายลงจอ)
-   * แล้วเลือกแกนที่ทิศตรงกับที่ลากมากที่สุด — วิธีนี้ใช้ได้กับผิวเอียงของพีระมิดด้วย
-   * ต่างจากวิธีของลูกบาศก์ที่อาศัยว่าหน้าตั้งฉากกับแกนเสมอ
+   * ชิ้นที่จับอยู่ในชั้นของหลายแกนพร้อมกัน จึงต้องเดาว่าผู้เล่นหมายถึงแกนไหน:
+   * ลองหมุนรอบแต่ละแกนที่โมเดลเสนอมา ดูว่า **จุดที่จับ** จะเคลื่อนไปทางไหนบนจอ
+   * (`ω × r` แล้วฉายลงจอ) แล้วเลือกแกนที่ทิศตรงกับที่ลากมากที่สุด
+   *
+   * วิธีนี้ใช้ได้กับรูปทรงอะไรก็ได้ — ต่างจากวิธีที่อาศัยว่าหน้าตั้งฉากกับแกน ซึ่งใช้กับ
+   * ผิวเอียงของพีระมิดไม่ได้ (ADR-025 ข้อ 4)
    */
   #moveForDrag(pieceId: number, point: THREE.Vector3, dirX: number, dirY: number): string | null {
     const origin = this.#screenPoint(point);
-    let best: { axis: number; score: number } | null = null;
+    let best: { move: string; score: number } | null = null;
 
-    for (let axis = 0; axis < 3; axis++) {
+    for (const candidate of this.#spec.model.dragCandidates(pieceId)) {
       const axisVector = new THREE.Vector3(
-        axis === 0 ? 1 : 0,
-        axis === 1 ? 1 : 0,
-        axis === 2 ? 1 : 0,
+        candidate.axis[0]!,
+        candidate.axis[1]!,
+        candidate.axis[2]!,
       );
       const tangent = axisVector.clone().cross(point);
       if (tangent.lengthSq() < 1e-8) continue;
@@ -358,40 +373,33 @@ export class PyramorphixCubeView implements CubeView {
       if (length < 1e-6) continue;
 
       const score = (dirX * mx + dirY * my) / length;
-      if (!best || Math.abs(score) > Math.abs(best.score)) best = { axis, score };
+      if (!best || Math.abs(score) > Math.abs(best.score)) best = { move: candidate.move, score };
     }
 
     if (!best || Math.abs(best.score) < DIRECTION_MATCH_MIN) return null;
-    const layerSign = this.#model.pieceOctant[pieceId]![best.axis]!;
-    return moveNameFor(best.axis, layerSign, best.score > 0 ? 1 : -1);
+    return best.score > 0 ? best.move : inverseMove(best.move);
   }
 
   // ---------------------------------------------------------------- CubeView
 
-  async setScramble(scramble: string): Promise<void> {
-    const kpuzzle = await getKPuzzle('pyramorphix');
-    this.#queue = [];
-    gsap.killTweensOf(this.#pivot.rotation);
-    this.#finishAnimation?.();
-    this.#pivot.rotation.set(0, 0, 0);
-    for (const mesh of this.#meshes) this.#scene.attach(mesh);
+  setScramble(scramble: string): Promise<void> {
+    this.#cancelAnimations();
 
     this.#scramble = scramble;
-    this.#model.reset();
-    for (const move of scramble.split(/\s+/).filter(Boolean)) {
-      this.#model.applyParsed(parseMove(move));
-    }
+    this.#spec.model.reset();
+    for (const move of scramble.split(/\s+/).filter(Boolean)) this.#spec.model.apply(move);
     this.#syncMeshes();
 
-    this.#scrambledPattern = kpuzzle.defaultPattern().applyAlg(new Alg(scramble));
+    this.#scrambledPattern = this.#spec.kpuzzle.defaultPattern().applyAlg(new Alg(scramble));
     this.#pattern = this.#scrambledPattern;
     this.#moves = [];
     this.#emit();
+    return Promise.resolve();
   }
 
   applyMove(move: string): Promise<void> {
-    if (!isAllowedMove('pyramorphix', move)) {
-      throw new Error(`move "${move}" ใช้กับ Pyramorphix ไม่ได้`);
+    if (!isAllowedMove(this.cubeType, move)) {
+      throw new Error(`move "${move}" ใช้กับ ${this.cubeType} ไม่ได้`);
     }
     this.#commit(move);
     // คืนทันทีที่สถานะเปลี่ยน ไม่รออนิเมชัน (ดูเหตุผลที่ #commit)
@@ -408,7 +416,7 @@ export class PyramorphixCubeView implements CubeView {
   }
 
   getState(): CubeState {
-    return { moves: this.#moves, solved: isPyramorphixSolved(this.#pattern, this.#apexSlots) };
+    return { moves: this.#moves, solved: this.#spec.isSolved(this.#pattern) };
   }
 
   subscribe(listener: CubeStateListener): () => void {
@@ -416,32 +424,18 @@ export class PyramorphixCubeView implements CubeView {
     return () => this.#listeners.delete(listener);
   }
 
-  /** ทรงตอนนี้ยังเป็นพีระมิดอยู่ไหม — ไว้ใช้ตอนทดสอบว่า shape-shifting ทำงานจริง */
-  isTetrahedronShape(): boolean {
-    const pieces = this.#model.getPiecesArray();
-    return this.#apexSlots.every((slot) => this.#apexSlots.includes(pieces[slot]!));
-  }
-
-  /** ชิ้นยอดพีระมิดที่อยู่บ้านตัวเองแล้ว หันถูกทางครบทุกชิ้นไหม — ใช้ตรวจว่าภาพกับตรรกะยังตรงกัน */
-  apexPiecesUpright(): boolean {
-    const pieces = this.#model.getPiecesArray();
-    return this.#apexSlots.every((slot) =>
-      matEq(this.#model.pieceRotation[pieces[slot]!]!, IDENTITY),
-    );
-  }
-
   dispose(): void {
     this.#disposed = true;
     this.#endDrag();
     this.#listeners.clear();
     this.#queue = [];
-    gsap.killTweensOf(this.#pivot.rotation);
+    gsap.killTweensOf(this.#progress);
     cancelAnimationFrame(this.#animationFrame);
     this.#resizeObserver.disconnect();
     this.#container.removeEventListener('pointerdown', this.#onPointerDown, { capture: true });
     this.#controls.dispose();
     for (const mesh of this.#meshes) mesh.geometry.dispose();
-    (this.#meshes[0]?.material as THREE.Material | undefined)?.dispose();
+    this.#material.dispose();
     this.#renderer.dispose();
     this.#renderer.domElement.remove();
   }

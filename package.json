@@ -9,7 +9,9 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "verify:pyramorphix": "node --experimental-strip-types scripts/verify-pyramorphix.ts"
+    "verify:cube": "node --experimental-strip-types scripts/verify-cube.ts",
+    "verify:pyramorphix": "node --experimental-strip-types scripts/verify-pyramorphix.ts",
+    "verify": "npm run verify:cube && npm run verify:pyramorphix"
   },
   "dependencies": {
     "cubing": "^0.63.4",

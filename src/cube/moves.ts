@@ -59,3 +59,14 @@ export function isAllowedMove(cubeType: CubeType, move: string): boolean {
 export function normalizeMove(move: string): string {
   return move.replace(/2'$/, '2');
 }
+
+/**
+ * move ที่หมุนกลับทางเดิม — ใช้ตอนแปลงการลากเป็น move (ลากคนละทางกับที่โมเดลเสนอ)
+ * และตอนเดินย้อนกลับในสคริปต์ `verify-*`
+ *
+ * 180° ไม่มีทิศ ตัวมันเองจึงเป็นตัวกลับของตัวเอง (ADR-025 ข้อ 2)
+ */
+export function inverseMove(move: string): string {
+  if (move.endsWith('2')) return move;
+  return move.endsWith("'") ? move.slice(0, -1) : `${move}'`;
+}
