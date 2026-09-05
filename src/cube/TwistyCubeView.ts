@@ -72,7 +72,7 @@ export class TwistyCubeView implements CubeView {
       background: 'none',
       controlPanel: 'none',
       backView: 'none',
-      // ไม่โชว์สติกเกอร์เงาด้านหลัง — ดีไซน์ในโฟลเดอร์ `ตัวอย่างเว็บไซต์/` เป็นคิวบ์ทึบธรรมดา
+      // ไม่โชว์สติกเกอร์เงาด้านหลัง — ดีไซน์ในโฟลเดอร์ `design/` เป็นคิวบ์ทึบธรรมดา
       hintFacelets: 'none',
       // ลากบนตัวคิวบ์ = หมุนชั้น · ลากนอกตัวคิวบ์ = หมุนกล้อง (ใช้ได้ทั้งเมาส์และนิ้ว)
       experimentalDragInput: 'auto',

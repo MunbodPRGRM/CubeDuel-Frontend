@@ -29,7 +29,7 @@ interface ScrambleResponse {
  * ไม่ใช้ Socket.IO ทำงานฝั่ง client ล้วน ยกเว้นการขอ scramble จาก server ผ่าน REST
  * (server เป็นคน generate เสมอ — ห้าม client สุ่มเอง)
  *
- * หน้าตายึดตาม `ตัวอย่างเว็บไซต์/Custom - Train.png` (ADR-024) — ของที่ดีไซน์ไม่มีแต่ต้องมี
+ * หน้าตายึดตาม `design/Custom - Train.png` (ADR-024) — ของที่ดีไซน์ไม่มีแต่ต้องมี
  * คือ **ตัวเลือกประเภทรูบิค** กับ **สวิตช์ inspection** เพราะกติกากำหนดไว้ทั้งคู่
  */
 export default function PracticePage() {
