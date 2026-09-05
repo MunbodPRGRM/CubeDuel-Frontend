@@ -1,6 +1,9 @@
 /**
- * เส้นทางที่ 1 ของ interface กลาง — 2x2x2 / 3x3x3 / Pyraminx ใช้ `<twisty-player>` ของ cubing.js
- * (Pyramorphix ใช้ไม่ได้ ต้องใช้ `PyramorphixCubeView` แทน — ADR-019)
+ * เส้นทางเก่าของ interface กลาง — `<twisty-player>` ของ cubing.js
+ *
+ * ⚠️ **เหลือใช้แค่ Pyraminx ชั่วคราว** (เฟส 3.5 ก้อนที่ 1) ประเภทอื่นย้ายไป `ThreeCubeView`
+ * ที่เราเขียนเองหมดแล้วตาม ADR-026 · ก้อนที่ 2 จะทำ mini-PoC ของ Pyraminx แล้วย้ายตาม
+ * ถ้า PoC ไม่ผ่านถึงจะคงไฟล์นี้ไว้ถาวร (ต้องบันทึกเหตุผลลง ADR-026)
  *
  * แบ่งหน้าที่กันแบบนี้:
  *   - `<twisty-player>`  → รับ input (ลาก/สัมผัส), อนิเมชัน, กล้อง, การแสดงผล
@@ -14,17 +17,17 @@ import { Alg } from 'cubing/alg';
 import type { KPattern } from 'cubing/kpuzzle';
 import { TwistyPlayer } from 'cubing/twisty';
 import type { CubeType } from '@/types/cube';
-import { isAllowedMove, normalizeMove } from './moves';
-import { getKPuzzle, PUZZLE_ID } from './puzzle';
-import type { CubeState, CubeStateListener, CubeView } from './types';
+import { isAllowedMove, normalizeMove } from './moves.ts';
+import { getKPuzzle, PUZZLE_ID } from './puzzle.ts';
+import type { CubeState, CubeStateListener, CubeView } from './types.ts';
 
 /** ระยะกล้องเริ่มต้นของ `<twisty-player>` (ค่าเดียวกับ default ของ cubing.js) */
 const DEFAULT_CAMERA_DISTANCE = 6;
 const MIN_CAMERA_DISTANCE = 4;
 const MAX_CAMERA_DISTANCE = 12;
 
-/** ประเภทที่ `<twisty-player>` รองรับ (ทุกประเภทยกเว้น Pyramorphix) */
-export type TwistyCubeType = Exclude<CubeType, 'pyramorphix'>;
+/** ประเภทที่ยังเหลืออยู่บนเส้นทางนี้ */
+export type TwistyCubeType = Extract<CubeType, 'pyraminx'>;
 
 export class TwistyCubeView implements CubeView {
   readonly cubeType: TwistyCubeType;
@@ -74,9 +77,10 @@ export class TwistyCubeView implements CubeView {
       backView: 'none',
       // ไม่โชว์สติกเกอร์เงาด้านหลัง — ดีไซน์ในโฟลเดอร์ `design/` เป็นคิวบ์ทึบธรรมดา
       hintFacelets: 'none',
-      // ลากบนตัวคิวบ์ = หมุนชั้น · ลากนอกตัวคิวบ์ = หมุนกล้อง (ใช้ได้ทั้งเมาส์และนิ้ว)
       experimentalDragInput: 'auto',
-      experimentalMovePressInput: 'auto',
+      // ต้องเป็น `'basic'` เท่านั้น — cubing.js ยิง event `press` เฉพาะค่านี้ (`'auto'` = ปิดสนิท)
+      // ได้แค่ "คลิกหนึ่งครั้ง = หมุนหนึ่งหน้า" เพราะ twisty ไม่มีการลากเพื่อหมุนชั้นเลย (ADR-026)
+      experimentalMovePressInput: 'basic',
       tempoScale: 4,
     });
     // ตั้งแค่ขนาด **ห้ามแตะ `display`** — `<twisty-player>` ใช้ `display: grid` จัดวางข้างใน
@@ -150,7 +154,7 @@ export class TwistyCubeView implements CubeView {
   setTurnsEnabled(enabled: boolean): void {
     // กล้องยังหมุนได้เสมอ — twisty แยก "ลากบนคิวบ์" กับ "ลากพื้นหลัง" ให้อยู่แล้ว
     this.#player.experimentalDragInput = enabled ? 'auto' : 'none';
-    this.#player.experimentalMovePressInput = enabled ? 'auto' : 'none';
+    this.#player.experimentalMovePressInput = enabled ? 'basic' : 'none';
   }
 
   getState(): CubeState {

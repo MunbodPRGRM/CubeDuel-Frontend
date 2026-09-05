@@ -4,23 +4,24 @@
  * เฟส 0.5 ตรวจไว้แค่ 9 move (U/R/F) — ของจริงรับครบ 6 หน้าเพราะผู้เล่นลากหมุนหน้าไหนก็ได้
  * จึงต้องตรวจซ้ำทั้ง 18 move + เดินสุ่มยาว ๆ ว่าไม่มีจุดไหนคลาดกัน
  *
+ * เฟส 3.5 ก้อนที่ 1: Pyramorphix ย้ายมาใช้ `NxNCubeModel` (N = 2) ร่วมกับ 2x2x2 แล้ว
+ * ต่างกันแค่รูปทรงกับกติกาแก้เสร็จ — ไฟล์นี้จึงเป็นตัวยืนยันว่าการย้ายไม่ทำอะไรพัง
+ *
  * รัน: `npm run verify:pyramorphix`
  */
 import { puzzles } from 'cubing/puzzles';
 import { deriveApexSlots, deriveSlotOctants, isPyramorphixSolved } from '../src/cube/puzzle.ts';
-import { ALLOWED_MOVES } from '../src/cube/moves.ts';
-import {
-  PieceModel,
-  parseMove,
-  moveNameFor,
-  matEq,
-  IDENTITY,
-} from '../src/cube/pyramorphix/rotation.ts';
+import { ALLOWED_MOVES, inverseMove } from '../src/cube/moves.ts';
+import { NxNCubeModel } from '../src/cube/nxn/cube-model.ts';
+import { IDENTITY, matEq } from '../src/cube/three/lattice.ts';
 
 const kpuzzle = await puzzles['2x2x2']!.kpuzzle();
 const slotOctants = deriveSlotOctants(kpuzzle);
 const apexSlots = deriveApexSlots(slotOctants);
 const moves = ALLOWED_MOVES.pyramorphix;
+
+/** โมเดลของ Pyramorphix = ลูกบาศก์ 2 ชั้น ที่เรียงลำดับชิ้นตามช่องของ KPuzzle */
+const newModel = () => new NxNCubeModel(2, slotOctants);
 
 let failures = 0;
 function check(label: string, ok: boolean, detail = ''): void {
@@ -34,35 +35,38 @@ check('ยอดพีระมิดตรงกับที่พิสูจ�
 
 console.log(`\n1) move ทั้ง ${moves.length} ตัว ให้ผลตรงกับ KPuzzle`);
 for (const move of moves) {
-  const expected = kpuzzle.defaultPattern().applyMove(move).patternData.CORNERS!.pieces;
-  const model = new PieceModel(slotOctants);
-  model.applyParsed(parseMove(move));
-  const actual = model.getPiecesArray();
+  const expected = [...kpuzzle.defaultPattern().applyMove(move).patternData.CORNERS!.pieces];
+  const model = newModel();
+  model.apply(move);
+  const actual = model.lattice.toPiecesArray();
   check(
     move.padEnd(3),
-    JSON.stringify([...expected]) === JSON.stringify(actual),
+    JSON.stringify(expected) === JSON.stringify(actual),
     `${expected} vs ${actual}`,
   );
 }
 
 console.log('\n2) แปลงกลับ (แกน+ฝั่ง+มุม → ชื่อ move) ได้ชื่อเดิม');
-for (const move of moves) {
-  const { axis, layerSign, quarters } = parseMove(move);
-  const back = moveNameFor(axis, layerSign, quarters);
-  check(`${move.padEnd(3)} → ${back}`, back === move);
+{
+  const model = newModel();
+  for (const move of moves) {
+    const { axis, layers, quarters } = model.parse(move);
+    const back = model.nameFor(axis, layers[0]!, quarters);
+    check(`${move.padEnd(3)} → ${back}`, back === move);
+  }
 }
 
 console.log('\n3) เดินสุ่ม 5000 ก้าว โมเดลกับ KPuzzle ต้องไม่คลาดกันเลย');
 {
-  const model = new PieceModel(slotOctants);
+  const model = newModel();
   let pattern = kpuzzle.defaultPattern();
   let mismatch = -1;
   for (let step = 0; step < 5000; step++) {
     const move = moves[Math.floor(Math.random() * moves.length)]!;
     pattern = pattern.applyMove(move);
-    model.applyParsed(parseMove(move));
+    model.apply(move);
     const expected = JSON.stringify([...pattern.patternData.CORNERS!.pieces]);
-    if (expected !== JSON.stringify(model.getPiecesArray())) {
+    if (expected !== JSON.stringify(model.lattice.toPiecesArray())) {
       mismatch = step;
       break;
     }
@@ -78,30 +82,27 @@ console.log('\n4) "แก้เสร็จ" ของภาพกับขอ�
 {
   let disagreements = 0;
   let solvedSeen = 0;
-  const inverseOf = (move: string) =>
-    move.endsWith('2') ? move : move.endsWith("'") ? move.slice(0, -1) : `${move}'`;
 
   // สุ่มเดินไปแล้วเดินย้อนกลับ เพื่อให้ "ผ่านสถานะแก้เสร็จ" จริง ๆ หลายพันครั้ง
   // (ถ้าสุ่มเดินอย่างเดียวจะแทบไม่มีทางเจอสถานะแก้เสร็จเลย ข้อนี้ก็จะไม่ได้ตรวจอะไร)
   for (let trial = 0; trial < 2000; trial++) {
-    const model = new PieceModel(slotOctants);
+    const model = newModel();
     let pattern = kpuzzle.defaultPattern();
     const walk: string[] = [];
     for (let i = 0; i < 1 + Math.floor(Math.random() * 6); i++) {
       walk.push(moves[Math.floor(Math.random() * moves.length)]!);
     }
-    const sequence = [...walk, ...walk.map(inverseOf).reverse()];
 
-    for (const move of sequence) {
+    for (const move of [...walk, ...walk.map(inverseMove).reverse()]) {
       pattern = pattern.applyMove(move);
-      model.applyParsed(parseMove(move));
+      model.apply(move);
 
       // ฝั่งภาพ: ทุกชิ้นอยู่บ้านตัวเอง + ชิ้นยอดพีระมิดต้องไม่ถูกหมุน
-      const pieces = model.getPiecesArray();
+      const pieces = model.lattice.toPiecesArray();
       const visuallySolved = pieces.every(
         (pieceId, slot) =>
           pieceId === slot &&
-          (!apexSlots.includes(slot) || matEq(model.pieceRotation[pieceId]!, IDENTITY)),
+          (!apexSlots.includes(slot) || matEq(model.lattice.rotations[pieceId]!, IDENTITY)),
       );
       const logicallySolved = isPyramorphixSolved(pattern, apexSlots);
       if (visuallySolved !== logicallySolved) disagreements++;

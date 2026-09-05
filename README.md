@@ -57,7 +57,10 @@ npm run dev        # http://localhost:5173
 | `npm run build` | ตรวจ type ด้วย `tsc -b` แล้ว build ลง `dist/` |
 | `npm run preview` | เปิดดูผลลัพธ์ที่ build แล้ว |
 | `npm run lint` | ESLint |
-| `npm run format` | Prettier |
+| `npm run format` | Prettier (⚠️ จัดรูปแบบไฟล์ `.md` ด้วย — เช็ค `git status` ก่อน commit) |
+| `npm run verify` | ตรวจว่าโมเดลคิวบ์ที่เราวาดเองตรงกับ KPuzzle ของ cubing.js (รันสองตัวล่างรวดเดียว) |
+| `npm run verify:cube` | เฉพาะ 2x2x2 + 3x3x3 |
+| `npm run verify:pyramorphix` | เฉพาะ Pyramorphix |
 
 ## ตัวแปรสภาพแวดล้อม
 
