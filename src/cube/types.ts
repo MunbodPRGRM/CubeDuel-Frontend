@@ -17,6 +17,25 @@ export interface CubeState {
 
 export type CubeStateListener = (state: CubeState) => void;
 
+/** move มาจากการหมุนของผู้เล่นเอง หรือมาจากคำสั่งของโปรแกรม (เล่นซ้ำ/ปุ่ม/คู่แข่ง) */
+export type CubeMoveSource = 'player' | 'program';
+
+/**
+ * แจ้งทีละ move ตอนหมุน — เฟส 4 เอาไปยิง `solve:move` ตรง ๆ ได้เลย
+ * ชื่อฟิลด์จึงล้อกับ payload ใน `docs/socket-events.md` ข้อ 7
+ */
+export interface CubeMoveEvent {
+  /** notation ตัวเดียว เช่น `R`, `U'`, `F2` — ไม่มีทางเป็นหลาย move รวมกัน */
+  move: string;
+  /** ลำดับที่ของ move **เริ่มที่ 1** นับใหม่ทุกครั้งที่ตั้ง scramble (= `seq`) */
+  seq: number;
+  /** `Date.now()` ตอนหมุน (= `clientTs`) — เวลาที่ตัดสินผลจริงยังเป็นของ server เสมอ */
+  at: number;
+  source: CubeMoveSource;
+}
+
+export type CubeMoveListener = (event: CubeMoveEvent) => void;
+
 export interface CubeView {
   readonly cubeType: CubeType;
 
@@ -43,6 +62,15 @@ export interface CubeView {
 
   /** รับแจ้งทุกครั้งที่สถานะเปลี่ยน — คืนฟังก์ชันสำหรับเลิกรับแจ้ง */
   subscribe(listener: CubeStateListener): () => void;
+
+  /**
+   * รับแจ้ง **ทีละ move** — คืนฟังก์ชันสำหรับเลิกรับแจ้ง
+   *
+   * ต่างจาก `subscribe` ที่ส่งสถานะทั้งก้อน: ตัวนี้บอกว่า "หมุนอะไรไปเป็นตัวที่เท่าไหร่"
+   * ซึ่งเป็นสิ่งที่ `solve:move` ต้องใช้ (เฟส 4) และเป็นสิ่งเดียวที่ประกอบกลับเป็น
+   * move stream ได้ — จะยิงตอนสถานะเปลี่ยนทันที **ไม่รออนิเมชัน** (ADR-025 ข้อ 3)
+   */
+  subscribeMoves(listener: CubeMoveListener): () => void;
 
   /** คืนทรัพยากรทั้งหมด (WebGL context, event listener, requestAnimationFrame) */
   dispose(): void;

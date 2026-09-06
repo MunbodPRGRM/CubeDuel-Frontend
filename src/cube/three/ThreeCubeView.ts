@@ -19,16 +19,32 @@ import { Alg } from 'cubing/alg';
 import type { KPattern, KPuzzle } from 'cubing/kpuzzle';
 import type { CubeType } from '@/types/cube';
 import { inverseMove, isAllowedMove } from '../moves.ts';
-import type { CubeState, CubeStateListener, CubeView } from '../types.ts';
+import type {
+  CubeMoveEvent,
+  CubeMoveListener,
+  CubeMoveSource,
+  CubeState,
+  CubeStateListener,
+  CubeView,
+} from '../types.ts';
 import type { Mat3 } from './lattice.ts';
 import type { PuzzleModel, TurnSpec } from './model.ts';
 
 /** ระยะเวลาอนิเมชันหมุนหนึ่งครั้ง — เร็วพอให้ speedcuber ไม่รู้สึกว่าคิวบ์หนืด */
 const TURN_DURATION_MS = 110;
-/** ต้องลากเกินกี่พิกเซลถึงจะนับว่าตั้งใจหมุนชั้น (กันการกดแล้วสั่นนิดเดียว) */
+/** เวลาที่ใช้ "ดีด" ชั้นเข้าที่หลังปล่อยนิ้ว (คิดจากระยะเต็มหนึ่งช่วง แล้วลดตามสัดส่วน) */
+const SNAP_DURATION_MS = 110;
+/** ต้องลากเกินกี่พิกเซลถึงจะเลือกแกนหมุน (กันการกดแล้วสั่นนิดเดียว) */
 const DRAG_THRESHOLD_PX = 8;
 /** ทิศที่ลากต้องตรงกับทิศการหมุนอย่างน้อยเท่านี้ ไม่งั้นถือว่ากำกวม ไม่หมุนอะไรเลย */
 const DIRECTION_MATCH_MIN = 0.3;
+/**
+ * รัศมีขั้นต่ำที่ใช้แปลง "พิกเซลที่ลาก" เป็น "องศาที่หมุน" (หน่วยเดียวกับฉาก คิวบ์กว้าง 2)
+ *
+ * ถ้าจับใกล้แกนหมุนมาก ๆ (เช่นกลางหน้าของ 3x3x3) รัศมีจริงเกือบเป็นศูนย์ ลากนิดเดียว
+ * ชั้นจะเหวี่ยงหลายรอบ — จึงคิดเสมือนว่าจับอยู่ห่างจากแกนอย่างน้อยเท่านี้
+ */
+const MIN_TURN_RADIUS = 0.6;
 /** ค้างคิวอนิเมชันได้มากสุดกี่ move ก่อนจะข้ามไปสถานะล่าสุดทันที */
 const MAX_PENDING_TURNS = 3;
 
@@ -54,6 +70,46 @@ interface QueuedTurn {
   turn: TurnSpec;
 }
 
+/** ชั้นที่กำลังหมุนตามนิ้วอยู่ — เกิดขึ้นตอนลากเกิน `DRAG_THRESHOLD_PX` แล้วเท่านั้น */
+interface ActiveTurn {
+  /** ชื่อ move เมื่อหมุน **ทางบวก** หนึ่งช่วงรอบแกนนี้ (ทางลบใช้ `inverseMove`) */
+  move: string;
+  /** แกนหมุน (เวกเตอร์หนึ่งหน่วย) — ปรับทิศแล้วให้มุมบวก = `move` เสมอ */
+  axis: THREE.Vector3;
+  pieceIds: number[];
+  /** ขนาดของหนึ่งช่วง (เรเดียน) — 90° ของลูกบาศก์ · 120° ของพีระมิด */
+  unit: number;
+  /** หนึ่งรอบมีกี่ช่วง (4 หรือ 3) — ใช้ตอนปัดให้เป็นทางที่สั้นที่สุด */
+  perRevolution: number;
+  /** เวกเตอร์บนจอ (พิกเซล) ที่ตรงกับการหมุน **1 เรเดียน** + ความยาวยกกำลังสองของมัน */
+  screenX: number;
+  screenY: number;
+  screenLengthSq: number;
+  /** มุมที่หมุนไปแล้วตามนิ้ว (เรเดียน) */
+  angle: number;
+}
+
+/** นิ้ว/เมาส์ที่กดค้างอยู่บนตัวคิวบ์ */
+interface Gesture {
+  pointerId: number;
+  pieceId: number;
+  /** จุดที่จับได้ (พิกัดโลก ณ ตอนกด) — ใช้คิดว่าหมุนแล้วจุดนี้จะวิ่งไปทางไหนบนจอ */
+  point: THREE.Vector3;
+  startX: number;
+  startY: number;
+  /** `null` = ยังลากไม่ถึงเกณฑ์ ยังไม่รู้ว่าจะหมุนแกนไหน */
+  turn: ActiveTurn | null;
+}
+
+/**
+ * ปัดจำนวนช่วงให้เป็นทางที่สั้นที่สุด — ลากลูกบาศก์ไป 3 ช่วง มีค่าเท่ากับทวนเข็ม 1 ช่วง
+ * และลากครบรอบ (4 ช่วง / พีระมิด 3 ช่วง) เท่ากับไม่ได้หมุนอะไรเลย
+ */
+function shortestSteps(steps: number, perRevolution: number): number {
+  const wrapped = ((steps % perRevolution) + perRevolution) % perRevolution;
+  return wrapped * 2 > perRevolution ? wrapped - perRevolution : wrapped;
+}
+
 export class ThreeCubeView implements CubeView {
   readonly cubeType: CubeType;
 
@@ -75,6 +131,7 @@ export class ThreeCubeView implements CubeView {
 
   #moves: string[] = [];
   #listeners = new Set<CubeStateListener>();
+  #moveListeners = new Set<CubeMoveListener>();
   #queue: QueuedTurn[] = [];
   #animating = false;
   /** ตัวที่ GSAP tween อยู่ — เก็บไว้เพื่อ kill ตอนถูกสั่ง scramble ใหม่ */
@@ -84,9 +141,8 @@ export class ThreeCubeView implements CubeView {
   #turnsEnabled = true;
   #disposed = false;
 
-  /** ข้อมูลของนิ้ว/เมาส์ที่กำลังลากอยู่บนตัวคิวบ์ */
-  #drag: { pointerId: number; pieceId: number; point: THREE.Vector3; x: number; y: number } | null =
-    null;
+  /** ท่าที่นิ้ว/เมาส์กำลังลากอยู่บนตัวคิวบ์ (`null` = ไม่ได้ลากอะไรอยู่) */
+  #gesture: Gesture | null = null;
 
   constructor(container: HTMLElement, spec: ThreeCubeViewSpec) {
     if (spec.geometries.length !== spec.model.pieceCount) {
@@ -209,22 +265,36 @@ export class ThreeCubeView implements CubeView {
   }
 
   /**
-   * ลงบัญชี move **ทันที** ทั้งฝั่งตรรกะและฝั่งภาพ แล้วค่อยไล่เล่นอนิเมชันตามหลัง
+   * ลง move ลงสถานะ **ทันที** ทั้งฝั่งตรรกะและบัญชี move แล้วแจ้งผู้ฟังทุกคน
    *
    * สำคัญมาก (ADR-025 ข้อ 3): ห้ามให้สถานะไปผูกกับ "อนิเมชันเล่นจบ" เพราะอนิเมชันของ GSAP
    * เดินด้วย `requestAnimationFrame` ซึ่ง **หยุดเดินเมื่อแท็บถูกพักไว้เบื้องหลัง** ถ้าผูกไว้
    * คิว move จะค้าง สถานะภาพกับสถานะจริงจะแยกกันทันที (เจอจริงตอนทดสอบเฟส 3)
+   * ด้วยเหตุผลเดียวกัน `subscribeMoves` ก็ต้องได้ move จากที่นี่ ไม่ใช่ตอนอนิเมชันจบ
    */
-  #commit(move: string): void {
-    // ต้องรู้ว่าชิ้นไหนอยู่ในชั้นนี้ *ก่อน* อัปเดตสถานะ เพราะอนิเมชันจะหมุนชิ้นเหล่านั้น
-    const turn = this.#spec.model.turnFor(move);
+  #applyMoveState(move: string, source: CubeMoveSource): void {
     this.#spec.model.apply(move);
     this.#pattern = this.#pattern.applyMove(move);
     this.#moves = [...this.#moves, move];
 
+    const event: CubeMoveEvent = { move, seq: this.#moves.length, at: Date.now(), source };
+    for (const listener of this.#moveListeners) listener(event);
+    this.#emit();
+  }
+
+  /**
+   * ลง move พร้อม **เข้าคิวอนิเมชัน** ให้ — ทางของคำสั่งจากโปรแกรม
+   * (การลากนิ้วไม่ผ่านทางนี้ เพราะชั้นหมุนตามนิ้วไปแล้วระหว่างลาก)
+   */
+  #commit(move: string, source: CubeMoveSource): void {
+    // ผู้เล่นลากค้างอยู่แล้วโปรแกรมสั่งหมุนทับ → ปิดท่าที่ค้างก่อน ไม่งั้นแย่ง pivot กัน
+    this.#settleGesture();
+    // ต้องรู้ว่าชิ้นไหนอยู่ในชั้นนี้ *ก่อน* อัปเดตสถานะ เพราะอนิเมชันจะหมุนชิ้นเหล่านั้น
+    const turn = this.#spec.model.turnFor(move);
+    this.#applyMoveState(move, source);
+
     this.#queue.push({ turn });
     void this.#drainQueue();
-    this.#emit();
   }
 
   async #drainQueue(): Promise<void> {
@@ -253,10 +323,7 @@ export class ThreeCubeView implements CubeView {
 
     return new Promise((resolve) => {
       const finish = () => {
-        this.#finishAnimation = null;
-        for (const id of pieceIds) this.#scene.attach(this.#meshes[id]!);
-        this.#pivot.quaternion.identity();
-        this.#syncMeshes();
+        this.#releasePivot(pieceIds);
         resolve();
       };
       this.#finishAnimation = finish;
@@ -271,6 +338,14 @@ export class ThreeCubeView implements CubeView {
     });
   }
 
+  /** คืนชิ้นจาก pivot กลับเข้าฉาก แล้วบังคับให้ภาพตรงกับสถานะภายในเป๊ะ ๆ */
+  #releasePivot(pieceIds: readonly number[]): void {
+    this.#finishAnimation = null;
+    for (const id of pieceIds) this.#scene.attach(this.#meshes[id]!);
+    this.#pivot.quaternion.identity();
+    this.#syncMeshes();
+  }
+
   /** ยกเลิกอนิเมชันที่ค้างอยู่ทั้งหมด แล้วคืน mesh กลับเข้าฉาก */
   #cancelAnimations(): void {
     this.#queue = [];
@@ -278,6 +353,7 @@ export class ThreeCubeView implements CubeView {
     this.#finishAnimation?.();
     this.#pivot.quaternion.identity();
     for (const mesh of this.#meshes) this.#scene.attach(mesh);
+    this.#syncMeshes();
   }
 
   // ---------------------------------------------------------------- ลากเพื่อหมุน
@@ -291,8 +367,36 @@ export class ThreeCubeView implements CubeView {
     };
   }
 
+  /**
+   * เวกเตอร์บนจอ (พิกเซล) ที่ตรงกับการหมุนจุด `point` รอบแกนนี้ **1 เรเดียน**
+   *
+   * เป็นหัวใจของทั้งการเดาแกนและการหมุนตามนิ้ว: ความเร็วของจุดคือ `ω × r` เอาไปฉายลงจอ
+   * แล้วหารด้วยมุมที่ใช้ทดลอง — ได้อัตราแลกเปลี่ยน "พิกเซลที่ลาก ↔ เรเดียนที่หมุน"
+   * วิธีนี้ใช้กับรูปทรงอะไรก็ได้ ไม่ต้องรู้ว่าหน้าตั้งฉากกับแกนไหม (ADR-025 ข้อ 4)
+   */
+  #screenPerRadian(point: THREE.Vector3, axis: THREE.Vector3): { x: number; y: number } | null {
+    const tangent = axis.clone().cross(point);
+    const speed = tangent.length();
+    if (speed < 1e-6) return null; // จับตรงแกนพอดี — หมุนแล้วจุดนี้ไม่ขยับ ตัดสินทิศไม่ได้
+    if (speed < MIN_TURN_RADIUS) tangent.setLength(MIN_TURN_RADIUS);
+    const step = 0.05 / tangent.length(); // มุมทดลองเล็ก ๆ พอที่จะประมาณเป็นเส้นตรงได้
+
+    const origin = this.#screenPoint(point);
+    const moved = this.#screenPoint(point.clone().addScaledVector(tangent, step));
+    const x = (moved.x - origin.x) / step;
+    const y = (moved.y - origin.y) / step;
+    return Math.hypot(x, y) < 1e-6 ? null : { x, y }; // มองจากปลายแกนพอดี
+  }
+
   #onPointerDown = (event: PointerEvent): void => {
-    if (!this.#turnsEnabled || this.#drag !== null || event.button !== 0) return;
+    if (event.button !== 0) return;
+
+    // นิ้วที่สองระหว่างลากหน้าคิวบ์ = กำลังจะซูม → ปิดท่าที่ค้าง แล้วปล่อยให้ OrbitControls รับช่วง
+    if (this.#gesture) {
+      this.#endGesture(true);
+      return;
+    }
+    if (!this.#turnsEnabled) return;
 
     const rect = this.#renderer.domElement.getBoundingClientRect();
     const ndc = new THREE.Vector2(
@@ -305,13 +409,19 @@ export class ThreeCubeView implements CubeView {
     // ไม่โดนตัวคิวบ์ = ปล่อยให้ OrbitControls หมุนกล้องตามปกติ
     if (!hit) return;
 
-    this.#controls.enabled = false;
-    this.#drag = {
+    // ท่าก่อนหน้ายังดีดไม่เข้าที่ → ตัดจบทันที ชิ้นทุกชิ้นต้องว่างก่อนเริ่มท่าใหม่
+    this.#cancelAnimations();
+
+    // **ห้ามปิด `controls.enabled`** — ต้องให้ OrbitControls นับนิ้วต่อไป ไม่งั้นนิ้วที่สอง
+    // จะไม่ถูกนับ แล้ว pinch zoom จะพังทุกครั้งที่นิ้วแรกลงบนตัวคิวบ์ (roadmap ก้อนที่ 3)
+    this.#controls.enableRotate = false;
+    this.#gesture = {
       pointerId: event.pointerId,
       pieceId: hit.object.userData.pieceId as number,
       point: hit.point.clone(),
-      x: event.clientX,
-      y: event.clientY,
+      startX: event.clientX,
+      startY: event.clientY,
+      turn: null,
     };
     window.addEventListener('pointermove', this.#onPointerMove);
     window.addEventListener('pointerup', this.#onPointerUp);
@@ -319,70 +429,144 @@ export class ThreeCubeView implements CubeView {
   };
 
   #onPointerMove = (event: PointerEvent): void => {
-    const drag = this.#drag;
-    if (!drag || event.pointerId !== drag.pointerId) return;
+    const gesture = this.#gesture;
+    if (!gesture || event.pointerId !== gesture.pointerId) return;
 
-    const dx = event.clientX - drag.x;
-    const dy = event.clientY - drag.y;
-    const distance = Math.hypot(dx, dy);
-    if (distance < DRAG_THRESHOLD_PX) return;
+    const dx = event.clientX - gesture.startX;
+    const dy = event.clientY - gesture.startY;
 
-    this.#endDrag();
-    const move = this.#moveForDrag(drag.pieceId, drag.point, dx / distance, dy / distance);
-    if (move && isAllowedMove(this.cubeType, move)) this.#commit(move);
+    if (!gesture.turn) {
+      const distance = Math.hypot(dx, dy);
+      if (distance < DRAG_THRESHOLD_PX) return;
+
+      const turn = this.#turnForDrag(gesture, dx / distance, dy / distance);
+      // ทิศกำกวมเกินกว่าจะเดาได้ → จบท่านี้ไปเลย ดีกว่าหมุนผิดชั้นให้ผู้เล่นตามแก้
+      if (!turn) {
+        this.#endGesture(false);
+        return;
+      }
+      gesture.turn = turn;
+      this.#pivot.quaternion.identity();
+      this.#pivot.updateMatrixWorld(true);
+      for (const id of turn.pieceIds) this.#pivot.attach(this.#meshes[id]!);
+    }
+
+    // ชั้นหมุนตามนิ้วต่อเนื่อง — ยังไม่ลงบัญชีเป็น move จนกว่าจะปล่อยนิ้ว
+    const turn = gesture.turn;
+    turn.angle = (dx * turn.screenX + dy * turn.screenY) / turn.screenLengthSq;
+    this.#pivot.quaternion.setFromAxisAngle(turn.axis, turn.angle);
   };
 
-  #onPointerUp = (): void => this.#endDrag();
-
-  #endDrag(): void {
-    if (!this.#drag) return;
-    this.#drag = null;
-    this.#controls.enabled = true;
-    window.removeEventListener('pointermove', this.#onPointerMove);
-    window.removeEventListener('pointerup', this.#onPointerUp);
-    window.removeEventListener('pointercancel', this.#onPointerUp);
-  }
+  #onPointerUp = (): void => this.#endGesture(true);
 
   /**
-   * แปลงทิศที่ลากบนจอ เป็น move
+   * เลือกว่าจะหมุนแกนไหน จากทิศที่ผู้เล่นเริ่มลาก
    *
-   * ชิ้นที่จับอยู่ในชั้นของหลายแกนพร้อมกัน จึงต้องเดาว่าผู้เล่นหมายถึงแกนไหน:
-   * ลองหมุนรอบแต่ละแกนที่โมเดลเสนอมา ดูว่า **จุดที่จับ** จะเคลื่อนไปทางไหนบนจอ
-   * (`ω × r` แล้วฉายลงจอ) แล้วเลือกแกนที่ทิศตรงกับที่ลากมากที่สุด
-   *
-   * วิธีนี้ใช้ได้กับรูปทรงอะไรก็ได้ — ต่างจากวิธีที่อาศัยว่าหน้าตั้งฉากกับแกน ซึ่งใช้กับ
-   * ผิวเอียงของพีระมิดไม่ได้ (ADR-025 ข้อ 4)
+   * ชิ้นที่จับอยู่ในชั้นของหลายแกนพร้อมกัน จึงต้องเดา: ลองหมุนรอบแต่ละแกนที่โมเดลเสนอมา
+   * ดูว่า **จุดที่จับ** จะเคลื่อนไปทางไหนบนจอ แล้วเลือกแกนที่ทิศตรงกับที่ลากมากที่สุด
    */
-  #moveForDrag(pieceId: number, point: THREE.Vector3, dirX: number, dirY: number): string | null {
-    const origin = this.#screenPoint(point);
+  #turnForDrag(gesture: Gesture, dirX: number, dirY: number): ActiveTurn | null {
     let best: { move: string; score: number } | null = null;
 
-    for (const candidate of this.#spec.model.dragCandidates(pieceId)) {
-      const axisVector = new THREE.Vector3(
-        candidate.axis[0]!,
-        candidate.axis[1]!,
-        candidate.axis[2]!,
-      );
-      const tangent = axisVector.clone().cross(point);
-      if (tangent.lengthSq() < 1e-8) continue;
+    for (const candidate of this.#spec.model.dragCandidates(gesture.pieceId)) {
+      const axis = new THREE.Vector3(candidate.axis[0]!, candidate.axis[1]!, candidate.axis[2]!);
+      const screen = this.#screenPerRadian(gesture.point, axis);
+      if (!screen) continue;
 
-      const moved = this.#screenPoint(point.clone().add(tangent.setLength(0.05)));
-      const mx = moved.x - origin.x;
-      const my = moved.y - origin.y;
-      const length = Math.hypot(mx, my);
-      if (length < 1e-6) continue;
-
-      const score = (dirX * mx + dirY * my) / length;
+      const score = (dirX * screen.x + dirY * screen.y) / Math.hypot(screen.x, screen.y);
       if (!best || Math.abs(score) > Math.abs(best.score)) best = { move: candidate.move, score };
     }
 
     if (!best || Math.abs(best.score) < DIRECTION_MATCH_MIN) return null;
-    return best.score > 0 ? best.move : inverseMove(best.move);
+    if (!isAllowedMove(this.cubeType, best.move)) return null;
+
+    // ชิ้นที่หมุนต้องคิดจากสถานะ **ก่อน** ลง move — ตอนนี้ยังไม่มีอะไรถูกลงบัญชี
+    const spec = this.#spec.model.turnFor(best.move);
+    const unit = Math.abs(spec.angle);
+    if (unit < 1e-6) return null;
+
+    // ให้ "มุมบวกรอบ axis" หมายถึง best.move เสมอ เครื่องหมายของมุมจะได้ตรงกับทิศที่ลาก
+    const axis = new THREE.Vector3(spec.axis[0]!, spec.axis[1]!, spec.axis[2]!)
+      .normalize()
+      .multiplyScalar(Math.sign(spec.angle));
+    const screen = this.#screenPerRadian(gesture.point, axis);
+    if (!screen) return null;
+
+    return {
+      move: best.move,
+      axis,
+      pieceIds: spec.pieceIds,
+      unit,
+      perRevolution: Math.round((Math.PI * 2) / unit),
+      screenX: screen.x,
+      screenY: screen.y,
+      screenLengthSq: screen.x * screen.x + screen.y * screen.y,
+      angle: 0,
+    };
+  }
+
+  /**
+   * จบท่าที่ลากอยู่ — `snap = true` คือปัดเข้าช่วงที่ใกล้ที่สุดแล้วลงบัญชีเป็น move จริง
+   * (`false` = คืนชั้นกลับที่เดิม ใช้ตอนถูกขัดจังหวะ เช่น สั่ง scramble ใหม่ระหว่างลาก)
+   */
+  #endGesture(snap: boolean): void {
+    const gesture = this.#gesture;
+    if (!gesture) return;
+
+    this.#gesture = null;
+    this.#controls.enableRotate = true;
+    window.removeEventListener('pointermove', this.#onPointerMove);
+    window.removeEventListener('pointerup', this.#onPointerUp);
+    window.removeEventListener('pointercancel', this.#onPointerUp);
+
+    const turn = gesture.turn;
+    if (!turn) return; // ลากไม่ถึงเกณฑ์ = แค่คลิกเฉย ๆ ไม่มีอะไรต้องคืน
+
+    const steps = snap ? Math.round(turn.angle / turn.unit) : 0;
+    const logical = shortestSteps(steps, turn.perRevolution);
+    const move = logical > 0 ? turn.move : inverseMove(turn.move);
+    // ลงบัญชีทันที ไม่รออนิเมชันดีดเข้าที่ (เหตุผลเดียวกับ #applyMoveState)
+    for (let i = 0; i < Math.abs(logical); i++) this.#applyMoveState(move, 'player');
+
+    this.#snapTo(turn, steps * turn.unit);
+  }
+
+  /** ดีดชั้นจากมุมที่ลากค้างไว้ ไปยังมุมที่ปัดแล้ว — เวลาสั้นลงตามระยะที่เหลือ */
+  #snapTo(turn: ActiveTurn, target: number): void {
+    const from = turn.angle;
+    const distance = Math.abs(target - from);
+    if (distance < 1e-4) {
+      this.#releasePivot(turn.pieceIds);
+      return;
+    }
+
+    this.#finishAnimation = () => this.#releasePivot(turn.pieceIds);
+    this.#progress.t = 0;
+    gsap.to(this.#progress, {
+      t: 1,
+      duration: Math.min(1, distance / turn.unit) * (SNAP_DURATION_MS / 1000),
+      ease: 'power2.out',
+      onUpdate: () =>
+        this.#pivot.quaternion.setFromAxisAngle(
+          turn.axis,
+          from + (target - from) * this.#progress.t,
+        ),
+      onComplete: () => this.#releasePivot(turn.pieceIds),
+    });
+  }
+
+  /** ปิดท่าที่ผู้เล่นลากค้างไว้ให้เข้าที่ **ทันที** ก่อนที่โปรแกรมจะเข้ามาใช้ pivot ต่อ */
+  #settleGesture(): void {
+    if (!this.#gesture) return;
+    this.#endGesture(true);
+    gsap.killTweensOf(this.#progress);
+    this.#finishAnimation?.();
   }
 
   // ---------------------------------------------------------------- CubeView
 
   setScramble(scramble: string): Promise<void> {
+    this.#endGesture(false);
     this.#cancelAnimations();
 
     this.#scramble = scramble;
@@ -401,8 +585,8 @@ export class ThreeCubeView implements CubeView {
     if (!isAllowedMove(this.cubeType, move)) {
       throw new Error(`move "${move}" ใช้กับ ${this.cubeType} ไม่ได้`);
     }
-    this.#commit(move);
-    // คืนทันทีที่สถานะเปลี่ยน ไม่รออนิเมชัน (ดูเหตุผลที่ #commit)
+    this.#commit(move, 'program');
+    // คืนทันทีที่สถานะเปลี่ยน ไม่รออนิเมชัน (ดูเหตุผลที่ #applyMoveState)
     return Promise.resolve();
   }
 
@@ -412,7 +596,8 @@ export class ThreeCubeView implements CubeView {
 
   setTurnsEnabled(enabled: boolean): void {
     this.#turnsEnabled = enabled;
-    if (!enabled) this.#endDrag();
+    // ปิดกลางคัน (เช่นเข้าช่วง inspection) → ปัดท่าที่ลากค้างให้จบตามที่ผู้เล่นตั้งใจ
+    if (!enabled) this.#endGesture(true);
   }
 
   getState(): CubeState {
@@ -424,10 +609,16 @@ export class ThreeCubeView implements CubeView {
     return () => this.#listeners.delete(listener);
   }
 
+  subscribeMoves(listener: CubeMoveListener): () => void {
+    this.#moveListeners.add(listener);
+    return () => this.#moveListeners.delete(listener);
+  }
+
   dispose(): void {
     this.#disposed = true;
-    this.#endDrag();
+    this.#endGesture(false);
     this.#listeners.clear();
+    this.#moveListeners.clear();
     this.#queue = [];
     gsap.killTweensOf(this.#progress);
     cancelAnimationFrame(this.#animationFrame);
