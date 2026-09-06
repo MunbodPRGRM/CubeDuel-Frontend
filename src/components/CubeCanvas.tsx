@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
-import { createCubeView, type CubeState, type CubeView } from '@/cube';
+import { createCubeView, type CubeMoveEvent, type CubeState, type CubeView } from '@/cube';
 import type { CubeType } from '@/types/cube';
 
 export interface CubeCanvasHandle {
@@ -14,6 +14,8 @@ interface CubeCanvasProps {
   /** ปิดตอน inspection — กล้องยังหมุนได้ แต่หมุนหน้าคิวบ์ไม่ได้ (game-rules.md ข้อ 2) */
   turnsEnabled: boolean;
   onState?: (state: CubeState) => void;
+  /** ทีละ move ตอนหมุน — เฟส 4 เอาไปยิง `solve:move` ต่อ */
+  onMove?: (event: CubeMoveEvent) => void;
 }
 
 /**
@@ -23,7 +25,7 @@ interface CubeCanvasProps {
  * (สร้างใหม่ = โหลด KPuzzle + สร้าง WebGL context ใหม่ ซึ่งแพงมาก)
  */
 export const CubeCanvas = forwardRef<CubeCanvasHandle, CubeCanvasProps>(function CubeCanvas(
-  { cubeType, scramble, turnsEnabled, onState },
+  { cubeType, scramble, turnsEnabled, onState, onMove },
   ref,
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -34,6 +36,8 @@ export const CubeCanvas = forwardRef<CubeCanvasHandle, CubeCanvasProps>(function
   // callback ล่าสุดโดยไม่ต้องสร้าง view ใหม่ตอน parent re-render
   const onStateRef = useRef(onState);
   onStateRef.current = onState;
+  const onMoveRef = useRef(onMove);
+  onMoveRef.current = onMove;
 
   useEffect(() => {
     const container = containerRef.current;
@@ -51,6 +55,7 @@ export const CubeCanvas = forwardRef<CubeCanvasHandle, CubeCanvasProps>(function
         }
         viewRef.current = created;
         created.subscribe((state) => onStateRef.current?.(state));
+        created.subscribeMoves((event) => onMoveRef.current?.(event));
         // ตอน dev เรียกจากคอนโซลได้ เช่น `__cubeView.applyMove('U')` — ใช้ทดสอบมือ ไม่ติดไปกับ build จริง
         if (import.meta.env.DEV)
           (window as unknown as { __cubeView?: CubeView }).__cubeView = created;

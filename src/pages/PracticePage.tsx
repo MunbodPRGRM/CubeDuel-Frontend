@@ -100,6 +100,18 @@ export default function PracticePage() {
     setMoveCount(0);
   }, [resetTimer]);
 
+  /**
+   * เริ่มจับเวลา — **รีเซ็ตคิวบ์กลับไปที่ scramble ให้อัตโนมัติเสมอ**
+   *
+   * ก่อนเริ่มจับเวลาผู้เล่นหมุนเล่นได้ (จะได้ลองจับลูกก่อน) แต่พอเริ่มจริงต้องออกตัวจาก
+   * scramble เดียวกันกับที่ server ส่งมา ไม่งั้นเวลาที่ได้เทียบกับใครไม่ได้เลย
+   */
+  const handleStart = useCallback(() => {
+    cubeRef.current?.reset();
+    setMoveCount(0);
+    timer.start();
+  }, [timer]);
+
   // เว้นวรรค = เริ่มจับเวลา ตามธรรมเนียมโปรแกรมจับเวลาของ speedcuber
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -107,12 +119,12 @@ export default function PracticePage() {
       const target = event.target as HTMLElement | null;
       if (target && ['INPUT', 'TEXTAREA', 'BUTTON'].includes(target.tagName)) return;
       event.preventDefault();
-      if (phase === 'idle' && scramble) timer.start();
+      if (phase === 'idle' && scramble) handleStart();
       else if (phase === 'finished') void fetchScramble(cubeType);
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [phase, scramble, timer, fetchScramble, cubeType]);
+  }, [phase, scramble, handleStart, fetchScramble, cubeType]);
 
   const times = useMemo(() => solves.map((s) => s.seconds), [solves]);
   const statusText = {
@@ -134,8 +146,9 @@ export default function PracticePage() {
               ref={cubeRef}
               cubeType={cubeType}
               scramble={scramble}
-              // หมุนหน้าคิวบ์ได้เฉพาะตอนจับเวลา — ช่วง inspection พลิกดูได้อย่างเดียว (game-rules.md ข้อ 2)
-              turnsEnabled={phase === 'solving'}
+              // ห้ามหมุนเฉพาะช่วง inspection ที่กติกาให้พลิกดูได้อย่างเดียว (game-rules.md ข้อ 2)
+              // นอกช่วงจับเวลาหมุนเล่นได้ — กดเริ่มแล้วคิวบ์จะถูกรีเซ็ตกลับไปที่ scramble ให้เอง
+              turnsEnabled={phase !== 'inspection'}
               onState={handleState}
             />
           )}
@@ -155,7 +168,7 @@ export default function PracticePage() {
             <p className="pointer-events-none absolute right-4 top-4 rounded-lg border border-line bg-navy-900/80 px-3 py-1.5 text-xs text-slate-400 backdrop-blur">
               {phase === 'inspection'
                 ? 'ช่วงนี้หมุนคิวบ์ไม่ได้ ลากเพื่อดูรอบ ๆ ได้'
-                : 'ลากบนคิวบ์เพื่อหมุน · ลากพื้นหลังเพื่อหมุนมุมมอง'}
+                : 'หมุนเล่นได้ตามใจ · กดเริ่มแล้วคิวบ์จะกลับไปที่ scramble ให้เอง'}
             </p>
           )}
         </section>
@@ -211,7 +224,7 @@ export default function PracticePage() {
                 <button
                   type="button"
                   onClick={() =>
-                    phase === 'finished' ? void fetchScramble(cubeType) : timer.start()
+                    phase === 'finished' ? void fetchScramble(cubeType) : handleStart()
                   }
                   disabled={!scramble}
                   className="col-span-2 rounded-lg bg-brand-500 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-40"

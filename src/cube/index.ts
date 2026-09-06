@@ -20,7 +20,14 @@ import { getKPuzzle } from './puzzle.ts';
 import { ThreeCubeView } from './three/ThreeCubeView.ts';
 import type { CubeView } from './types.ts';
 
-export type { CubeState, CubeStateListener, CubeView } from './types.ts';
+export type {
+  CubeMoveEvent,
+  CubeMoveListener,
+  CubeMoveSource,
+  CubeState,
+  CubeStateListener,
+  CubeView,
+} from './types.ts';
 export { ALLOWED_MOVES, inverseMove, isAllowedMove, normalizeMove } from './moves.ts';
 
 /** สร้างคิวบ์ 3 มิติลงใน `container` */
