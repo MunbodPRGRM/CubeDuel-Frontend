@@ -26,6 +26,7 @@ import type {
   CubeState,
   CubeStateListener,
   CubeView,
+  SetScrambleOptions,
 } from '../types.ts';
 import type { Mat3 } from './lattice.ts';
 import type { DragCandidate, PuzzleModel, TurnSpec } from './model.ts';
@@ -55,8 +56,15 @@ const MIN_TURN_RADIUS = 0.6;
 const FACE_AXIS_MAX_DOT = 0.9;
 /** ค้างคิวอนิเมชันได้มากสุดกี่ move ก่อนจะข้ามไปสถานะล่าสุดทันที */
 const MAX_PENDING_TURNS = 3;
-/** ตอนเล่นอนิเมชันแก้ให้ดู (`solve()`) หมุนเร็วกว่าปกติ ไม่งั้นรอนาน */
-const REPLAY_DURATION_MS = 75;
+/**
+ * ระยะเวลาต่อท่าตอน**เล่นชุด move ให้ดู** — ทั้ง scramble และปุ่ม "เสร็จทันที" (ADR-033)
+ *
+ * ช้ากว่าการหมุนของผู้เล่นตั้งใจ เพราะทั้งสองกรณีมีไว้ให้ **ดู** ว่าหมุนท่าอะไรไปบ้าง
+ * ไม่ได้มีไว้ให้จบไว ๆ — ถ้าเร็วจนดูไม่ทันก็ไม่ต่างอะไรกับกระโดดไปสถานะสุดท้ายเลย
+ */
+const PLAYBACK_TURN_MS = 250;
+/** เว้นจังหวะระหว่างท่า ให้เห็นชัดว่าจบท่าหนึ่งแล้วถึงขึ้นท่าใหม่ */
+const PLAYBACK_GAP_MS = 60;
 
 /** ทุกประเภทวาดในกล่อง [-1, 1] เท่ากันหมด กล้องจึงใช้ค่าชุดเดียวได้ */
 const CAMERA_POSITION: readonly [number, number, number] = [3.4, 2.6, 3.4];
@@ -148,8 +156,15 @@ export class ThreeCubeView implements CubeView {
   #finishAnimation: (() => void) | null = null;
   #turnsEnabled = true;
   #disposed = false;
-  /** กำลังเล่นชุด move ให้ดู (`solve()`) — ระหว่างนี้ห้ามผู้เล่นหมุนแทรก และห้ามตัดคิว */
+  /** กำลังเล่นชุด move ให้ดู (`solve()` / scramble แบบมีอนิเมชัน) — ห้ามหมุนแทรก ห้ามตัดคิว */
   #playingAlg = false;
+  /**
+   * **รุ่นของสถานะคิวบ์** — เพิ่มทุกครั้งที่มีคำสั่งที่ยึดสถานะไปทั้งก้อน (`setScramble` / `solve`)
+   *
+   * ตัวที่เล่นอนิเมชันค้างอยู่ต้องเทียบเลขนี้ **ก่อนลงทุกท่า** ถ้าไม่ตรงแปลว่ามีคำสั่งใหม่แซง
+   * เข้ามาแล้ว ต้องหยุดกลางคันทันที ห้ามลง move ต่อทับสถานะของรอบใหม่ (ADR-033)
+   */
+  #stateGeneration = 0;
   /** คนที่รออยู่ว่าคิวอนิเมชันจะว่างเมื่อไหร่ */
   #idleWaiters: (() => void)[] = [];
 
@@ -327,6 +342,40 @@ export class ThreeCubeView implements CubeView {
     this.#idleWaiters = [];
   }
 
+  /**
+   * **เล่นชุด move ให้ดูทีละท่าจริง ๆ** — ลง move → รออนิเมชันท่านั้นจบ → ค่อยลงท่าถัดไป (ADR-033)
+   *
+   * ⚠️ **เฟส 4 ห้ามลอกวิธีนี้ไปใช้กับ move ที่ผู้เล่นหมุนเอง** — move ของผู้เล่นต้องลงบัญชี
+   * **ทันที** โดยไม่รออนิเมชันตาม ADR-025 ข้อ 3 (rAF หยุดเดินตอนแท็บถูกพักไว้เบื้องหลัง
+   * ถ้าผูกไว้ คิวจะค้างและสถานะจะแยกจากภาพ) ที่นี่ยอมผูกได้เพราะเป็น move ของ**โปรแกรม**
+   * ที่เกิดนอกช่วงจับเวลา ไม่ยิงขึ้น server และ "การได้เห็นภาพหมุน" คือจุดประสงค์ทั้งหมด
+   *
+   * ก่อนลงแต่ละท่าต้องเทียบ `#stateGeneration` ก่อนเสมอ — ถ้ามี `setScramble`/`solve` ใหม่
+   * แซงเข้ามา ตัวที่ค้างอยู่ต้องถอยทันที ห้ามหมุนทับสถานะของรอบใหม่
+   */
+  async #playAlg(moves: readonly string[], generation: number): Promise<void> {
+    this.#playingAlg = true;
+    try {
+      for (let i = 0; i < moves.length; i++) {
+        if (this.#superseded(generation)) return;
+        if (i > 0) {
+          await new Promise((resolve) => setTimeout(resolve, PLAYBACK_GAP_MS));
+          if (this.#superseded(generation)) return;
+        }
+        this.#commit(moves[i]!, 'program');
+        await this.#whenIdle();
+      }
+    } finally {
+      // ตัวที่ตกรุ่นแล้วห้ามปลดธงของรอบใหม่ที่กำลังเล่นอยู่ (ไม่งั้นผู้เล่นหมุนแทรกกลางอนิเมชันได้)
+      if (this.#stateGeneration === generation) this.#playingAlg = false;
+    }
+  }
+
+  /** ชุดที่เล่นอยู่ตกรุ่นแล้วหรือยัง (ถูกสั่งใหม่ทับ หรือ view ถูกทิ้งไปแล้ว) */
+  #superseded(generation: number): boolean {
+    return this.#disposed || generation !== this.#stateGeneration;
+  }
+
   /** รอจนคิวอนิเมชันว่าง (คืนทันทีถ้าว่างอยู่แล้ว) */
   #whenIdle(): Promise<void> {
     if (!this.#animating && this.#queue.length === 0) return Promise.resolve();
@@ -350,7 +399,7 @@ export class ThreeCubeView implements CubeView {
       this.#finishAnimation = finish;
       gsap.to(this.#progress, {
         t: 1,
-        duration: (this.#playingAlg ? REPLAY_DURATION_MS : TURN_DURATION_MS) / 1000,
+        duration: (this.#playingAlg ? PLAYBACK_TURN_MS : TURN_DURATION_MS) / 1000,
         ease: 'power2.inOut',
         onUpdate: () =>
           this.#pivot.quaternion.setFromAxisAngle(axisVector, angle * this.#progress.t),
@@ -626,10 +675,11 @@ export class ThreeCubeView implements CubeView {
 
   // ---------------------------------------------------------------- CubeView
 
-  setScramble(scramble: string): Promise<void> {
+  setScramble(scramble: string, opts?: SetScrambleOptions): Promise<void> {
     const moves = scramble.split(/\s+/).filter(Boolean);
     // ตรวจให้ครบ **ก่อนแตะสถานะ** ไม่งั้น scramble ที่ผิดจะทิ้งคิวบ์ไว้กลางทาง
     // (เจอจริง: ส่ง scramble ของ 3x3x3 ให้คิวบ์ 2x2x2 ตอนสลับประเภท แล้วทั้งหน้าจอตายยกแผง)
+    // ทางที่มีอนิเมชันก็ต้องตรวจตรงนี้เหมือนกัน — ห้ามปล่อยให้ไปโยน error กลางอนิเมชัน
     const bad = moves.find((move) => !isAllowedMove(this.cubeType, move));
     if (bad !== undefined) {
       throw new Error(`scramble มี move "${bad}" ที่ใช้กับ ${this.cubeType} ไม่ได้`);
@@ -638,16 +688,48 @@ export class ThreeCubeView implements CubeView {
     this.#endGesture(false);
     this.#cancelAnimations();
 
+    const generation = ++this.#stateGeneration;
     this.#scramble = scramble;
     this.#spec.model.reset();
-    for (const move of moves) this.#spec.model.apply(move);
-    this.#syncMeshes();
 
-    this.#scrambledPattern = this.#spec.kpuzzle.defaultPattern().applyAlg(new Alg(scramble));
+    // ทางปกติ (ห้องแข่ง + ค่าเริ่มต้นทุกที่): ใส่สถานะให้ทันที ไม่มีอนิเมชัน
+    if (!opts?.animate || moves.length === 0) {
+      for (const move of moves) this.#spec.model.apply(move);
+      this.#syncMeshes();
+
+      this.#scrambledPattern = this.#spec.kpuzzle.defaultPattern().applyAlg(new Alg(scramble));
+      this.#pattern = this.#scrambledPattern;
+      this.#moves = [];
+      this.#emit();
+      return Promise.resolve();
+    }
+
+    return this.#animateScramble(moves, generation);
+  }
+
+  /**
+   * หมุน scramble ให้ดูทีละท่าจากคิวบ์ที่แก้เสร็จ — **ห้องฝึกซ้อมเท่านั้น** (ADR-032 ข้อ 1)
+   *
+   * เดินทีละท่าจริง ๆ ผ่าน `#playAlg` (ADR-033) ระหว่างนี้ `#playingAlg` เป็น `true`
+   * ผู้เล่นจึงหมุนแทรกไม่ได้ · จบแล้วค่อย **ล้างบัญชี move ทิ้ง** เพราะท่าของ scramble
+   * ไม่ใช่ move ของผู้เล่น และ scramble ที่หมุนครบแล้วคือ "จุดออกตัว" ของรอบนี้
+   */
+  async #animateScramble(moves: readonly string[], generation: number): Promise<void> {
+    // ออกตัวจากคิวบ์ครบสีเสมอ — นี่คือภาพที่ผู้เล่นต้องเห็นก่อนอนิเมชันเริ่ม
+    this.#syncMeshes();
+    this.#scrambledPattern = this.#spec.kpuzzle.defaultPattern();
     this.#pattern = this.#scrambledPattern;
     this.#moves = [];
     this.#emit();
-    return Promise.resolve();
+
+    await this.#playAlg(moves, generation);
+
+    // ถูกสั่ง scramble ใหม่ (หรือถูกทิ้ง) ระหว่างเล่นอยู่ → สถานะเป็นของรอบใหม่แล้ว ห้ามเขียนทับ
+    if (this.#superseded(generation)) return;
+
+    this.#scrambledPattern = this.#pattern;
+    this.#moves = [];
+    this.#emit();
   }
 
   applyMove(move: string): Promise<void> {
@@ -667,7 +749,12 @@ export class ThreeCubeView implements CubeView {
    * แก้คิวบ์ให้เสร็จพร้อมอนิเมชัน — ย้อน move ของผู้เล่นแล้วย้อน scramble ทีละตัว
    *
    * ใช้กับปุ่ม "เสร็จทันที" ของห้องฝึกซ้อม (คนที่แก้รูบิคไม่เป็นก็ต้องทดสอบระบบได้)
-   * สถานะยังลงบัญชีทันทีทุก move ตามเดิม — อนิเมชันเป็นแค่ภาพที่ตามมาทีหลัง
+   * **หมุนจริงทีละท่าด้วยความเร็วเดียวกับ scramble** (ADR-033) — ของเดิมลง move ทั้งชุด
+   * รวดเดียวแล้วคิวบ์เด้งไปครบสีตั้งแต่ท่าแรก ท่าที่เหลือกลายเป็นภาพหลอก
+   *
+   * ชุดที่ต้องย้อน = scramble + move ที่ผู้เล่นหมุนไปแล้ว ยิ่งหมุนเล่นเยอะยิ่งรอนาน —
+   * ยอมแลก เพราะปุ่มนี้มีไว้ให้ **คนที่แก้รูบิคไม่เป็นได้เห็นว่าแก้ยังไง** ถ้าเร็วจนดูไม่ทัน
+   * ก็ไม่ต่างอะไรกับกระโดดไปครบสีเลย
    */
   async solve(): Promise<void> {
     if (this.#playingAlg) return;
@@ -677,13 +764,8 @@ export class ThreeCubeView implements CubeView {
     const undo = [...scrambleMoves, ...this.#moves].reverse().map(inverseMove);
     if (undo.length === 0) return;
 
-    this.#playingAlg = true;
-    try {
-      for (const move of undo) this.#commit(move, 'program');
-      await this.#whenIdle();
-    } finally {
-      this.#playingAlg = false;
-    }
+    // ยึดสถานะเป็นของรอบนี้ — ถ้ามี `setScramble`/`reset` แซงเข้ามา อนิเมชันต้องหยุดกลางคัน
+    await this.#playAlg(undo, ++this.#stateGeneration);
   }
 
   setTurnsEnabled(enabled: boolean): void {
