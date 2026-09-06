@@ -11,7 +11,8 @@
     "format": "prettier --write .",
     "verify:cube": "node --experimental-strip-types scripts/verify-cube.ts",
     "verify:pyramorphix": "node --experimental-strip-types scripts/verify-pyramorphix.ts",
-    "verify": "npm run verify:cube && npm run verify:pyramorphix"
+    "verify:pyraminx": "node --experimental-strip-types scripts/verify-pyraminx.ts",
+    "verify": "npm run verify:cube && npm run verify:pyramorphix && npm run verify:pyraminx"
   },
   "dependencies": {
     "cubing": "^0.63.4",

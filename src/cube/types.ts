@@ -1,14 +1,11 @@
 import type { CubeType } from '@/types/cube';
 
 /**
- * **interface กลางของคิวบ์ 3 มิติ** (roadmap เฟส 3 ข้อแรก · ADR-019)
+ * **interface กลางของคิวบ์ 3 มิติ** (roadmap เฟส 3 ข้อแรก · ADR-019 · ADR-026)
  *
- * ข้างในมี 2 เส้นทางที่ต่างกันคนละโลก:
- *   - 2x2x2 / 3x3x3 / Pyraminx → `<twisty-player>` ของ cubing.js
- *   - Pyramorphix             → renderer ที่เขียนเองด้วย Three.js
- *
- * ส่วนที่เหลือของแอป (จับเวลา, นับ move, ส่ง move ขึ้น server ในเฟส 4) **ต้องไม่รู้**
- * ว่าข้างในใช้ตัวไหน — คุยผ่าน interface นี้อย่างเดียว
+ * ตั้งแต่เฟส 3.5 ก้อนที่ 2 ข้างในเหลือ **เส้นทางเดียว** — `ThreeCubeView` วาดทั้ง 4 ประเภท
+ * (`<twisty-player>` ถูกลบออกหมดแล้ว) แต่ interface นี้ยังอยู่ เพราะส่วนที่เหลือของแอป
+ * (จับเวลา, นับ move, ส่ง move ขึ้น server ในเฟส 4) ไม่ควรต้องรู้จัก Three.js เลย
  */
 
 export interface CubeState {

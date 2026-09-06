@@ -43,6 +43,81 @@ export function matEq(a: Mat3, b: Mat3): boolean {
   return a.every((v, i) => v === b[i]);
 }
 
+/** สลับแถวกับหลัก — สำหรับเมทริกซ์หมุน ตัวนี้คือตัวผกผัน */
+export function matTranspose(m: Mat3): Mat3 {
+  return [m[0]!, m[3]!, m[6]!, m[1]!, m[4]!, m[7]!, m[2]!, m[5]!, m[8]!];
+}
+
+export function dot(a: Vec3, b: Vec3): number {
+  return a[0]! * b[0]! + a[1]! * b[1]! + a[2]! * b[2]!;
+}
+
+export function cross(a: Vec3, b: Vec3): number[] {
+  return [
+    a[1]! * b[2]! - a[2]! * b[1]!,
+    a[2]! * b[0]! - a[0]! * b[2]!,
+    a[0]! * b[1]! - a[1]! * b[0]!,
+  ];
+}
+
+export function normalize(v: Vec3): number[] {
+  const length = Math.hypot(v[0]!, v[1]!, v[2]!);
+  if (length < 1e-12) throw new Error('normalize เวกเตอร์ศูนย์ไม่ได้');
+  return [v[0]! / length, v[1]! / length, v[2]! / length];
+}
+
+/**
+ * เมทริกซ์หมุนรอบแกนอะไรก็ได้ (สูตร Rodrigues) — Pyraminx หมุนรอบแกนเอียง ไม่ใช่ x/y/z
+ * `axis` ไม่ต้องเป็นเวกเตอร์หนึ่งหน่วย เดี๋ยวปรับให้เอง
+ */
+export function rotationAbout(axis: Vec3, angle: number): Mat3 {
+  const [x, y, z] = normalize(axis) as [number, number, number];
+  const c = Math.cos(angle);
+  const s = Math.sin(angle);
+  const t = 1 - c;
+  return [
+    t * x * x + c,
+    t * x * y - s * z,
+    t * x * z + s * y,
+    t * x * y + s * z,
+    t * y * y + c,
+    t * y * z - s * x,
+    t * x * z - s * y,
+    t * y * z + s * x,
+    t * z * z + c,
+  ];
+}
+
+/**
+ * เหมือน `rotationAbout` แต่ปัดเป็นจำนวนเต็ม แล้ว**โยน error ถ้าปัดไม่ลงตัว**
+ *
+ * ใช้กับการหมุนที่ต้องเก็บเป็นสถานะ (90° รอบแกนหลัก · 120° รอบเส้นทแยงมุมลูกบาศก์)
+ * เพราะสถานะต้องไม่มีทศนิยมสะสม — บทเรียนจากเฟส 0.5 ที่เขียนไว้หัวไฟล์
+ */
+export function integerRotationAbout(axis: Vec3, angle: number): Mat3 {
+  const raw = rotationAbout(axis, angle);
+  const rounded = raw.map((v) => Math.round(v));
+  for (let i = 0; i < 9; i++) {
+    if (Math.abs(raw[i]! - rounded[i]!) > 1e-9) {
+      throw new Error(
+        `หมุนรอบแกน [${axis.join(',')}] ${((angle * 180) / Math.PI).toFixed(1)}° แล้วไม่ได้เมทริกซ์จำนวนเต็ม`,
+      );
+    }
+  }
+  return rounded;
+}
+
+/**
+ * เมทริกซ์ที่ย้ายฐาน `[ex, ey, ez]` (ตั้งฉากกันและยาวหนึ่งหน่วย) ไปเป็นแกน x/y/z ตามลำดับ
+ *
+ * ใช้ตั้ง "ท่ายืน" ของรูบิคที่ระบบพิกัดภายในไม่ตรงกับที่ควรเห็นบนจอ:
+ * Pyraminx เก็บสถานะบนแลตทิซที่ยอดพีระมิดชี้ไปทางเส้นทแยงมุมลูกบาศก์ (ถึงจะได้เมทริกซ์
+ * จำนวนเต็ม) แต่บนจอต้องเห็นยอดชี้ขึ้นตรง ๆ
+ */
+export function basisMatrix(ex: Vec3, ey: Vec3, ez: Vec3): Mat3 {
+  return [ex[0]!, ex[1]!, ex[2]!, ey[0]!, ey[1]!, ey[2]!, ez[0]!, ez[1]!, ez[2]!];
+}
+
 /** เมทริกซ์หมุนรอบแกน `axis` (0=x, 1=y, 2=z) เป็นมุม 90°×quarters ตามกฎมือขวา */
 export function rotationMatrix(axis: number, quarters: number): Mat3 {
   const q = ((quarters % 4) + 4) % 4;
@@ -101,9 +176,27 @@ export class LatticePieceModel {
     return ids;
   }
 
+  /**
+   * ชิ้นไหนอยู่ "ฝั่ง `direction`" ลึกอย่างน้อย `minDot`
+   *
+   * ลูกบาศก์เลือกชั้นด้วยค่าพิกัดตรง ๆ ได้เพราะชั้นตั้งฉากกับแกนพิกัดพอดี แต่ชั้นของพีระมิด
+   * ตั้งฉากกับ **เส้นทแยงมุม** จึงต้องวัดด้วยผลคูณจุดแทน (Pyraminx — เฟส 3.5 ก้อนที่ 2)
+   */
+  piecesWithDotAtLeast(direction: Vec3, minDot: number): number[] {
+    const ids: number[] = [];
+    for (let i = 0; i < this.coords.length; i++) {
+      if (dot(this.coords[i]!, direction) >= minDot) ids.push(i);
+    }
+    return ids;
+  }
+
   /** หมุนชิ้นที่ระบุรอบแกน (ไม่แตะภาพ) */
   rotate(axis: number, quarters: number, ids: readonly number[]): void {
-    const rotation = rotationMatrix(axis, quarters);
+    this.rotateBy(rotationMatrix(axis, quarters), ids);
+  }
+
+  /** หมุนชิ้นที่ระบุด้วยเมทริกซ์ที่ให้มา — **ต้องเป็นจำนวนเต็ม** ไม่งั้นสถานะจะเพี้ยนสะสม */
+  rotateBy(rotation: Mat3, ids: readonly number[]): void {
     for (const i of ids) {
       this.rotations[i] = matMul(rotation, this.rotations[i]!);
       this.coords[i] = matApply(rotation, this.coords[i]!);

@@ -17,3 +17,17 @@ export const FACE_COLORS: Record<string, number> = {
 
 /** สีเนื้อพลาสติกและรอยตัดที่ไม่ใช่ผิวนอก */
 export const BODY_COLOR = 0x0b0f16;
+
+/**
+ * รูบิคทรงพีระมิดมี 4 หน้า จึงใช้จานสีของลูกบาศก์ไม่ครบทุกสี — เลือกมา 4 สีที่แยกกันชัดที่สุด
+ * (ข้ามขาวกับส้มเพราะขาวจมกับสติกเกอร์สว่าง และส้มใกล้แดงเกินไปเมื่อหน้าเอียงรับแสง)
+ *
+ * เรียงตามลำดับหน้าที่ `pyramorphix/pyramorphix-geometry.ts` กับ
+ * `pyraminx/pyraminx-geometry.ts` ประกาศไว้
+ */
+export const TETRA_FACE_COLORS: readonly number[] = [
+  FACE_COLORS.F!, // เขียว
+  FACE_COLORS.R!, // แดง
+  FACE_COLORS.B!, // น้ำเงิน
+  FACE_COLORS.D!, // เหลือง
+];
