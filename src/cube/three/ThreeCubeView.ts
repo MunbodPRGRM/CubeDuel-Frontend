@@ -28,7 +28,7 @@ import type {
   CubeView,
 } from '../types.ts';
 import type { Mat3 } from './lattice.ts';
-import type { PuzzleModel, TurnSpec } from './model.ts';
+import type { DragCandidate, PuzzleModel, TurnSpec } from './model.ts';
 
 /** ระยะเวลาอนิเมชันหมุนหนึ่งครั้ง — เร็วพอให้ speedcuber ไม่รู้สึกว่าคิวบ์หนืด */
 const TURN_DURATION_MS = 110;
@@ -45,8 +45,18 @@ const DIRECTION_MATCH_MIN = 0.3;
  * ชั้นจะเหวี่ยงหลายรอบ — จึงคิดเสมือนว่าจับอยู่ห่างจากแกนอย่างน้อยเท่านี้
  */
 const MIN_TURN_RADIUS = 0.6;
+/**
+ * แกนที่ "ตั้งฉากกับหน้าที่จับ" เกินค่านี้ ถือว่าไม่ใช่สิ่งที่ผู้เล่นตั้งใจ → ตัดทิ้ง
+ *
+ * จับสติกเกอร์บนหน้า U ของลูกบาศก์จริงแล้วลาก มันหมุนได้แค่รอบแกน x กับ z เท่านั้น
+ * (คือ move ตระกูล L/R และ F/B) ส่วนการหมุนรอบแกน y เอง — `U` — ต้องไปจับที่หน้าข้าง
+ * ถ้าไม่ตัดออก แกน y จะแย่งคะแนนกับอีกสองแกนแบบสุ่ม ๆ กลายเป็น "ตั้งใจ U แต่ได้ F"
+ */
+const FACE_AXIS_MAX_DOT = 0.9;
 /** ค้างคิวอนิเมชันได้มากสุดกี่ move ก่อนจะข้ามไปสถานะล่าสุดทันที */
 const MAX_PENDING_TURNS = 3;
+/** ตอนเล่นอนิเมชันแก้ให้ดู (`solve()`) หมุนเร็วกว่าปกติ ไม่งั้นรอนาน */
+const REPLAY_DURATION_MS = 75;
 
 /** ทุกประเภทวาดในกล่อง [-1, 1] เท่ากันหมด กล้องจึงใช้ค่าชุดเดียวได้ */
 const CAMERA_POSITION: readonly [number, number, number] = [3.4, 2.6, 3.4];
@@ -79,8 +89,6 @@ interface ActiveTurn {
   pieceIds: number[];
   /** ขนาดของหนึ่งช่วง (เรเดียน) — 90° ของลูกบาศก์ · 120° ของพีระมิด */
   unit: number;
-  /** หนึ่งรอบมีกี่ช่วง (4 หรือ 3) — ใช้ตอนปัดให้เป็นทางที่สั้นที่สุด */
-  perRevolution: number;
   /** เวกเตอร์บนจอ (พิกเซล) ที่ตรงกับการหมุน **1 เรเดียน** + ความยาวยกกำลังสองของมัน */
   screenX: number;
   screenY: number;
@@ -95,19 +103,19 @@ interface Gesture {
   pieceId: number;
   /** จุดที่จับได้ (พิกัดโลก ณ ตอนกด) — ใช้คิดว่าหมุนแล้วจุดนี้จะวิ่งไปทางไหนบนจอ */
   point: THREE.Vector3;
+  /** เวกเตอร์ตั้งฉากของ **หน้าที่จับ** (พิกัดโลก) — ใช้ตัดแกนที่ผู้เล่นไม่ได้ตั้งใจ */
+  normal: THREE.Vector3 | null;
   startX: number;
   startY: number;
   /** `null` = ยังลากไม่ถึงเกณฑ์ ยังไม่รู้ว่าจะหมุนแกนไหน */
   turn: ActiveTurn | null;
 }
 
-/**
- * ปัดจำนวนช่วงให้เป็นทางที่สั้นที่สุด — ลากลูกบาศก์ไป 3 ช่วง มีค่าเท่ากับทวนเข็ม 1 ช่วง
- * และลากครบรอบ (4 ช่วง / พีระมิด 3 ช่วง) เท่ากับไม่ได้หมุนอะไรเลย
- */
-function shortestSteps(steps: number, perRevolution: number): number {
-  const wrapped = ((steps % perRevolution) + perRevolution) % perRevolution;
-  return wrapped * 2 > perRevolution ? wrapped - perRevolution : wrapped;
+/** ผลของการยิงรังสีหาชิ้นที่ผู้เล่นกดโดน */
+interface PointerHit {
+  pieceId: number;
+  point: THREE.Vector3;
+  normal: THREE.Vector3 | null;
 }
 
 export class ThreeCubeView implements CubeView {
@@ -140,6 +148,10 @@ export class ThreeCubeView implements CubeView {
   #finishAnimation: (() => void) | null = null;
   #turnsEnabled = true;
   #disposed = false;
+  /** กำลังเล่นชุด move ให้ดู (`solve()`) — ระหว่างนี้ห้ามผู้เล่นหมุนแทรก และห้ามตัดคิว */
+  #playingAlg = false;
+  /** คนที่รออยู่ว่าคิวอนิเมชันจะว่างเมื่อไหร่ */
+  #idleWaiters: (() => void)[] = [];
 
   /** ท่าที่นิ้ว/เมาส์กำลังลากอยู่บนตัวคิวบ์ (`null` = ไม่ได้ลากอะไรอยู่) */
   #gesture: Gesture | null = null;
@@ -302,7 +314,8 @@ export class ThreeCubeView implements CubeView {
     this.#animating = true;
     while (this.#queue.length > 0 && !this.#disposed) {
       // หมุนเร็วรัวจนอนิเมชันตามไม่ทัน (หรือแท็บถูกพัก) → ข้ามไปสถานะล่าสุดเลย ดีกว่าค้าง
-      if (this.#queue.length > MAX_PENDING_TURNS) {
+      // ยกเว้นตอนเล่นชุดให้ดู ซึ่งคิวยาวเป็นเรื่องปกติและอนิเมชันคือสิ่งที่ผู้เล่นอยากเห็น
+      if (!this.#playingAlg && this.#queue.length > MAX_PENDING_TURNS) {
         this.#queue = [];
         this.#syncMeshes();
         break;
@@ -310,6 +323,14 @@ export class ThreeCubeView implements CubeView {
       await this.#animateTurn(this.#queue.shift()!.turn);
     }
     this.#animating = false;
+    for (const wake of this.#idleWaiters) wake();
+    this.#idleWaiters = [];
+  }
+
+  /** รอจนคิวอนิเมชันว่าง (คืนทันทีถ้าว่างอยู่แล้ว) */
+  #whenIdle(): Promise<void> {
+    if (!this.#animating && this.#queue.length === 0) return Promise.resolve();
+    return new Promise((resolve) => this.#idleWaiters.push(resolve));
   }
 
   #animateTurn({ axis, angle, pieceIds }: TurnSpec): Promise<void> {
@@ -329,7 +350,7 @@ export class ThreeCubeView implements CubeView {
       this.#finishAnimation = finish;
       gsap.to(this.#progress, {
         t: 1,
-        duration: TURN_DURATION_MS / 1000,
+        duration: (this.#playingAlg ? REPLAY_DURATION_MS : TURN_DURATION_MS) / 1000,
         ease: 'power2.inOut',
         onUpdate: () =>
           this.#pivot.quaternion.setFromAxisAngle(axisVector, angle * this.#progress.t),
@@ -388,16 +409,8 @@ export class ThreeCubeView implements CubeView {
     return Math.hypot(x, y) < 1e-6 ? null : { x, y }; // มองจากปลายแกนพอดี
   }
 
-  #onPointerDown = (event: PointerEvent): void => {
-    if (event.button !== 0) return;
-
-    // นิ้วที่สองระหว่างลากหน้าคิวบ์ = กำลังจะซูม → ปิดท่าที่ค้าง แล้วปล่อยให้ OrbitControls รับช่วง
-    if (this.#gesture) {
-      this.#endGesture(true);
-      return;
-    }
-    if (!this.#turnsEnabled) return;
-
+  /** ยิงรังสีหาชิ้นที่กดโดน พร้อมหน้าที่โดน — คืน `null` ถ้ากดโดนพื้นหลัง */
+  #raycast(event: PointerEvent): PointerHit | null {
     const rect = this.#renderer.domElement.getBoundingClientRect();
     const ndc = new THREE.Vector2(
       ((event.clientX - rect.left) / rect.width) * 2 - 1,
@@ -406,19 +419,46 @@ export class ThreeCubeView implements CubeView {
     const raycaster = new THREE.Raycaster();
     raycaster.setFromCamera(ndc, this.#camera);
     const hit = raycaster.intersectObjects(this.#meshes, false)[0];
-    // ไม่โดนตัวคิวบ์ = ปล่อยให้ OrbitControls หมุนกล้องตามปกติ
-    if (!hit) return;
+    if (!hit) return null;
 
-    // ท่าก่อนหน้ายังดีดไม่เข้าที่ → ตัดจบทันที ชิ้นทุกชิ้นต้องว่างก่อนเริ่มท่าใหม่
-    this.#cancelAnimations();
+    // `face.normal` เป็นพิกัดของตัว mesh เอง ต้องแปลงเป็นพิกัดโลกก่อนถึงจะเทียบกับแกนหมุนได้
+    const normal = hit.face
+      ? hit.face.normal
+          .clone()
+          .applyNormalMatrix(new THREE.Matrix3().getNormalMatrix(hit.object.matrixWorld))
+          .normalize()
+      : null;
+    return { pieceId: hit.object.userData.pieceId as number, point: hit.point.clone(), normal };
+  }
+
+  #onPointerDown = (event: PointerEvent): void => {
+    if (event.button !== 0) return;
+
+    // นิ้วที่สองระหว่างลากหน้าคิวบ์ = กำลังจะซูม → ปิดท่าที่ค้าง แล้วปล่อยให้ OrbitControls รับช่วง
+    if (this.#gesture) {
+      this.#endGesture(true);
+      return;
+    }
+    if (!this.#turnsEnabled || this.#playingAlg) return;
+
+    let hit = this.#raycast(event);
+    if (!hit) return; // ไม่โดนตัวคิวบ์ = ปล่อยให้ OrbitControls หมุนกล้องตามปกติ
+
+    // ท่าก่อนหน้ายังดีดไม่เข้าที่ → ตัดจบก่อน แล้ว **ยิงรังสีใหม่** เพราะชิ้นเพิ่งกระโดดเข้าที่
+    if (this.#finishAnimation || this.#queue.length > 0) {
+      this.#cancelAnimations();
+      hit = this.#raycast(event);
+      if (!hit) return;
+    }
 
     // **ห้ามปิด `controls.enabled`** — ต้องให้ OrbitControls นับนิ้วต่อไป ไม่งั้นนิ้วที่สอง
-    // จะไม่ถูกนับ แล้ว pinch zoom จะพังทุกครั้งที่นิ้วแรกลงบนตัวคิวบ์ (roadmap ก้อนที่ 3)
+    // จะไม่ถูกนับ แล้ว pinch zoom จะพังทุกครั้งที่นิ้วแรกลงบนตัวคิวบ์ (ADR-029)
     this.#controls.enableRotate = false;
     this.#gesture = {
       pointerId: event.pointerId,
-      pieceId: hit.object.userData.pieceId as number,
-      point: hit.point.clone(),
+      pieceId: hit.pieceId,
+      point: hit.point,
+      normal: hit.normal,
       startX: event.clientX,
       startY: event.clientY,
       turn: null,
@@ -452,12 +492,35 @@ export class ThreeCubeView implements CubeView {
     }
 
     // ชั้นหมุนตามนิ้วต่อเนื่อง — ยังไม่ลงบัญชีเป็น move จนกว่าจะปล่อยนิ้ว
+    // **จำกัดไว้ที่หนึ่งช่วงต่อการลากหนึ่งครั้ง** ลากเลยไปก็ค้างอยู่ที่สุดช่วง: ลากยาว ๆ
+    // แล้วได้หลายช่วงติดกันคุมยากกว่าเดิมมาก (เจ้าของทดสอบแล้วสั่งแก้ 2026-09-06)
     const turn = gesture.turn;
-    turn.angle = (dx * turn.screenX + dy * turn.screenY) / turn.screenLengthSq;
+    const raw = (dx * turn.screenX + dy * turn.screenY) / turn.screenLengthSq;
+    turn.angle = Math.max(-turn.unit, Math.min(turn.unit, raw));
     this.#pivot.quaternion.setFromAxisAngle(turn.axis, turn.angle);
   };
 
   #onPointerUp = (): void => this.#endGesture(true);
+
+  /**
+   * แกนที่ลากชิ้นนี้แล้วหมุนได้ **หลังตัดแกนที่ตั้งฉากกับหน้าที่จับออก**
+   *
+   * ตัวตัดนี้คือสิ่งที่ทำให้ทิศแม่นขึ้น: บนลูกบาศก์จริง จับหน้า U แล้วลาก ยังไงก็ไม่ได้ move
+   * `U` — ต้องไปจับหน้าข้าง การปล่อยให้แกน y เข้ามาแข่งด้วยจึงมีแต่ทำให้เดาผิด
+   * (พีระมิดผิวเอียงส่วนใหญ่ไม่มีแกนไหนเข้าเงื่อนไข ก็จะได้ตัวเลือกเท่าเดิม)
+   */
+  #candidatesFor(gesture: Gesture): DragCandidate[] {
+    const candidates = this.#spec.model.dragCandidates(gesture.pieceId);
+    const normal = gesture.normal;
+    if (!normal) return candidates;
+
+    const usable = candidates.filter((candidate) => {
+      const axis = new THREE.Vector3(candidate.axis[0]!, candidate.axis[1]!, candidate.axis[2]!);
+      return Math.abs(axis.normalize().dot(normal)) < FACE_AXIS_MAX_DOT;
+    });
+    // ตัดแล้วไม่เหลืออะไรเลยก็ใช้ของเดิม ดีกว่าลากแล้วไม่มีอะไรเกิดขึ้น
+    return usable.length > 0 ? usable : candidates;
+  }
 
   /**
    * เลือกว่าจะหมุนแกนไหน จากทิศที่ผู้เล่นเริ่มลาก
@@ -468,7 +531,7 @@ export class ThreeCubeView implements CubeView {
   #turnForDrag(gesture: Gesture, dirX: number, dirY: number): ActiveTurn | null {
     let best: { move: string; score: number } | null = null;
 
-    for (const candidate of this.#spec.model.dragCandidates(gesture.pieceId)) {
+    for (const candidate of this.#candidatesFor(gesture)) {
       const axis = new THREE.Vector3(candidate.axis[0]!, candidate.axis[1]!, candidate.axis[2]!);
       const screen = this.#screenPerRadian(gesture.point, axis);
       if (!screen) continue;
@@ -497,7 +560,6 @@ export class ThreeCubeView implements CubeView {
       axis,
       pieceIds: spec.pieceIds,
       unit,
-      perRevolution: Math.round((Math.PI * 2) / unit),
       screenX: screen.x,
       screenY: screen.y,
       screenLengthSq: screen.x * screen.x + screen.y * screen.y,
@@ -522,11 +584,10 @@ export class ThreeCubeView implements CubeView {
     const turn = gesture.turn;
     if (!turn) return; // ลากไม่ถึงเกณฑ์ = แค่คลิกเฉย ๆ ไม่มีอะไรต้องคืน
 
+    // มุมถูกจำกัดไว้ที่หนึ่งช่วงตั้งแต่ตอนลากแล้ว ผลจึงมีได้แค่ −1 / 0 / +1 ช่วง
     const steps = snap ? Math.round(turn.angle / turn.unit) : 0;
-    const logical = shortestSteps(steps, turn.perRevolution);
-    const move = logical > 0 ? turn.move : inverseMove(turn.move);
     // ลงบัญชีทันที ไม่รออนิเมชันดีดเข้าที่ (เหตุผลเดียวกับ #applyMoveState)
-    for (let i = 0; i < Math.abs(logical); i++) this.#applyMoveState(move, 'player');
+    if (steps !== 0) this.#applyMoveState(steps > 0 ? turn.move : inverseMove(turn.move), 'player');
 
     this.#snapTo(turn, steps * turn.unit);
   }
@@ -566,12 +627,20 @@ export class ThreeCubeView implements CubeView {
   // ---------------------------------------------------------------- CubeView
 
   setScramble(scramble: string): Promise<void> {
+    const moves = scramble.split(/\s+/).filter(Boolean);
+    // ตรวจให้ครบ **ก่อนแตะสถานะ** ไม่งั้น scramble ที่ผิดจะทิ้งคิวบ์ไว้กลางทาง
+    // (เจอจริง: ส่ง scramble ของ 3x3x3 ให้คิวบ์ 2x2x2 ตอนสลับประเภท แล้วทั้งหน้าจอตายยกแผง)
+    const bad = moves.find((move) => !isAllowedMove(this.cubeType, move));
+    if (bad !== undefined) {
+      throw new Error(`scramble มี move "${bad}" ที่ใช้กับ ${this.cubeType} ไม่ได้`);
+    }
+
     this.#endGesture(false);
     this.#cancelAnimations();
 
     this.#scramble = scramble;
     this.#spec.model.reset();
-    for (const move of scramble.split(/\s+/).filter(Boolean)) this.#spec.model.apply(move);
+    for (const move of moves) this.#spec.model.apply(move);
     this.#syncMeshes();
 
     this.#scrambledPattern = this.#spec.kpuzzle.defaultPattern().applyAlg(new Alg(scramble));
@@ -592,6 +661,29 @@ export class ThreeCubeView implements CubeView {
 
   reset(): Promise<void> {
     return this.setScramble(this.#scramble);
+  }
+
+  /**
+   * แก้คิวบ์ให้เสร็จพร้อมอนิเมชัน — ย้อน move ของผู้เล่นแล้วย้อน scramble ทีละตัว
+   *
+   * ใช้กับปุ่ม "เสร็จทันที" ของห้องฝึกซ้อม (คนที่แก้รูบิคไม่เป็นก็ต้องทดสอบระบบได้)
+   * สถานะยังลงบัญชีทันทีทุก move ตามเดิม — อนิเมชันเป็นแค่ภาพที่ตามมาทีหลัง
+   */
+  async solve(): Promise<void> {
+    if (this.#playingAlg) return;
+    this.#settleGesture();
+
+    const scrambleMoves = this.#scramble.split(/\s+/).filter(Boolean);
+    const undo = [...scrambleMoves, ...this.#moves].reverse().map(inverseMove);
+    if (undo.length === 0) return;
+
+    this.#playingAlg = true;
+    try {
+      for (const move of undo) this.#commit(move, 'program');
+      await this.#whenIdle();
+    } finally {
+      this.#playingAlg = false;
+    }
   }
 
   setTurnsEnabled(enabled: boolean): void {
@@ -616,7 +708,10 @@ export class ThreeCubeView implements CubeView {
 
   dispose(): void {
     this.#disposed = true;
+    this.#playingAlg = false;
     this.#endGesture(false);
+    for (const wake of this.#idleWaiters) wake();
+    this.#idleWaiters = [];
     this.#listeners.clear();
     this.#moveListeners.clear();
     this.#queue = [];

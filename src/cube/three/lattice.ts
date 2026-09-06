@@ -222,6 +222,24 @@ export class LatticePieceModel {
     return pieces;
   }
 
+  /**
+   * ทั้งลูกอยู่ในสถานะที่แก้แล้ว **โดยยอมให้หมุนทั้งก้อนไปทางไหนก็ได้** หรือไม่
+   * คืนเมทริกซ์การหมุนของทั้งก้อนถ้าใช่ · `null` ถ้ายังแก้ไม่เสร็จ
+   *
+   * จำเป็นเพราะ move หมุนชั้นล้วน ๆ **ประกอบกันเป็นการหมุนทั้งลูกได้** (`U D'` ของ 2x2x2 ·
+   * `Uw D'` ของ 3x3x3) ลูกที่ผู้เล่นเห็นว่าครบทุกหน้าแล้วจึงไม่จำเป็นต้องกลับบ้านเป๊ะ ๆ
+   * — ดู ADR-030 ที่แก้ข้ออ้างเดิมใน ADR-018
+   */
+  homeRotation(): Mat3 | null {
+    const rotation = this.rotations[0]!;
+    for (let i = 0; i < this.coords.length; i++) {
+      if (!matEq(this.rotations[i]!, rotation)) return null;
+      const expected = matApply(rotation, this.homeCoords[i]!);
+      if (!this.coords[i]!.every((value, k) => value === expected[k])) return null;
+    }
+    return rotation;
+  }
+
   /** ทุกชิ้นกลับบ้านและหันตรงหมดแล้วหรือยัง (ภาพของ "แก้เสร็จ" แบบเข้มที่สุด) */
   isHome(): boolean {
     for (let i = 0; i < this.coords.length; i++) {

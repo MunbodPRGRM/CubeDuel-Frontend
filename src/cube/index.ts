@@ -61,12 +61,20 @@ export async function createCubeView(
   }
 
   const model = new NxNCubeModel(cubeType === '2x2x2' ? 2 : 3);
-  const solvedPattern = kpuzzle.defaultPattern();
   return new ThreeCubeView(container, {
     cubeType,
     model,
     geometries: buildCubeletGeometries(model.n, model.lattice.homeCoords),
     kpuzzle,
-    isSolved: (pattern) => pattern.isIdentical(solvedPattern),
+    // **ยอมให้ทั้งลูกถูกหมุนไปทั้งก้อน** — `U D'` (2x2x2) กับ `Uw D'` (3x3x3) หมุนทั้งลูกได้
+    // ทั้งที่ไม่มี move `x y z` อยู่ในกติกา ถ้าใช้ `isIdentical` ลูกที่ครบทุกหน้าแล้วจะถูก
+    // ตัดสินว่ายังไม่เสร็จ นาฬิกาไม่หยุด (ADR-030) · ต้องตรงกับ `backend/src/lib/cube-state.ts`
+    isSolved: (pattern) =>
+      pattern.experimentalIsSolved({
+        ignorePuzzleOrientation: true,
+        // ลูกบาศก์ของ cubing.js ไม่นับทิศของชิ้นกลางหน้าอยู่แล้ว (`orientationMod` = 1)
+        // ใส่ไว้เพราะ type บังคับ และเพื่อให้ตรงกับสติกเกอร์สีเดียวที่เราวาด
+        ignoreCenterOrientation: true,
+      }),
   });
 }

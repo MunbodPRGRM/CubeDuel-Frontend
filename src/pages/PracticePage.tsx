@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { AppHeader } from '@/components/AppHeader';
 import { CubeCanvas, type CubeCanvasHandle } from '@/components/CubeCanvas';
 import { CubeTypePicker } from '@/components/CubeTypePicker';
-import type { CubeState } from '@/cube';
+import type { CubeMoveEvent, CubeState } from '@/cube';
 import { ApiError, apiFetch } from '@/lib/api';
 import { averageOfN, bestTime, meanTime } from '@/lib/averages';
 import { formatSolveTime } from '@/lib/format';
@@ -24,6 +24,18 @@ interface ScrambleResponse {
 }
 
 /**
+ * scramble **ต้องพกประเภทของตัวเองมาด้วยเสมอ**
+ *
+ * ตอนกดสลับประเภท `cubeType` เปลี่ยนก่อน แต่ scramble ตัวใหม่มาทีหลัง (ต้องรอ REST)
+ * ถ้าส่งของเก่าให้คิวบ์ตัวใหม่ เช่น scramble ของ 3x3x3 (`Rw`, `M`) ให้ 2x2x2 โมเดลจะโยน
+ * error กลางการ render แล้ว **React ถอดทั้งหน้าทิ้ง — จอขาวจนกว่าจะรีเฟรช**
+ */
+interface Scramble {
+  cubeType: CubeType;
+  text: string;
+}
+
+/**
  * ห้องฝึกซ้อม — เล่นคนเดียว **ไม่บันทึกอะไรลง DB เลย** (game-rules.md ข้อ 12)
  *
  * ไม่ใช้ Socket.IO ทำงานฝั่ง client ล้วน ยกเว้นการขอ scramble จาก server ผ่าน REST
@@ -34,18 +46,35 @@ interface ScrambleResponse {
  */
 export default function PracticePage() {
   const [cubeType, setCubeType] = useState<CubeType>('3x3x3');
-  const [scramble, setScramble] = useState<string | null>(null);
+  const [scramble, setScramble] = useState<Scramble | null>(null);
   const [scrambleError, setScrambleError] = useState<string | null>(null);
   const [loadingScramble, setLoadingScramble] = useState(false);
   const [inspectionEnabled, setInspectionEnabled] = useState(false);
   const [moveCount, setMoveCount] = useState(0);
   const [solves, setSolves] = useState<PracticeSolve[]>([]);
+  const [replaying, setReplaying] = useState(false);
 
   const cubeRef = useRef<CubeCanvasHandle>(null);
+  /** จำนวน move ล่าสุดแบบอ่านได้ทันที — state ของ React ตามไม่ทันตอนบันทึกผล */
+  const moveCountRef = useRef(0);
+  /** รอบนี้บันทึกผลไปแล้วหรือยัง — กันบันทึกซ้ำตอนกด "เสร็จทันที" แล้วอนิเมชันแก้จบ */
+  const recordedRef = useRef(false);
   const timer = useSolveTimer(inspectionEnabled);
   const { phase, reset: resetTimer } = timer;
 
   useEffect(() => setSolves(loadSolves(cubeType)), [cubeType]);
+
+  /** ตั้งตัวนับ move (เก็บลง ref ด้วย เพราะตอนบันทึกผลต้องอ่านค่าล่าสุดให้ทัน) */
+  const setMoves = useCallback((count: number) => {
+    moveCountRef.current = count;
+    setMoveCount(count);
+  }, []);
+
+  /** เริ่มนับรอบใหม่ — ตัวนับ move กลับเป็นศูนย์ และยังไม่ได้บันทึกผล */
+  const beginAttempt = useCallback(() => {
+    setMoves(0);
+    recordedRef.current = false;
+  }, [setMoves]);
 
   const fetchScramble = useCallback(
     async (type: CubeType) => {
@@ -53,37 +82,53 @@ export default function PracticePage() {
       setScrambleError(null);
       try {
         const data = await apiFetch<ScrambleResponse>(`/scramble?cubeType=${type}&count=1`);
-        setScramble(data.scrambles[0] ?? null);
+        const text = data.scrambles[0];
+        setScramble(text ? { cubeType: type, text } : null);
         resetTimer();
-        setMoveCount(0);
+        beginAttempt();
       } catch (err) {
         setScrambleError(err instanceof ApiError ? err.message : 'ขอ scramble ไม่สำเร็จ');
       } finally {
         setLoadingScramble(false);
       }
     },
-    [resetTimer],
+    [resetTimer, beginAttempt],
   );
 
   useEffect(() => {
     void fetchScramble(cubeType);
   }, [cubeType, fetchScramble]);
 
-  /** เก็บผลลง localStorage — ที่เดียวที่ห้องฝึกซ้อมบันทึกอะไรได้ */
+  /** เก็บผลลง localStorage — ที่เดียวที่ห้องฝึกซ้อมบันทึกอะไรได้ (รอบละครั้งเท่านั้น) */
   const record = useCallback(
-    (seconds: number | null, moves: number) => {
-      if (!scramble) return;
-      setSolves(appendSolve(cubeType, { seconds, scramble, moveCount: moves, at: Date.now() }));
+    (seconds: number | null) => {
+      if (!scramble || recordedRef.current) return;
+      recordedRef.current = true;
+      setSolves(
+        appendSolve(cubeType, {
+          seconds,
+          scramble: scramble.text,
+          moveCount: moveCountRef.current,
+          at: Date.now(),
+        }),
+      );
     },
     [cubeType, scramble],
   );
 
+  /** นับเฉพาะ move ที่ผู้เล่นหมุนเอง — ท่าที่โปรแกรมเล่นให้ดูตอนกด "เสร็จทันที" ไม่นับ */
+  const handleMove = useCallback(
+    (event: CubeMoveEvent) => {
+      if (event.source === 'player') setMoves(moveCountRef.current + 1);
+    },
+    [setMoves],
+  );
+
+  /** แก้ครบทุกหน้าระหว่างจับเวลา = หยุดนาฬิกาทันที ไม่ต้องกดอะไรเลย */
   const handleState = useCallback(
     (state: CubeState) => {
-      setMoveCount(state.moves.length);
-      if (state.solved && phase === 'solving') {
-        const seconds = timer.finish();
-        record(seconds, state.moves.length);
+      if (state.solved && phase === 'solving' && !recordedRef.current) {
+        record(timer.finish());
       }
     },
     [phase, timer, record],
@@ -91,14 +136,14 @@ export default function PracticePage() {
 
   const handleAbort = useCallback(() => {
     timer.abort();
-    record(null, moveCount);
-  }, [timer, record, moveCount]);
+    record(null);
+  }, [timer, record]);
 
   const handleReset = useCallback(() => {
     cubeRef.current?.reset();
     resetTimer();
-    setMoveCount(0);
-  }, [resetTimer]);
+    beginAttempt();
+  }, [resetTimer, beginAttempt]);
 
   /**
    * เริ่มจับเวลา — **รีเซ็ตคิวบ์กลับไปที่ scramble ให้อัตโนมัติเสมอ**
@@ -108,9 +153,21 @@ export default function PracticePage() {
    */
   const handleStart = useCallback(() => {
     cubeRef.current?.reset();
-    setMoveCount(0);
+    beginAttempt();
     timer.start();
-  }, [timer]);
+  }, [timer, beginAttempt]);
+
+  /**
+   * "เสร็จทันที" — หยุดเวลา ณ วินาทีที่กด **แล้วนับเป็นแก้เสร็จ ไม่ใช่ DNF**
+   * จากนั้นค่อยเล่นอนิเมชันย้อน move ให้ดูว่าแก้ยังไง (เวลาที่บันทึกไม่รวมช่วงอนิเมชัน)
+   */
+  const handleFinishNow = useCallback(() => {
+    const cube = cubeRef.current;
+    if (!cube) return;
+    if (phase === 'solving') record(timer.finish());
+    setReplaying(true);
+    void cube.solve().finally(() => setReplaying(false));
+  }, [phase, timer, record]);
 
   // เว้นวรรค = เริ่มจับเวลา ตามธรรมเนียมโปรแกรมจับเวลาของ speedcuber
   useEffect(() => {
@@ -141,15 +198,17 @@ export default function PracticePage() {
       <main className="mx-auto grid max-w-6xl gap-4 px-4 py-6 lg:grid-cols-[1fr_22rem]">
         {/* ---------------- ฝั่งซ้าย: คิวบ์ 3 มิติ ---------------- */}
         <section className="relative h-[62vh] min-h-[22rem] overflow-hidden rounded-2xl border border-line bg-navy-850 lg:h-[calc(100vh-7rem)]">
-          {scramble !== null && (
+          {/* รอจน scramble ของประเภทนี้มาถึงก่อนค่อยวาด — ห้ามเอาของประเภทเก่ามาใส่เด็ดขาด */}
+          {scramble?.cubeType === cubeType && (
             <CubeCanvas
               ref={cubeRef}
               cubeType={cubeType}
-              scramble={scramble}
+              scramble={scramble.text}
               // ห้ามหมุนเฉพาะช่วง inspection ที่กติกาให้พลิกดูได้อย่างเดียว (game-rules.md ข้อ 2)
               // นอกช่วงจับเวลาหมุนเล่นได้ — กดเริ่มแล้วคิวบ์จะถูกรีเซ็ตกลับไปที่ scramble ให้เอง
-              turnsEnabled={phase !== 'inspection'}
+              turnsEnabled={phase !== 'inspection' && !replaying}
               onState={handleState}
+              onMove={handleMove}
             />
           )}
 
@@ -198,7 +257,8 @@ export default function PracticePage() {
             <div className="mt-4 rounded-xl border border-line bg-navy-900/70 px-4 py-3">
               <p className="text-[11px] tracking-widest text-slate-500">SCRAMBLE</p>
               <p className="tabular mt-1 break-words text-sm leading-6 text-slate-200">
-                {scrambleError ?? (loadingScramble ? 'กำลังขอ scramble…' : (scramble ?? '—'))}
+                {scrambleError ??
+                  (loadingScramble ? 'กำลังขอ scramble…' : (scramble?.text ?? '—'))}
               </p>
             </div>
 
@@ -218,6 +278,15 @@ export default function PracticePage() {
                 className="rounded-lg border border-line bg-navy-800 px-3 py-2 text-sm font-medium text-slate-200 transition hover:bg-navy-700 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 รีเซ็ตคิวบ์
+              </button>
+
+              <button
+                type="button"
+                onClick={handleFinishNow}
+                disabled={!scramble || phase === 'inspection' || replaying}
+                className="col-span-2 rounded-lg border border-line bg-navy-800 px-3 py-2 text-sm font-medium text-slate-200 transition hover:bg-navy-700 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {replaying ? 'กำลังแก้ให้ดู…' : 'เสร็จทันที (แก้ให้ดู)'}
               </button>
 
               {phase === 'idle' || phase === 'finished' ? (

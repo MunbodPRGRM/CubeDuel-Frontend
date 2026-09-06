@@ -8,7 +8,7 @@
  * รัน: `npm run verify:cube`
  */
 import { puzzles } from 'cubing/puzzles';
-import type { KPuzzle } from 'cubing/kpuzzle';
+import type { KPattern, KPuzzle } from 'cubing/kpuzzle';
 import { ALLOWED_MOVES, inverseMove } from '../src/cube/moves.ts';
 import { NxNCubeModel } from '../src/cube/nxn/cube-model.ts';
 
@@ -241,6 +241,10 @@ async function verify(puzzleId: string, n: number, moves: readonly string[]): Pr
     );
   }
 
+  /** กติกา "แก้เสร็จ" ที่แอปใช้จริง — ยอมให้ทั้งลูกถูกหมุนไปทั้งก้อน (ADR-030) */
+  const solvedLoosely = (pattern: KPattern): boolean =>
+    pattern.experimentalIsSolved({ ignorePuzzleOrientation: true, ignoreCenterOrientation: true });
+
   console.log('\n4) "แก้เสร็จ" ของภาพกับของ KPuzzle ตัดสินตรงกัน');
   {
     let disagreements = 0;
@@ -263,6 +267,8 @@ async function verify(puzzleId: string, n: number, moves: readonly string[]): Pr
         const logicallySolved = pattern.isIdentical(solvedPattern);
         if (model.lattice.isHome() !== logicallySolved) disagreements++;
         if (logicallySolved) solvedSeen++;
+        // กติกาที่แอปใช้จริง — ยอมให้ทั้งลูกถูกหมุนไปทั้งก้อน (ADR-030)
+        if ((model.lattice.homeRotation() !== null) !== solvedLoosely(pattern)) disagreements++;
       }
     }
     check(
@@ -270,6 +276,26 @@ async function verify(puzzleId: string, n: number, moves: readonly string[]): Pr
       disagreements === 0,
       `เจอสถานะแก้เสร็จ ${solvedSeen} ครั้ง`,
     );
+  }
+
+  console.log('\n4ก) ลูกที่ครบทุกหน้าแต่ถูกหมุนทั้งก้อน ต้องนับว่าแก้เสร็จ (ADR-030)');
+  {
+    // move หมุนชั้นล้วน ๆ ที่ประกอบกันเป็นการหมุนทั้งลูก — ต้นเหตุที่นาฬิกาไม่ยอมหยุด
+    const wholeRotations = n === 2 ? ["U D'", "R L'", "F B'"] : ["Uw D'", "Rw L'", "Fw B'"];
+    let bad = '';
+    for (const alg of wholeRotations) {
+      model.reset();
+      let pattern = kpuzzle.defaultPattern();
+      for (const move of alg.split(' ')) {
+        model.apply(move);
+        pattern = pattern.applyMove(move);
+      }
+      if (pattern.isIdentical(kpuzzle.defaultPattern())) bad = `"${alg}" ไม่ได้หมุนทั้งลูกจริง`;
+      else if (!solvedLoosely(pattern)) bad = `KPuzzle บอกว่า "${alg}" ยังไม่เสร็จ`;
+      else if (model.lattice.homeRotation() === null) bad = `โมเดลบอกว่า "${alg}" ยังไม่เสร็จ`;
+    }
+    check('หมุนทั้งลูกแล้วยังนับว่าแก้เสร็จทั้งสองฝั่ง', bad === '', bad);
+    model.reset();
   }
 
   console.log('\n5) ลากชิ้นไหนก็ได้ move ที่ถูกกติกา และ move นั้นหมุนชิ้นนั้นจริง');

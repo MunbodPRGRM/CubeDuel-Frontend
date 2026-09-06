@@ -17,7 +17,7 @@
  * ไฟล์นี้ **ห้าม import three หรือ DOM** — สคริปต์ `verify-*` รันบน Node เปล่า ๆ
  */
 import { NxNCubeModel } from '../nxn/cube-model.ts';
-import { IDENTITY, matEq } from '../three/lattice.ts';
+import { matApply, matEq } from '../three/lattice.ts';
 
 export class PyramorphixModel extends NxNCubeModel {
   /**
@@ -42,7 +42,10 @@ export class PyramorphixModel extends NxNCubeModel {
   }
 
   /**
-   * **แก้เสร็จ = ทุกชิ้นกลับบ้าน AND ยอดพีระมิดทั้ง 4 ชิ้นหันตรง** (ADR-019)
+   * **แก้เสร็จ = ทุกชิ้นเข้าที่ AND ยอดพีระมิดทั้ง 4 ชิ้นหันไปทางเดียวกัน** (ADR-019 + ADR-030)
+   *
+   * "เข้าที่" ในที่นี้ยอมให้ **ทั้งลูกถูกหมุนไปทั้งก้อน** ได้ เพราะ `U D'` หมุนทั้งลูกทั้งที่
+   * เป็น move หมุนชั้นล้วน ๆ — ถ้าบังคับให้กลับบ้านเป๊ะ ลูกที่ครบทุกหน้าแล้วจะไม่ถูกนับว่าเสร็จ
    *
    * ไม่ตรวจทิศทางของชิ้นกลางหน้า เพราะมันเป็นสามเหลี่ยมสีเดียว — ท่าที่เหลือของมัน
    * (หมุนรอบเส้นทแยงมุมของตัวเอง) ให้ภาพเดิมเป๊ะ ถ้าไปตรวจด้วยจะเกิดกรณี
@@ -52,9 +55,12 @@ export class PyramorphixModel extends NxNCubeModel {
    * เงื่อนไข "กลับบ้าน" จึงคุมชิ้นกลางหน้าไว้พอดีอยู่แล้ว ไม่ต้องเช็คอะไรเพิ่ม
    */
   isSolved(): boolean {
+    // ถ้าแก้เสร็จจริง ทุกชิ้นถูกหมุนไปด้วยเมทริกซ์เดียวกันหมด — เอาของยอดแรกเป็นตัวตั้ง
+    const rotation = this.lattice.rotations[this.apexPieces[0]!]!;
     for (let id = 0; id < this.pieceCount; id++) {
-      if (this.lattice.slotOf(this.lattice.coords[id]!) !== id) return false;
+      const expected = matApply(rotation, this.lattice.homeCoords[id]!);
+      if (!this.lattice.coords[id]!.every((value, k) => value === expected[k])) return false;
     }
-    return this.apexPieces.every((id) => matEq(this.lattice.rotations[id]!, IDENTITY));
+    return this.apexPieces.every((id) => matEq(this.lattice.rotations[id]!, rotation));
   }
 }
