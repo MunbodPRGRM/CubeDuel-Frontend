@@ -50,6 +50,8 @@ export default function PracticePage() {
   const [scrambleError, setScrambleError] = useState<string | null>(null);
   const [loadingScramble, setLoadingScramble] = useState(false);
   const [inspectionEnabled, setInspectionEnabled] = useState(false);
+  /** กำลังหมุน scramble ให้ดูอยู่ — ระหว่างนี้ปุ่มทั้งแผงต้องกดไม่ได้ (ADR-032 ข้อ 1) */
+  const [scrambling, setScrambling] = useState(false);
   const [moveCount, setMoveCount] = useState(0);
   const [solves, setSolves] = useState<PracticeSolve[]>([]);
   const [replaying, setReplaying] = useState(false);
@@ -59,6 +61,13 @@ export default function PracticePage() {
   const moveCountRef = useRef(0);
   /** รอบนี้บันทึกผลไปแล้วหรือยัง — กันบันทึกซ้ำตอนกด "เสร็จทันที" แล้วอนิเมชันแก้จบ */
   const recordedRef = useRef(false);
+  /**
+   * ลำดับของคำขอ scramble ล่าสุด — คำขอที่ตกรุ่นห้ามเขียนผลทับ
+   *
+   * ถ้าสลับประเภทตอน REST ยังค้างอยู่ ของเก่าจะกลับมาแล้วตั้ง `scrambling = true` ทั้งที่
+   * คิวบ์ตัวใหม่ไม่มีอะไรให้เล่น → ไม่มีใครแจ้งว่าจบ ปุ่มทั้งแผงค้าง disabled ตลอดกาล
+   */
+  const scrambleRequestRef = useRef(0);
   const timer = useSolveTimer(inspectionEnabled);
   const { phase, reset: resetTimer } = timer;
 
@@ -78,26 +87,43 @@ export default function PracticePage() {
 
   const fetchScramble = useCallback(
     async (type: CubeType) => {
+      const run = ++scrambleRequestRef.current;
       setLoadingScramble(true);
       setScrambleError(null);
       try {
         const data = await apiFetch<ScrambleResponse>(`/scramble?cubeType=${type}&count=1`);
+        if (scrambleRequestRef.current !== run) return;
         const text = data.scrambles[0];
-        setScramble(text ? { cubeType: type, text } : null);
         resetTimer();
         beginAttempt();
+        // ตั้ง `scrambling` ตรงนี้เลย ไม่รอ `CubeCanvas` แจ้งกลับ — ระหว่างสองจังหวะนั้น
+        // มีเฟรมที่ปุ่มกลับมากดได้ ซึ่งพอให้กด "เริ่มจับเวลา" ทับอนิเมชันที่ยังไม่เริ่มได้
+        setScrambling(Boolean(text));
+        setScramble(text ? { cubeType: type, text } : null);
       } catch (err) {
+        if (scrambleRequestRef.current !== run) return;
+        setScrambling(false);
         setScrambleError(err instanceof ApiError ? err.message : 'ขอ scramble ไม่สำเร็จ');
       } finally {
-        setLoadingScramble(false);
+        if (scrambleRequestRef.current === run) setLoadingScramble(false);
       }
     },
     [resetTimer, beginAttempt],
   );
 
+  /**
+   * เข้าห้อง (และทุกครั้งที่สลับประเภท) = **คิวบ์แก้เสร็จครบทุกหน้า ยังไม่มี scramble**
+   * (game-rules.md ข้อ 12.1) — scramble จะมาตอนกดปุ่มสุ่มเท่านั้น แล้วหมุนให้ดูทีละท่า
+   */
   useEffect(() => {
-    void fetchScramble(cubeType);
-  }, [cubeType, fetchScramble]);
+    scrambleRequestRef.current += 1; // ทิ้งคำขอของประเภทเก่าที่ยังค้างอยู่
+    setScramble(null);
+    setScrambleError(null);
+    setScrambling(false);
+    setLoadingScramble(false);
+    resetTimer();
+    beginAttempt();
+  }, [cubeType, resetTimer, beginAttempt]);
 
   /** เก็บผลลง localStorage — ที่เดียวที่ห้องฝึกซ้อมบันทึกอะไรได้ (รอบละครั้งเท่านั้น) */
   const record = useCallback(
@@ -152,10 +178,11 @@ export default function PracticePage() {
    * scramble เดียวกันกับที่ server ส่งมา ไม่งั้นเวลาที่ได้เทียบกับใครไม่ได้เลย
    */
   const handleStart = useCallback(() => {
+    if (!scramble) return;
     cubeRef.current?.reset();
     beginAttempt();
     timer.start();
-  }, [timer, beginAttempt]);
+  }, [timer, beginAttempt, scramble]);
 
   /**
    * "เสร็จทันที" — หยุดเวลา ณ วินาทีที่กด **แล้วนับเป็นแก้เสร็จ ไม่ใช่ DNF**
@@ -169,27 +196,34 @@ export default function PracticePage() {
     void cube.solve().finally(() => setReplaying(false));
   }, [phase, timer, record]);
 
+  /** ขอ scramble ไม่ได้ / กำลังหมุนให้ดูอยู่ = ห้ามกดอะไรทั้งแผง */
+  const busy = loadingScramble || scrambling;
+
   // เว้นวรรค = เริ่มจับเวลา ตามธรรมเนียมโปรแกรมจับเวลาของ speedcuber
+  // (ยังไม่มี scramble ก็ให้เว้นวรรคสั่งสุ่มได้ ไม่งั้นเข้าห้องมาแล้วปุ่มเดียวที่กดได้อยู่ห่างจากมือ)
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.code !== 'Space') return;
       const target = event.target as HTMLElement | null;
       if (target && ['INPUT', 'TEXTAREA', 'BUTTON'].includes(target.tagName)) return;
       event.preventDefault();
+      if (busy) return;
       if (phase === 'idle' && scramble) handleStart();
-      else if (phase === 'finished') void fetchScramble(cubeType);
+      else if (phase === 'idle' || phase === 'finished') void fetchScramble(cubeType);
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [phase, scramble, handleStart, fetchScramble, cubeType]);
+  }, [phase, scramble, handleStart, fetchScramble, cubeType, busy]);
 
   const times = useMemo(() => solves.map((s) => s.seconds), [solves]);
-  const statusText = {
-    idle: 'พร้อมเริ่ม',
-    inspection: 'กำลังตรวจสอบคิวบ์',
-    solving: 'กำลังจับเวลา',
-    finished: timer.resultSeconds === null ? 'ยกเลิก (DNF)' : 'แก้เสร็จแล้ว',
-  }[phase];
+  const statusText = scrambling
+    ? 'กำลังหมุน scramble ให้ดู'
+    : {
+        idle: scramble ? 'พร้อมเริ่ม' : 'ยังไม่มี scramble',
+        inspection: 'กำลังตรวจสอบคิวบ์',
+        solving: 'กำลังจับเวลา',
+        finished: timer.resultSeconds === null ? 'ยกเลิก (DNF)' : 'แก้เสร็จแล้ว',
+      }[phase];
 
   return (
     <div className="min-h-screen bg-navy-900">
@@ -198,19 +232,22 @@ export default function PracticePage() {
       <main className="mx-auto grid max-w-6xl gap-4 px-4 py-6 lg:grid-cols-[1fr_22rem]">
         {/* ---------------- ฝั่งซ้าย: คิวบ์ 3 มิติ ---------------- */}
         <section className="relative h-[62vh] min-h-[22rem] overflow-hidden rounded-2xl border border-line bg-navy-850 lg:h-[calc(100vh-7rem)]">
-          {/* รอจน scramble ของประเภทนี้มาถึงก่อนค่อยวาด — ห้ามเอาของประเภทเก่ามาใส่เด็ดขาด */}
-          {scramble?.cubeType === cubeType && (
-            <CubeCanvas
-              ref={cubeRef}
-              cubeType={cubeType}
-              scramble={scramble.text}
-              // ห้ามหมุนเฉพาะช่วง inspection ที่กติกาให้พลิกดูได้อย่างเดียว (game-rules.md ข้อ 2)
-              // นอกช่วงจับเวลาหมุนเล่นได้ — กดเริ่มแล้วคิวบ์จะถูกรีเซ็ตกลับไปที่ scramble ให้เอง
-              turnsEnabled={phase !== 'inspection' && !replaying}
-              onState={handleState}
-              onMove={handleMove}
-            />
-          )}
+          {/* `null` จนกว่า scramble **ของประเภทนี้** จะมาถึง — ห้ามเอาของประเภทเก่ามาใส่เด็ดขาด
+              (`null` = คิวบ์ครบทุกหน้า ซึ่งเป็นภาพที่ต้องเห็นตอนเข้าห้องพอดี) */}
+          <CubeCanvas
+            ref={cubeRef}
+            cubeType={cubeType}
+            scramble={scramble?.cubeType === cubeType ? scramble.text : null}
+            // ห้ามหมุนช่วง inspection ที่กติกาให้พลิกดูได้อย่างเดียว (game-rules.md ข้อ 2)
+            // และช่วงที่โปรแกรมหมุนให้ดูอยู่ (scramble / "เสร็จทันที")
+            // นอกนั้นหมุนเล่นได้ — กดเริ่มแล้วคิวบ์จะถูกรีเซ็ตกลับไปที่ scramble ให้เอง
+            turnsEnabled={phase !== 'inspection' && !replaying && !scrambling}
+            // ห้องฝึกซ้อมเท่านั้น — ห้องแข่งในเฟส 4 ห้ามส่ง flag นี้ (ADR-032 ข้อ 1)
+            animateScramble
+            onScrambleAnimatingChange={setScrambling}
+            onState={handleState}
+            onMove={handleMove}
+          />
 
           <div className="pointer-events-none absolute bottom-4 left-4 flex gap-6 rounded-xl border border-line bg-navy-900/80 px-5 py-3 backdrop-blur">
             <div>
@@ -223,11 +260,15 @@ export default function PracticePage() {
             </div>
           </div>
 
-          {phase !== 'solving' && scramble !== null && (
-            <p className="pointer-events-none absolute right-4 top-4 rounded-lg border border-line bg-navy-900/80 px-3 py-1.5 text-xs text-slate-400 backdrop-blur">
-              {phase === 'inspection'
-                ? 'ช่วงนี้หมุนคิวบ์ไม่ได้ ลากเพื่อดูรอบ ๆ ได้'
-                : 'หมุนเล่นได้ตามใจ · กดเริ่มแล้วคิวบ์จะกลับไปที่ scramble ให้เอง'}
+          {phase !== 'solving' && (
+            <p className="pointer-events-none absolute right-4 top-4 max-w-[16rem] rounded-lg border border-line bg-navy-900/80 px-3 py-1.5 text-xs text-slate-400 backdrop-blur">
+              {scrambling
+                ? 'กำลังหมุน scramble ให้ดูทีละท่า · ระหว่างนี้หมุนเองไม่ได้'
+                : phase === 'inspection'
+                  ? 'ช่วงนี้หมุนคิวบ์ไม่ได้ ลากเพื่อดูรอบ ๆ ได้'
+                  : scramble === null
+                    ? 'คิวบ์ครบทุกหน้าแล้ว · กด "สุ่ม scramble" แล้วระบบจะหมุนให้ดูทีละท่า'
+                    : 'หมุนเล่นได้ตามใจ · กดเริ่มแล้วคิวบ์จะกลับไปที่ scramble ให้เอง'}
             </p>
           )}
         </section>
@@ -258,7 +299,9 @@ export default function PracticePage() {
               <p className="text-[11px] tracking-widest text-slate-500">SCRAMBLE</p>
               <p className="tabular mt-1 break-words text-sm leading-6 text-slate-200">
                 {scrambleError ??
-                  (loadingScramble ? 'กำลังขอ scramble…' : (scramble?.text ?? '—'))}
+                  (loadingScramble
+                    ? 'กำลังขอ scramble…'
+                    : (scramble?.text ?? 'ยังไม่มี — กดสุ่มเพื่อให้ระบบหมุนให้ดู'))}
               </p>
             </div>
 
@@ -266,7 +309,7 @@ export default function PracticePage() {
               <button
                 type="button"
                 onClick={() => void fetchScramble(cubeType)}
-                disabled={loadingScramble || phase === 'solving' || phase === 'inspection'}
+                disabled={busy || phase === 'solving' || phase === 'inspection'}
                 className="rounded-lg bg-navy-700 px-3 py-2 text-sm font-medium text-slate-100 transition hover:bg-navy-800 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 สุ่มใหม่
@@ -274,7 +317,7 @@ export default function PracticePage() {
               <button
                 type="button"
                 onClick={handleReset}
-                disabled={!scramble}
+                disabled={!scramble || busy}
                 className="rounded-lg border border-line bg-navy-800 px-3 py-2 text-sm font-medium text-slate-200 transition hover:bg-navy-700 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 รีเซ็ตคิวบ์
@@ -283,7 +326,7 @@ export default function PracticePage() {
               <button
                 type="button"
                 onClick={handleFinishNow}
-                disabled={!scramble || phase === 'inspection' || replaying}
+                disabled={!scramble || busy || phase === 'inspection' || replaying}
                 className="col-span-2 rounded-lg border border-line bg-navy-800 px-3 py-2 text-sm font-medium text-slate-200 transition hover:bg-navy-700 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {replaying ? 'กำลังแก้ให้ดู…' : 'เสร็จทันที (แก้ให้ดู)'}
@@ -293,12 +336,18 @@ export default function PracticePage() {
                 <button
                   type="button"
                   onClick={() =>
-                    phase === 'finished' ? void fetchScramble(cubeType) : handleStart()
+                    phase === 'idle' && scramble ? handleStart() : void fetchScramble(cubeType)
                   }
-                  disabled={!scramble}
+                  disabled={busy}
                   className="col-span-2 rounded-lg bg-brand-500 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  {phase === 'finished' ? 'เล่นอีกครั้ง (เว้นวรรค)' : 'เริ่มจับเวลา (เว้นวรรค)'}
+                  {scrambling
+                    ? 'กำลังหมุน scramble ให้ดู…'
+                    : phase === 'finished'
+                      ? 'เล่นอีกครั้ง (เว้นวรรค)'
+                      : scramble
+                        ? 'เริ่มจับเวลา (เว้นวรรค)'
+                        : 'สุ่ม scramble (เว้นวรรค)'}
                 </button>
               ) : (
                 <button
@@ -319,7 +368,7 @@ export default function PracticePage() {
                 type="checkbox"
                 checked={inspectionEnabled}
                 onChange={(e) => setInspectionEnabled(e.target.checked)}
-                disabled={phase === 'solving' || phase === 'inspection'}
+                disabled={busy || phase === 'solving' || phase === 'inspection'}
                 className="h-4 w-4 accent-[var(--color-brand-500)]"
               />
             </label>

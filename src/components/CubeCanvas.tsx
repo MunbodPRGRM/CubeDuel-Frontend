@@ -15,6 +15,16 @@ interface CubeCanvasProps {
   scramble: string | null;
   /** ปิดตอน inspection — กล้องยังหมุนได้ แต่หมุนหน้าคิวบ์ไม่ได้ (game-rules.md ข้อ 2) */
   turnsEnabled: boolean;
+  /**
+   * หมุน scramble ให้ดูทีละท่าแทนที่จะใส่ให้ทันที — **ห้องฝึกซ้อมเท่านั้น** (ADR-032 ข้อ 1)
+   * ค่าเริ่มต้นคือพฤติกรรมของห้องแข่ง (ใส่ทันที) ห้ามกลับด้าน
+   */
+  animateScramble?: boolean;
+  /**
+   * แจ้งตอนอนิเมชัน scramble เริ่ม/จบ — ระหว่างที่เป็น `true` ผู้เล่นหมุนคิวบ์ไม่ได้
+   * และฝั่งเรียกต้อง disable ปุ่มทั้งแผงไว้ ไม่งั้นจะกดเริ่มจับเวลาทับอนิเมชันได้
+   */
+  onScrambleAnimatingChange?: (animating: boolean) => void;
   onState?: (state: CubeState) => void;
   /** ทีละ move ตอนหมุน — เฟส 4 เอาไปยิง `solve:move` ต่อ */
   onMove?: (event: CubeMoveEvent) => void;
@@ -27,7 +37,15 @@ interface CubeCanvasProps {
  * (สร้างใหม่ = โหลด KPuzzle + สร้าง WebGL context ใหม่ ซึ่งแพงมาก)
  */
 export const CubeCanvas = forwardRef<CubeCanvasHandle, CubeCanvasProps>(function CubeCanvas(
-  { cubeType, scramble, turnsEnabled, onState, onMove },
+  {
+    cubeType,
+    scramble,
+    turnsEnabled,
+    animateScramble = false,
+    onScrambleAnimatingChange,
+    onState,
+    onMove,
+  },
   ref,
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -40,6 +58,12 @@ export const CubeCanvas = forwardRef<CubeCanvasHandle, CubeCanvasProps>(function
   onStateRef.current = onState;
   const onMoveRef = useRef(onMove);
   onMoveRef.current = onMove;
+  const animateScrambleRef = useRef(animateScramble);
+  animateScrambleRef.current = animateScramble;
+  const onAnimatingRef = useRef(onScrambleAnimatingChange);
+  onAnimatingRef.current = onScrambleAnimatingChange;
+  /** ลำดับของอนิเมชัน scramble ล่าสุด — ตัวที่ตกรุ่นห้ามแจ้งว่า "จบแล้ว" ทับตัวใหม่ */
+  const scrambleRunRef = useRef(0);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -72,17 +96,31 @@ export const CubeCanvas = forwardRef<CubeCanvasHandle, CubeCanvasProps>(function
       viewRef.current?.dispose();
       viewRef.current = null;
       setView(null);
+      // ทิ้ง view ทั้งตัวระหว่างอนิเมชันค้างอยู่ → ต้องปลดล็อกฝั่งเรียก ไม่งั้นปุ่มค้าง disabled
+      scrambleRunRef.current += 1;
+      onAnimatingRef.current?.(false);
     };
   }, [cubeType]);
 
   useEffect(() => {
     if (!view) return;
+    // `scramble === null` = ยังไม่มี scramble → `''` พาคิวบ์กลับไปครบทุกหน้าแบบไม่มีอนิเมชัน
+    // (ห้องฝึกซ้อมเข้าหน้ามาต้องเจอลูกที่แก้เสร็จ — game-rules.md ข้อ 12.1)
+    const animate = animateScrambleRef.current && scramble !== null;
+    const run = ++scrambleRunRef.current;
+
     // scramble ที่ใช้กับประเภทนี้ไม่ได้ต้องไม่ทำให้ทั้งหน้าจอตาย — `setScramble` โยน error
     // แบบ synchronous ถ้า move ใช้ไม่ได้ ซึ่งใน effect แปลว่า React ถอด tree ทิ้งทั้งก้อน
     try {
-      void view.setScramble(scramble ?? '');
+      const done = view.setScramble(scramble ?? '', { animate });
       setError(null);
+      if (!animate) return;
+      onAnimatingRef.current?.(true);
+      void done.finally(() => {
+        if (scrambleRunRef.current === run) onAnimatingRef.current?.(false);
+      });
     } catch (err) {
+      onAnimatingRef.current?.(false);
       setError(err instanceof Error ? err.message : 'ตั้ง scramble ไม่สำเร็จ');
     }
   }, [view, scramble]);
