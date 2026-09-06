@@ -11,6 +11,7 @@
  *
  * รัน: `npm run verify:pyramorphix`
  */
+import { Alg } from 'cubing/alg';
 import type { KPattern, KPuzzle } from 'cubing/kpuzzle';
 import { puzzles } from 'cubing/puzzles';
 import { ALLOWED_MOVES, inverseMove } from '../src/cube/moves.ts';
@@ -74,16 +75,31 @@ const apexKSlots = slotOctants
   .map(({ slot }) => slot);
 
 /**
- * กติกา "แก้เสร็จ" ฝั่ง KPuzzle ตาม ADR-019 — ตำแหน่งถูกครบ 8 ชิ้น
- * และทิศทางถูกเฉพาะ 4 ชิ้นที่เป็นยอดพีระมิด
+ * กติกา "แก้เสร็จ" ฝั่ง KPuzzle ตาม ADR-019 แบบ **ไม่ยอมให้ทั้งลูกหมุน** —
+ * ตำแหน่งถูกครบ 8 ชิ้น และทิศทางถูกเฉพาะ 4 ชิ้นที่เป็นยอดพีระมิด
  */
-function solvedByKPuzzle(pattern: KPattern): boolean {
+function solvedInPlace(pattern: KPattern): boolean {
   const orbit = pattern.patternData[ORBIT]!;
   for (let slot = 0; slot < 8; slot++) {
     if (orbit.pieces[slot] !== slot) return false;
     if (apexKSlots.includes(slot) && orbit.orientation[slot] !== 0) return false;
   }
   return true;
+}
+
+/** 24 ท่ายืนของลูกบาศก์ ประกอบจาก move หมุนทั้งลูกของ cubing.js */
+const WHOLE_ROTATIONS = ['', 'x', 'x2', "x'", 'z', "z'"].flatMap((tilt) =>
+  ['', 'y', 'y2', "y'"].map((spin) => [tilt, spin].filter(Boolean).join(' ')),
+);
+
+/**
+ * กติกาที่ใช้จริง (ADR-019 + ADR-030) — เหมือนด้านบนแต่ **ยอมให้ทั้งลูกถูกหมุนไปทั้งก้อน**
+ * เพราะ `U D'` หมุนทั้งลูกได้ทั้งที่เป็น move หมุนชั้นล้วน ๆ · ตรวจโดยลองหมุนกลับทั้ง 24 ท่า
+ */
+function solvedByKPuzzle(pattern: KPattern): boolean {
+  return WHOLE_ROTATIONS.some((alg) =>
+    solvedInPlace(alg === '' ? pattern : pattern.applyAlg(new Alg(alg))),
+  );
 }
 
 console.log(`slotOctants (จาก KPuzzle) = ${JSON.stringify(slotOctants)}`);
@@ -168,6 +184,21 @@ console.log('\n4) "แก้เสร็จ" ที่โมเดลตัด�
     disagreements === 0,
     `เจอสถานะแก้เสร็จ ${solvedSeen} ครั้ง`,
   );
+}
+
+console.log('\n4ก) ลูกที่ครบทุกหน้าแต่ถูกหมุนทั้งก้อน ต้องนับว่าแก้เสร็จ (ADR-030)');
+{
+  let bad = '';
+  for (const alg of ["U D'", "R L'", "F B'", "U D' U D'"]) {
+    model.reset();
+    for (const move of alg.split(' ')) model.apply(move);
+    const pattern = kpuzzle.defaultPattern().applyAlg(new Alg(alg));
+    if (!model.isSolved()) bad = `โมเดลบอกว่า "${alg}" ยังไม่เสร็จ`;
+    else if (!solvedByKPuzzle(pattern)) bad = `KPuzzle บอกว่า "${alg}" ยังไม่เสร็จ`;
+    else if (solvedInPlace(pattern)) bad = `"${alg}" ไม่ได้หมุนทั้งลูกจริง เคสนี้ทดสอบไม่ได้`;
+  }
+  check('หมุนทั้งลูกแล้วยังนับว่าแก้เสร็จทั้งสองฝั่ง', bad === '', bad);
+  model.reset();
 }
 
 console.log('\n5) กติกา Pyramorphix ต่างจาก 2x2x2 จริง (ADR-019)');

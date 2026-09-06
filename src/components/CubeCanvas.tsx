@@ -5,6 +5,8 @@ import type { CubeType } from '@/types/cube';
 export interface CubeCanvasHandle {
   /** กลับไปสถานะทันทีหลัง scramble ล่าสุด */
   reset(): void;
+  /** เล่นอนิเมชันแก้คิวบ์ให้เสร็จ — resolve เมื่ออนิเมชันจบ */
+  solve(): Promise<void>;
 }
 
 interface CubeCanvasProps {
@@ -74,14 +76,29 @@ export const CubeCanvas = forwardRef<CubeCanvasHandle, CubeCanvasProps>(function
   }, [cubeType]);
 
   useEffect(() => {
-    if (view) void view.setScramble(scramble ?? '');
+    if (!view) return;
+    // scramble ที่ใช้กับประเภทนี้ไม่ได้ต้องไม่ทำให้ทั้งหน้าจอตาย — `setScramble` โยน error
+    // แบบ synchronous ถ้า move ใช้ไม่ได้ ซึ่งใน effect แปลว่า React ถอด tree ทิ้งทั้งก้อน
+    try {
+      void view.setScramble(scramble ?? '');
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'ตั้ง scramble ไม่สำเร็จ');
+    }
   }, [view, scramble]);
 
   useEffect(() => {
     view?.setTurnsEnabled(turnsEnabled);
   }, [view, turnsEnabled]);
 
-  useImperativeHandle(ref, () => ({ reset: () => void viewRef.current?.reset() }), []);
+  useImperativeHandle(
+    ref,
+    () => ({
+      reset: () => void viewRef.current?.reset(),
+      solve: () => viewRef.current?.solve() ?? Promise.resolve(),
+    }),
+    [],
+  );
 
   return (
     <div className="relative h-full w-full">
