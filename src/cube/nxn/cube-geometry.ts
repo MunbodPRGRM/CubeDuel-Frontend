@@ -6,11 +6,12 @@
  *
  * geometry **อบพิกัดบ้านของชิ้นไว้ในตัว** (ไม่ได้อยู่ที่จุดกำเนิด) — ทุก move ของลูกบาศก์คือ
  * การหมุนรอบจุดกำเนิด ท่าของชิ้นจึงเป็นแค่ "เมทริกซ์หมุน" ตัวเดียว ไม่ต้องเก็บตำแหน่งแยก
- * (หลักการเดียวกับ Pyramorphix ใน `tetra-geometry.ts`)
+ * (หลักการเดียวกับรูบิคทรงพีระมิดใน `three/convex-piece.ts`)
  */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { BODY_COLOR, FACE_COLORS } from '../three/colors.ts';
+import { paintGeometry } from '../three/convex-piece.ts';
 
 /** ย่อเนื้อชิ้นลงเพื่อให้เห็น **ร่องระหว่างชิ้น** เหมือนลูกจริง */
 const BODY_SCALE = 0.92;
@@ -28,23 +29,6 @@ const FACE_AT: Record<string, string> = {
   '2:1': 'F',
   '2:-1': 'B',
 };
-
-/** ทา geometry ด้วยสีเดียวทั้งก้อน แล้วคลาย index ออกให้รวมกับก้อนอื่นได้ */
-function painted(geometry: THREE.BufferGeometry, hex: number): THREE.BufferGeometry {
-  const flat = geometry.index ? geometry.toNonIndexed() : geometry;
-  if (flat !== geometry) geometry.dispose();
-
-  const count = flat.getAttribute('position').count;
-  const colors = new Float32Array(count * 3);
-  const color = new THREE.Color(hex);
-  for (let i = 0; i < count; i++) {
-    colors[i * 3] = color.r;
-    colors[i * 3 + 1] = color.g;
-    colors[i * 3 + 2] = color.b;
-  }
-  flat.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-  return flat;
-}
 
 /** สติกเกอร์หนึ่งแผ่นบนหน้าที่ตั้งฉากกับแกน `axis` ฝั่ง `sign` ของชิ้นที่อยู่ตรง `center` */
 function buildSticker(
@@ -66,7 +50,7 @@ function buildSticker(
   position[axis] += sign * offset;
   plane.translate(position[0]!, position[1]!, position[2]!);
 
-  return painted(plane, FACE_COLORS[FACE_AT[`${axis}:${sign}`]!]!);
+  return paintGeometry(plane, FACE_COLORS[FACE_AT[`${axis}:${sign}`]!]!);
 }
 
 /**
@@ -91,7 +75,7 @@ export function buildCubeletGeometries(
       cell * BODY_SCALE,
     ).translate(center[0]!, center[1]!, center[2]!);
 
-    const parts = [painted(body, BODY_COLOR)];
+    const parts = [paintGeometry(body, BODY_COLOR)];
     for (let axis = 0; axis < 3; axis++) {
       for (const sign of [1, -1]) {
         if (coord[axis] === sign * outer) parts.push(buildSticker(axis, sign, center, cell));
