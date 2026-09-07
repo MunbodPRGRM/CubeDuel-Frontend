@@ -1,4 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { toSolveSeconds } from '@/lib/format';
+
+// เดิมนิยามไว้ที่ไฟล์นี้ ย้ายไป `lib/format.ts` ตอนเฟส 4 ก้อนที่ 4 เพราะหน้าห้องแข่ง
+// ต้องใช้กติกาปัดเดียวกัน แต่ไม่ควรต้อง import ของห้องฝึกซ้อมมาใช้
+export { toSolveSeconds };
 
 /**
  * นาฬิกาจับเวลาของ **ห้องฝึกซ้อม** (ทำงานฝั่ง client ล้วน ไม่มี Socket.IO — game-rules.md ข้อ 12)
@@ -32,11 +37,6 @@ export interface SolveTimer {
   /** ยอมแพ้/ยกเลิกกลางคัน → DNF */
   abort: () => void;
   reset: () => void;
-}
-
-/** ปัดลง 2 ตำแหน่งตามธรรมเนียม speedcubing (game-rules.md ข้อ 3) */
-export function toSolveSeconds(ms: number): number {
-  return Math.floor(ms / 10) / 100;
 }
 
 export function useSolveTimer(inspectionEnabled: boolean): SolveTimer {

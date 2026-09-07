@@ -10,7 +10,12 @@ import type { PlayerPublic, RoomSnapshot, RoomSnapshotResult } from './types';
  * หลักการ (ADR-036): **ยึด `room:state` เป็นความจริงเสมอ** event ย่อยอย่าง
  * `room:player_joined` / `room:ready_changed` ไม่ต้องเอามาปะ snapshot เอง เพราะ server
  * ส่ง snapshot ตามมาทุกครั้งอยู่แล้ว — ปะเองเมื่อไหร่คือเปิดช่องให้จอสองฝั่งไม่ตรงกัน
- * (ข้อยกเว้นเดียวคือ `room:spectator_count` ตอนผู้ชมออก ซึ่ง server ไม่ได้ส่ง snapshot ตาม)
+ *
+ * **ข้อยกเว้นมีสองตัว** คือ event ที่ server ตั้งใจส่งเดี่ยว ๆ ไม่มี snapshot ตามมา:
+ *   - `room:spectator_count` ตอนผู้ชมออกจากห้อง
+ *   - `opponent:progress` ระหว่างแข่ง (throttle 500 ms — ถ้าส่ง snapshot ตามทุกครั้ง
+ *     จะกลายเป็นการ broadcast ห้องทั้งก้อนวินาทีละสองรอบ)
+ * ทั้งคู่ปะ**เฉพาะฟิลด์ที่ event นั้นบอก** ไม่แตะอย่างอื่นใน snapshot
  */
 
 export type RoomStatus = 'loading' | 'ready' | 'gone';
@@ -79,8 +84,23 @@ export function useRoom(roomId: number): UseRoomResult {
     };
 
     const onSpectatorCount = ({ count }: { count: number }) => {
-      // ผู้ชมออกจากห้องเป็นเคสเดียวที่ server ไม่ได้ส่ง snapshot ตามมา
+      // ผู้ชมออกจากห้อง — server ไม่ได้ส่ง snapshot ตามมา
       setSnapshot((prev) => (prev ? { ...prev, spectatorCount: count } : prev));
+    };
+
+    // ตัวนับ move ของผู้เล่นคนอื่นระหว่างแข่ง — มาทาง event นี้ทางเดียว
+    const onProgress = ({ userId, moveCount }: { userId: number; moveCount: number }) => {
+      setSnapshot((prev) => {
+        if (!prev) return prev;
+        const current = prev.progress.find((entry) => entry.userId === userId);
+        if (!current || current.moveCount === moveCount) return prev;
+        return {
+          ...prev,
+          progress: prev.progress.map((entry) =>
+            entry.userId === userId ? { ...entry, moveCount } : entry,
+          ),
+        };
+      });
     };
 
     const onPlayerLeft = ({ userId, reason }: { userId: number; reason: string }) => {
@@ -96,6 +116,7 @@ export function useRoom(roomId: number): UseRoomResult {
 
     socket.on('room:state', onState);
     socket.on('room:spectator_count', onSpectatorCount);
+    socket.on('opponent:progress', onProgress);
     socket.on('room:player_left', onPlayerLeft);
     socket.on('room:aborted', onAborted);
 
@@ -103,6 +124,7 @@ export function useRoom(roomId: number): UseRoomResult {
       cancelled = true;
       socket.off('room:state', onState);
       socket.off('room:spectator_count', onSpectatorCount);
+      socket.off('opponent:progress', onProgress);
       socket.off('room:player_left', onPlayerLeft);
       socket.off('room:aborted', onAborted);
     };

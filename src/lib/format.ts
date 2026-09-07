@@ -3,6 +3,14 @@
  * API ส่งเวลาเป็น "วินาที ทศนิยม 2 ตำแหน่ง" (api-contract.md ข้อ 1) · `null` = DNF
  */
 
+/**
+ * ปัดเวลาจากมิลลิวินาทีเป็น "วินาที ทศนิยม 2 ตำแหน่ง" แบบ **ปัดลง**
+ * ตามธรรมเนียม speedcubing (game-rules.md ข้อ 3) — 12 345 ms → 12.34
+ */
+export function toSolveSeconds(ms: number): number {
+  return Math.floor(ms / 10) / 100;
+}
+
 /** 74.21 → "1:14.21" · 9.87 → "0:09.87" · null → "—" */
 export function formatSolveTime(seconds: number | null | undefined): string {
   if (seconds == null) return '—';
