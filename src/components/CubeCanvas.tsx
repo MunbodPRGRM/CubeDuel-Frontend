@@ -7,13 +7,25 @@ export interface CubeCanvasHandle {
   reset(): void;
   /** เล่นอนิเมชันแก้คิวบ์ให้เสร็จ — resolve เมื่ออนิเมชันจบ */
   solve(): Promise<void>;
+  /**
+   * สถานะคิวบ์ ณ วินาทีที่ถาม — `null` เมื่อยังสร้าง view ไม่เสร็จ หรือถูกทิ้งไปแล้ว
+   *
+   * มีไว้ให้ตรวจ "ผ่านกติกาแก้เสร็จหรือยัง" **หลังอนิเมชันเล่นจบ** ซึ่งเป็นเงื่อนไข
+   * ของการหยุดเวลาตอนกดปุ่ม "เสร็จทันที" (game-rules.md ข้อ 12.2 · ADR-032 ข้อ 2)
+   */
+  getState(): CubeState | null;
 }
 
 interface CubeCanvasProps {
   cubeType: CubeType;
   /** `null` = ยังไม่ได้ scramble (แสดงคิวบ์ที่แก้เสร็จแล้ว) */
   scramble: string | null;
-  /** ปิดตอน inspection — กล้องยังหมุนได้ แต่หมุนหน้าคิวบ์ไม่ได้ (game-rules.md ข้อ 2) */
+  /**
+   * เปิด/ปิดการหมุนหน้าคิวบ์ของผู้เล่น — **กล้องยังหมุนได้เสมอ**
+   *
+   * ห้องที่มีการแข่งขันต้องปิดตอน inspection (game-rules.md ข้อ 2) ส่วนห้องฝึกซ้อม
+   * เปิดไว้ได้ เพราะหมุนหน้าคิวบ์ช่วง inspection = ข้ามเข้าจับเวลา (ADR-032 ข้อ 3)
+   */
   turnsEnabled: boolean;
   /**
    * หมุน scramble ให้ดูทีละท่าแทนที่จะใส่ให้ทันที — **ห้องฝึกซ้อมเท่านั้น** (ADR-032 ข้อ 1)
@@ -134,6 +146,7 @@ export const CubeCanvas = forwardRef<CubeCanvasHandle, CubeCanvasProps>(function
     () => ({
       reset: () => void viewRef.current?.reset(),
       solve: () => viewRef.current?.solve() ?? Promise.resolve(),
+      getState: () => viewRef.current?.getState() ?? null,
     }),
     [],
   );

@@ -54,13 +54,31 @@ export default function PracticePage() {
   const [scrambling, setScrambling] = useState(false);
   const [moveCount, setMoveCount] = useState(0);
   const [solves, setSolves] = useState<PracticeSolve[]>([]);
+  /** กำลังเล่นอนิเมชัน "แก้ให้ดู" อยู่ — ระหว่างนี้ปุ่มทั้งแผงกดไม่ได้เหมือนตอนหมุน scramble */
   const [replaying, setReplaying] = useState(false);
+  /** รอบนี้ใช้ปุ่ม "เสร็จทันที" ไปแล้ว → **ห้ามลงสถิติ** และต้องบอกบนจอ (ADR-032 ข้อ 2) */
+  const [assisted, setAssisted] = useState(false);
+  /** อนิเมชัน "แก้ให้ดู" จบแล้วแต่คิวบ์ยังไม่ผ่านกติกาข้อ 11 — เป็นบั๊ก ห้ามกลืนเงียบ */
+  const [finishNowError, setFinishNowError] = useState<string | null>(null);
 
   const cubeRef = useRef<CubeCanvasHandle>(null);
   /** จำนวน move ล่าสุดแบบอ่านได้ทันที — state ของ React ตามไม่ทันตอนบันทึกผล */
   const moveCountRef = useRef(0);
-  /** รอบนี้บันทึกผลไปแล้วหรือยัง — กันบันทึกซ้ำตอนกด "เสร็จทันที" แล้วอนิเมชันแก้จบ */
+  /**
+   * รอบนี้ **บันทึกผลไปแล้ว หรือถูกสั่งห้ามบันทึก** — `record()` จะไม่ทำอะไรถ้าเป็น `true`
+   *
+   * ตั้งเป็น `true` สองกรณี: บันทึกไปแล้วรอบหนึ่ง (กันซ้ำ) และ **กดปุ่ม "เสร็จทันที"**
+   * ซึ่งกติกาข้อ 12.2 ห้ามลงสถิติทั้ง attempt ไม่ว่าจะจบยังไง (จบเองหรือกดยกเลิกทีหลัง)
+   */
   const recordedRef = useRef(false);
+  /**
+   * กำลังเล่นอนิเมชัน "แก้ให้ดู" อยู่หรือเปล่า แบบอ่านได้ทันที
+   *
+   * ระหว่างนี้ **ห้ามให้ `onState` หยุดนาฬิกา** — สถานะจะกลายเป็น "แก้เสร็จ" ตั้งแต่ท่าสุดท้าย
+   * ถูกลงบัญชี ซึ่งเกิด*ก่อน*อนิเมชันของท่านั้นเล่นจบ (ADR-033) แต่กติกาข้อ 12.2 บอกว่า
+   * นาฬิกาต้องหยุด **หลังอนิเมชันจบ** เท่านั้น
+   */
+  const replayingRef = useRef(false);
   /**
    * ลำดับของคำขอ scramble ล่าสุด — คำขอที่ตกรุ่นห้ามเขียนผลทับ
    *
@@ -70,6 +88,9 @@ export default function PracticePage() {
   const scrambleRequestRef = useRef(0);
   const timer = useSolveTimer(inspectionEnabled);
   const { phase, reset: resetTimer } = timer;
+  /** นาฬิกาตัวล่าสุดแบบอ่านได้ทันที — callback ที่ค้างข้ามอนิเมชันต้องไม่ถือของเก่า */
+  const timerRef = useRef(timer);
+  timerRef.current = timer;
 
   useEffect(() => setSolves(loadSolves(cubeType)), [cubeType]);
 
@@ -83,6 +104,8 @@ export default function PracticePage() {
   const beginAttempt = useCallback(() => {
     setMoves(0);
     recordedRef.current = false;
+    setAssisted(false);
+    setFinishNowError(null);
   }, [setMoves]);
 
   const fetchScramble = useCallback(
@@ -145,7 +168,12 @@ export default function PracticePage() {
   /** นับเฉพาะ move ที่ผู้เล่นหมุนเอง — ท่าที่โปรแกรมเล่นให้ดูตอนกด "เสร็จทันที" ไม่นับ */
   const handleMove = useCallback(
     (event: CubeMoveEvent) => {
-      if (event.source === 'player') setMoves(moveCountRef.current + 1);
+      if (event.source !== 'player') return;
+      // หมุนหน้าคิวบ์ระหว่าง inspection = **ข้ามเข้าจับเวลาทันที** และท่านี้นับเป็นท่าแรก
+      // ของรอบ ไม่ใช่ทิ้ง (ห้องฝึกซ้อมเท่านั้น — ADR-032 ข้อ 3) · หมุนกล้องไม่ยิง event นี้
+      // จึงไม่ถือว่าข้าม · นอกช่วง inspection ตัวนี้ไม่ทำอะไรเลย
+      timerRef.current.skipInspection();
+      setMoves(moveCountRef.current + 1);
     },
     [setMoves],
   );
@@ -153,7 +181,8 @@ export default function PracticePage() {
   /** แก้ครบทุกหน้าระหว่างจับเวลา = หยุดนาฬิกาทันที ไม่ต้องกดอะไรเลย */
   const handleState = useCallback(
     (state: CubeState) => {
-      if (state.solved && phase === 'solving' && !recordedRef.current) {
+      // ระหว่างเล่น "แก้ให้ดู" ต้องรอให้อนิเมชันจบก่อนเสมอ — ดู `replayingRef`
+      if (state.solved && phase === 'solving' && !recordedRef.current && !replayingRef.current) {
         record(timer.finish());
       }
     },
@@ -185,19 +214,50 @@ export default function PracticePage() {
   }, [timer, beginAttempt, scramble]);
 
   /**
-   * "เสร็จทันที" — หยุดเวลา ณ วินาทีที่กด **แล้วนับเป็นแก้เสร็จ ไม่ใช่ DNF**
-   * จากนั้นค่อยเล่นอนิเมชันย้อน move ให้ดูว่าแก้ยังไง (เวลาที่บันทึกไม่รวมช่วงอนิเมชัน)
+   * "เสร็จทันที (แก้ให้ดู)" — **เล่นอนิเมชันย้อน move จนจบก่อน แล้วค่อยหยุดเวลา**
+   * (game-rules.md ข้อ 12.2 · ADR-032 ข้อ 2 ซึ่งกลับข้อ 3 ของ ADR-029 ที่เคยหยุด ณ วินาทีที่กด)
+   *
+   * เงื่อนไขการหยุดนาฬิกามีสองข้อและต้องครบทั้งคู่: **อนิเมชันเล่นจบ** และ
+   * **สถานะคิวบ์ผ่านกติกา "แก้เสร็จ" ของข้อ 11 จริง** — ถ้าจบแล้วยังไม่ผ่านคือโมเดล
+   * กับกติกาหลุดกัน ต้องฟ้องบนจอและ **ห้ามหยุดเวลา** (เป็นบั๊กที่ต้องเห็น ไม่ใช่กลืน)
+   *
+   * เวลาที่ได้รวมช่วงอนิเมชันไปด้วย (~6 วินาทีที่ 20 ท่า) จึงไม่ใช่ฝีมือผู้เล่น →
+   * attempt นี้ **ไม่ลงสถิติ `localStorage`** และมีข้อความบอกบนจอ
    */
   const handleFinishNow = useCallback(() => {
     const cube = cubeRef.current;
-    if (!cube) return;
-    if (phase === 'solving') record(timer.finish());
+    if (!cube || replayingRef.current) return;
+    replayingRef.current = true;
+    // ปิดบัญชีทั้ง attempt ตั้งแต่วินาทีที่กด — ไม่ว่ารอบนี้จะจบยังไง (แก้จบ / กดยกเลิก
+    // ทีหลัง) ก็ห้ามลงสถิติ `localStorage` ทั้งนั้น (game-rules.md ข้อ 12.2)
+    recordedRef.current = true;
     setReplaying(true);
-    void cube.solve().finally(() => setReplaying(false));
-  }, [phase, timer, record]);
+    setAssisted(true);
+    setFinishNowError(null);
 
-  /** ขอ scramble ไม่ได้ / กำลังหมุนให้ดูอยู่ = ห้ามกดอะไรทั้งแผง */
-  const busy = loadingScramble || scrambling;
+    void cube
+      .solve()
+      .then(() => {
+        const state = cubeRef.current?.getState();
+        // view ถูกทิ้งกลางอนิเมชัน (สลับประเภทรูบิค) → รอบนี้ไม่มีอะไรให้ตัดสินแล้ว
+        if (!state) return;
+        if (!state.solved) {
+          setFinishNowError(
+            'อนิเมชันแก้จบแล้วแต่คิวบ์ยังไม่ผ่านกติกา "แก้เสร็จ" — ไม่หยุดเวลา (โมเดลกับกติกาหลุดกัน)',
+          );
+          return;
+        }
+        // นับเป็นแก้เสร็จ ไม่ใช่ DNF (แต่ไม่ลงสถิติ — ปิดบัญชีไว้ตั้งแต่ตอนกดแล้ว)
+        if (timerRef.current.phase === 'solving') timerRef.current.finish();
+      })
+      .finally(() => {
+        replayingRef.current = false;
+        setReplaying(false);
+      });
+  }, []);
+
+  /** กำลังรอ scramble หรือกำลังหมุนให้ดูอยู่ (scramble / "แก้ให้ดู") = ห้ามกดอะไรทั้งแผง */
+  const busy = loadingScramble || scrambling || replaying;
 
   // เว้นวรรค = เริ่มจับเวลา ตามธรรมเนียมโปรแกรมจับเวลาของ speedcuber
   // (ยังไม่มี scramble ก็ให้เว้นวรรคสั่งสุ่มได้ ไม่งั้นเข้าห้องมาแล้วปุ่มเดียวที่กดได้อยู่ห่างจากมือ)
@@ -218,12 +278,14 @@ export default function PracticePage() {
   const times = useMemo(() => solves.map((s) => s.seconds), [solves]);
   const statusText = scrambling
     ? 'กำลังหมุน scramble ให้ดู'
-    : {
-        idle: scramble ? 'พร้อมเริ่ม' : 'ยังไม่มี scramble',
-        inspection: 'กำลังตรวจสอบคิวบ์',
-        solving: 'กำลังจับเวลา',
-        finished: timer.resultSeconds === null ? 'ยกเลิก (DNF)' : 'แก้เสร็จแล้ว',
-      }[phase];
+    : replaying
+      ? 'กำลังแก้ให้ดู'
+      : {
+          idle: scramble ? 'พร้อมเริ่ม' : 'ยังไม่มี scramble',
+          inspection: 'กำลังตรวจสอบคิวบ์',
+          solving: 'กำลังจับเวลา',
+          finished: timer.resultSeconds === null ? 'ยกเลิก (DNF)' : 'แก้เสร็จแล้ว',
+        }[phase];
 
   return (
     <div className="min-h-screen bg-navy-900">
@@ -238,10 +300,10 @@ export default function PracticePage() {
             ref={cubeRef}
             cubeType={cubeType}
             scramble={scramble?.cubeType === cubeType ? scramble.text : null}
-            // ห้ามหมุนช่วง inspection ที่กติกาให้พลิกดูได้อย่างเดียว (game-rules.md ข้อ 2)
-            // และช่วงที่โปรแกรมหมุนให้ดูอยู่ (scramble / "เสร็จทันที")
-            // นอกนั้นหมุนเล่นได้ — กดเริ่มแล้วคิวบ์จะถูกรีเซ็ตกลับไปที่ scramble ให้เอง
-            turnsEnabled={phase !== 'inspection' && !replaying && !scrambling}
+            // ปิดเฉพาะช่วงที่โปรแกรมหมุนให้ดูอยู่ (scramble / "แก้ให้ดู") เท่านั้น
+            // **ช่วง inspection ของห้องฝึกซ้อมเปิดไว้** เพราะหมุนหน้าคิวบ์ = ข้ามเข้าจับเวลา
+            // (ADR-032 ข้อ 3) — ห้องแข่งในเฟส 4 ต้องปิดตอน inspection เหมือนเดิม
+            turnsEnabled={!replaying && !scrambling}
             // ห้องฝึกซ้อมเท่านั้น — ห้องแข่งในเฟส 4 ห้ามส่ง flag นี้ (ADR-032 ข้อ 1)
             animateScramble
             onScrambleAnimatingChange={setScrambling}
@@ -260,15 +322,17 @@ export default function PracticePage() {
             </div>
           </div>
 
-          {phase !== 'solving' && (
+          {(phase !== 'solving' || replaying) && (
             <p className="pointer-events-none absolute right-4 top-4 max-w-[16rem] rounded-lg border border-line bg-navy-900/80 px-3 py-1.5 text-xs text-slate-400 backdrop-blur">
               {scrambling
                 ? 'กำลังหมุน scramble ให้ดูทีละท่า · ระหว่างนี้หมุนเองไม่ได้'
-                : phase === 'inspection'
-                  ? 'ช่วงนี้หมุนคิวบ์ไม่ได้ ลากเพื่อดูรอบ ๆ ได้'
-                  : scramble === null
-                    ? 'คิวบ์ครบทุกหน้าแล้ว · กด "สุ่ม scramble" แล้วระบบจะหมุนให้ดูทีละท่า'
-                    : 'หมุนเล่นได้ตามใจ · กดเริ่มแล้วคิวบ์จะกลับไปที่ scramble ให้เอง'}
+                : replaying
+                  ? 'กำลังย้อนท่าให้ดูทีละท่า · นาฬิกาจะหยุดเมื่อหมุนครบและคิวบ์ครบทุกหน้า'
+                  : phase === 'inspection'
+                    ? 'ลากดูรอบ ๆ ได้ · หมุนหน้าคิวบ์เมื่อไหร่ = เริ่มจับเวลาทันที (ท่านั้นนับเป็นท่าแรก)'
+                    : scramble === null
+                      ? 'คิวบ์ครบทุกหน้าแล้ว · กด "สุ่ม scramble" แล้วระบบจะหมุนให้ดูทีละท่า'
+                      : 'หมุนเล่นได้ตามใจ · กดเริ่มแล้วคิวบ์จะกลับไปที่ scramble ให้เอง'}
             </p>
           )}
         </section>
@@ -293,6 +357,19 @@ export default function PracticePage() {
                 resultSeconds={timer.resultSeconds}
                 inspectionLeft={timer.inspectionLeft}
               />
+              {/* เวลาที่ได้รวมช่วงอนิเมชันไปด้วย จึงไม่ใช่ฝีมือผู้เล่น — ต้องบอกให้ชัด
+                  ว่าไม่ลงสถิติ (game-rules.md ข้อ 12.2) */}
+              {assisted && (
+                <p className="mt-2 text-center text-xs text-gold-400">
+                  รอบนี้ใช้ปุ่ม "เสร็จทันที (แก้ให้ดู)" · เวลารวมช่วงอนิเมชันด้วย{' '}
+                  <span className="font-semibold">จึงไม่บันทึกลงสถิติ</span>
+                </p>
+              )}
+              {finishNowError && (
+                <p className="mt-2 rounded-lg border border-loss/40 px-3 py-2 text-center text-xs text-loss">
+                  {finishNowError}
+                </p>
+              )}
             </div>
 
             <div className="mt-4 rounded-xl border border-line bg-navy-900/70 px-4 py-3">
@@ -326,7 +403,9 @@ export default function PracticePage() {
               <button
                 type="button"
                 onClick={handleFinishNow}
-                disabled={!scramble || busy || phase === 'inspection' || replaying}
+                // ช่วง inspection ยังไม่มีนาฬิกาให้หยุด — ปล่อยให้กดได้จะได้คิวบ์ครบสี
+                // ตั้งแต่ยังไม่เริ่มจับเวลา ซึ่งไม่มีความหมายอะไร
+                disabled={!scramble || busy || phase === 'inspection'}
                 className="col-span-2 rounded-lg border border-line bg-navy-800 px-3 py-2 text-sm font-medium text-slate-200 transition hover:bg-navy-700 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {replaying ? 'กำลังแก้ให้ดู…' : 'เสร็จทันที (แก้ให้ดู)'}
@@ -353,7 +432,8 @@ export default function PracticePage() {
                 <button
                   type="button"
                   onClick={handleAbort}
-                  className="col-span-2 rounded-lg border border-loss/40 px-3 py-2.5 text-sm font-semibold text-loss transition hover:bg-loss/10"
+                  disabled={busy}
+                  className="col-span-2 rounded-lg border border-loss/40 px-3 py-2.5 text-sm font-semibold text-loss transition hover:bg-loss/10 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   ยกเลิกรอบนี้ (DNF)
                 </button>
