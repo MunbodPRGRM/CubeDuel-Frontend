@@ -8,6 +8,13 @@ export interface CubeCanvasHandle {
   /** เล่นอนิเมชันแก้คิวบ์ให้เสร็จ — resolve เมื่ออนิเมชันจบ */
   solve(): Promise<void>;
   /**
+   * หมุนตามคำสั่ง (นับเป็น move ของ **โปรแกรม** ไม่ใช่ของผู้เล่น)
+   *
+   * ใช้สะท้อนคิวบ์ของคู่แข่งจาก `opponent:move` ในห้องแข่ง (เฟส 4) — คืน `false`
+   * เมื่อ move นั้นใช้กับประเภทนี้ไม่ได้ ผู้เรียกจะได้รู้ว่าภาพหลุดจากของจริงแล้ว
+   */
+  applyMove(move: string): boolean;
+  /**
    * สถานะคิวบ์ ณ วินาทีที่ถาม — `null` เมื่อยังสร้าง view ไม่เสร็จ หรือถูกทิ้งไปแล้ว
    *
    * มีไว้ให้ตรวจ "ผ่านกติกาแก้เสร็จหรือยัง" **หลังอนิเมชันเล่นจบ** ซึ่งเป็นเงื่อนไข
@@ -40,6 +47,13 @@ interface CubeCanvasProps {
   onState?: (state: CubeState) => void;
   /** ทีละ move ตอนหมุน — เฟส 4 เอาไปยิง `solve:move` ต่อ */
   onMove?: (event: CubeMoveEvent) => void;
+  /**
+   * scramble ที่ส่งมาถูกใส่ลงคิวบ์เรียบร้อยแล้ว (โมเดล 3D พร้อมด้วย)
+   *
+   * นี่คือจังหวะที่ห้องแข่งส่ง `solve:ready` ได้ — ก่อนหน้านี้คิวบ์ยังไม่ใช่ลูกเดียวกับที่
+   * server สั่งมา (game-rules.md ข้อ 1: `LOADING` = โหลดโมเดล + apply scramble เสร็จ)
+   */
+  onScrambleApplied?: (scramble: string | null) => void;
 }
 
 /**
@@ -57,6 +71,7 @@ export const CubeCanvas = forwardRef<CubeCanvasHandle, CubeCanvasProps>(function
     onScrambleAnimatingChange,
     onState,
     onMove,
+    onScrambleApplied,
   },
   ref,
 ) {
@@ -74,6 +89,8 @@ export const CubeCanvas = forwardRef<CubeCanvasHandle, CubeCanvasProps>(function
   animateScrambleRef.current = animateScramble;
   const onAnimatingRef = useRef(onScrambleAnimatingChange);
   onAnimatingRef.current = onScrambleAnimatingChange;
+  const onScrambleAppliedRef = useRef(onScrambleApplied);
+  onScrambleAppliedRef.current = onScrambleApplied;
   /** ลำดับของอนิเมชัน scramble ล่าสุด — ตัวที่ตกรุ่นห้ามแจ้งว่า "จบแล้ว" ทับตัวใหม่ */
   const scrambleRunRef = useRef(0);
 
@@ -126,10 +143,16 @@ export const CubeCanvas = forwardRef<CubeCanvasHandle, CubeCanvasProps>(function
     try {
       const done = view.setScramble(scramble ?? '', { animate });
       setError(null);
-      if (!animate) return;
+      if (!animate) {
+        // ทางของห้องแข่ง: `setScramble` ใส่สถานะให้เสร็จแบบ synchronous ไปแล้ว
+        onScrambleAppliedRef.current?.(scramble);
+        return;
+      }
       onAnimatingRef.current?.(true);
       void done.finally(() => {
-        if (scrambleRunRef.current === run) onAnimatingRef.current?.(false);
+        if (scrambleRunRef.current !== run) return;
+        onAnimatingRef.current?.(false);
+        onScrambleAppliedRef.current?.(scramble);
       });
     } catch (err) {
       onAnimatingRef.current?.(false);
@@ -146,6 +169,17 @@ export const CubeCanvas = forwardRef<CubeCanvasHandle, CubeCanvasProps>(function
     () => ({
       reset: () => void viewRef.current?.reset(),
       solve: () => viewRef.current?.solve() ?? Promise.resolve(),
+      applyMove: (move: string) => {
+        const view = viewRef.current;
+        if (!view) return false;
+        try {
+          void view.applyMove(move);
+          return true;
+        } catch {
+          // move ที่ใช้กับประเภทนี้ไม่ได้ — ทิ้งไปดีกว่าปล่อยให้ error ทะลุขึ้นไปถอด tree ทิ้ง
+          return false;
+        }
+      },
       getState: () => viewRef.current?.getState() ?? null,
     }),
     [],
