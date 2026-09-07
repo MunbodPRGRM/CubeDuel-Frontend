@@ -13,7 +13,7 @@ import { CubeLogo } from './CubeLogo';
 const NAV_ITEMS = [
   { label: 'หน้าแรก', to: '/' },
   { label: 'ฝึกซ้อม', to: '/practice' },
-  { label: 'สร้างห้อง', to: null, phase: 'เฟส 4' },
+  { label: 'สร้างห้อง', to: '/room/new' },
   { label: 'กระดานจัดอันดับ', to: null, phase: 'เฟส 7' },
   { label: 'โปรไฟล์', to: null, phase: 'เฟส 8' },
 ] as const;

@@ -5,27 +5,58 @@ import LoginPage from '@/pages/LoginPage';
 import RegisterPage from '@/pages/RegisterPage';
 import NotFoundPage from '@/pages/NotFoundPage';
 import PracticePage from '@/pages/PracticePage';
+import CreateRoomPage from '@/pages/CreateRoomPage';
+import JoinRoomPage from '@/pages/JoinRoomPage';
+import RoomPage from '@/pages/RoomPage';
 import { RequireAuth } from '@/auth/RequireAuth';
+import { SocketProvider } from '@/socket/SocketProvider';
 
 /** เส้นทางทั้งหมดของแอป — หน้าที่ต้องล็อกอินก่อนให้ห่อด้วย <RequireAuth> */
 export default function App() {
   return (
     <AuthProvider>
-      <Routes>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/register" element={<RegisterPage />} />
-        {/* ห้องฝึกซ้อมขอ scramble จาก server ซึ่งต้องมี token (api-contract.md ข้อ 6) */}
-        <Route
-          path="/practice"
-          element={
-            <RequireAuth>
-              <PracticePage />
-            </RequireAuth>
-          }
-        />
-        <Route path="*" element={<NotFoundPage />} />
-      </Routes>
+      {/* socket ต่อได้ต่อเมื่อล็อกอินแล้ว จึงต้องอยู่ใต้ AuthProvider เสมอ */}
+      <SocketProvider>
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+          {/* ห้องฝึกซ้อมขอ scramble จาก server ซึ่งต้องมี token (api-contract.md ข้อ 6) */}
+          <Route
+            path="/practice"
+            element={
+              <RequireAuth>
+                <PracticePage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/room/new"
+            element={
+              <RequireAuth>
+                <CreateRoomPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/room/join"
+            element={
+              <RequireAuth>
+                <JoinRoomPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/room/:roomId"
+            element={
+              <RequireAuth>
+                <RoomPage />
+              </RequireAuth>
+            }
+          />
+          <Route path="*" element={<NotFoundPage />} />
+        </Routes>
+      </SocketProvider>
     </AuthProvider>
   );
 }
