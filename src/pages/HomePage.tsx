@@ -102,8 +102,18 @@ function HeroCard({ isLoggedIn }: { isLoggedIn: boolean }) {
                 >
                   ฝึกซ้อม
                 </Link>
-                <ComingSoonButton label="สร้างห้อง" phase="เฟส 4" />
-                <ComingSoonButton label="ใส่เลขห้อง" phase="เฟส 4" />
+                <Link
+                  to="/room/new"
+                  className="rounded-xl border border-line bg-navy-800 px-5 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-navy-700"
+                >
+                  สร้างห้อง
+                </Link>
+                <Link
+                  to="/room/join"
+                  className="rounded-xl border border-line bg-navy-800 px-5 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-navy-700"
+                >
+                  ใส่เลขห้อง
+                </Link>
               </>
             ) : (
               <>
@@ -166,7 +176,7 @@ function MatchHistoryCard() {
       <div className="border-t border-line-soft px-5 py-10 text-center">
         <p className="text-sm text-slate-500">ยังไม่มีประวัติการเล่น</p>
         <p className="mt-1 text-xs text-slate-600">
-          ห้องแข่งขันจะเปิดในเฟส 4–5 ผลการแข่งจะมาแสดงตรงนี้
+          ห้องสร้างเองไม่นับเป็นผลแข่ง — ประวัติจะเริ่มมีเมื่อเปิดห้องแข่งขันในเฟส 5
         </p>
       </div>
     </section>
