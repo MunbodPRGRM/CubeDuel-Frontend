@@ -21,6 +21,12 @@ export interface SolveTimer {
   /** เวลาเริ่มจับ (`performance.now()`) — ให้หน้าจอเอาไปนับเองแบบลื่น ๆ */
   startedAt: number | null;
   start: () => void;
+  /**
+   * ข้าม inspection แล้วเริ่มจับเวลาทันที — **ห้องฝึกซ้อมเท่านั้น** (ADR-032 ข้อ 3)
+   *
+   * เรียกจาก move แรกที่ผู้เล่นหมุนระหว่าง inspection · เรียกตอน phase อื่นไม่มีผล
+   */
+  skipInspection: () => void;
   /** แก้เสร็จแล้ว — คืนเวลาที่ได้ (วินาที) */
   finish: () => number | null;
   /** ยอมแพ้/ยกเลิกกลางคัน → DNF */
@@ -71,6 +77,21 @@ export function useSolveTimer(inspectionEnabled: boolean): SolveTimer {
     }
   }, [inspectionEnabled, beginSolving]);
 
+  /**
+   * ⚠️ **ห้ามเรียกจากห้องแข่งขัน / หลายคน / สร้างเอง ในเฟส 4** — ห้องที่มีการแข่งขัน
+   * ข้าม inspection ไม่ได้เด็ดขาด (ADR-005 · game-rules.md ข้อ 2) และ server ต้องตอบ
+   * `E_MOVE_DURING_INSPECTION` ให้ move ที่มาช่วงนั้นเหมือนเดิม
+   *
+   * ที่ยอมให้ข้ามได้เฉพาะห้องฝึกซ้อม เพราะข้อห้ามนั้นมาจาก "ทุกคนใน race ต้องเริ่ม
+   * จับเวลาที่จุดเดียวกัน" ซึ่งห้องฝึกซ้อมไม่มีเงื่อนไขนั้นเลย (ADR-032 ข้อ 3)
+   *
+   * **move ที่ทำให้ข้ามต้องถูกนับเป็น move แรกของรอบ ไม่ใช่ทิ้ง** — ฝั่งที่เรียกเป็นคนนับ
+   */
+  const skipInspection = useCallback(() => {
+    if (phase !== 'inspection') return;
+    beginSolving();
+  }, [phase, beginSolving]);
+
   const finish = useCallback((): number | null => {
     if (startedAt === null) return null;
     const seconds = toSolveSeconds(performance.now() - startedAt);
@@ -93,5 +114,15 @@ export function useSolveTimer(inspectionEnabled: boolean): SolveTimer {
     setPhase('idle');
   }, []);
 
-  return { phase, inspectionLeft, resultSeconds, startedAt, start, finish, abort, reset };
+  return {
+    phase,
+    inspectionLeft,
+    resultSeconds,
+    startedAt,
+    start,
+    skipInspection,
+    finish,
+    abort,
+    reset,
+  };
 }
