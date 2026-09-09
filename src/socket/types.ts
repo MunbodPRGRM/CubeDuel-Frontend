@@ -125,7 +125,11 @@ export interface NetPingResult {
   clientTs: number;
 }
 
-/** คิวจับคู่อัตโนมัติ — `multiplayer` ยังไม่เปิด (เฟส 6) server ปฏิเสธที่ชั้น schema */
+/**
+ * คิวจับคู่อัตโนมัติ — คนละช่องคิวกันโดยสิ้นเชิง (แยกตาม `kind` + `cubeType`)
+ *   - `competitive` = 1v1 มีช่วง Elo ขยายตามเวลารอ
+ *   - `multiplayer` = 3–4 คน ไม่ใช้ช่วง Elo จับตามลำดับเข้าคิว (game-rules.md ข้อ 8)
+ */
 export type QueueKind = 'competitive' | 'multiplayer';
 
 export interface QueueJoinPayload {
@@ -142,7 +146,10 @@ export interface QueueLeaveResult {
 }
 export interface QueueStatusPayload {
   waitedMs: number;
-  /** null = เลิกจำกัดช่วงคะแนนแล้ว (รอเกิน 120 วิ — game-rules.md ข้อ 8) */
+  /**
+   * null = ไม่จำกัดช่วงคะแนน — คิว 1v1 ที่รอเกิน 120 วิ (game-rules.md ข้อ 8)
+   * และ **คิวห้องผู้เล่นหลายคนเสมอ** เพราะไม่ใช้ช่วง Elo เลย
+   */
   eloWindow: number | null;
   /** จำนวนคนในคิวช่องเดียวกัน (kind + cubeType) รวมตัวเอง */
   playersInQueue: number;
@@ -158,14 +165,9 @@ export interface QueueTimeoutPayload {
 
 export interface RoomCreatePayload {
   cubeType: CubeType;
+  /** `custom` = 1v1 (2 คน) · `multiplayer` = 3–4 คน · ทั้งคู่เป็นห้องที่มีรหัสห้อง */
   kind: 'custom' | 'multiplayer';
   maxPlayers: 2 | 3 | 4;
-  /**
-   * **เครื่อง dev เท่านั้น** (`ALLOW_TEST_COMPETITIVE_ROOM=1` ฝั่ง server) — ห้องหลายคนที่สร้าง
-   * ด้วยรหัสเป็นโหมด `custom` เสมอ **หน้าจอจริงไม่ต้องส่งฟิลด์นี้** · มีไว้ให้สโมคเทสฝั่ง
-   * backend บังคับสร้างห้องโหมด `auto` มาทดสอบ Pairwise Elo ก่อนคิวจับคู่จะเสร็จ (เฟส 6 ก้อนที่ 1)
-   */
-  roomMode?: RoomMode;
 }
 export interface RoomCreateResult {
   roomId: number;
