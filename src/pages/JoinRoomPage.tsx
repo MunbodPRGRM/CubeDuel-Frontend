@@ -5,6 +5,7 @@ import { FormAlert } from '@/components/FormAlert';
 import { SocketGate } from '@/socket/SocketGate';
 import { emitAck, socketErrorMessage } from '@/socket/socket-client';
 import { useSocket } from '@/socket/useSocket';
+import { useQueue } from '@/socket/useQueue';
 import type { RoomSnapshotResult } from '@/socket/types';
 
 /**
@@ -38,6 +39,7 @@ export default function JoinRoomPage() {
 function JoinRoomForm() {
   const navigate = useNavigate();
   const { socket } = useSocket();
+  const queue = useQueue();
   const [code, setCode] = useState('');
   const [as, setAs] = useState<'player' | 'spectator'>('player');
   const [submitting, setSubmitting] = useState(false);
@@ -51,6 +53,8 @@ function JoinRoomForm() {
     setSubmitting(true);
     setError(null);
     try {
+      // เหตุผลเดียวกับหน้าสร้างห้อง — อยู่ในห้องพร้อมกับอยู่ในคิวไม่ได้
+      await queue.leave();
       const result = await emitAck<RoomSnapshotResult>(socket, 'room:join', {
         roomCode: code,
         as,

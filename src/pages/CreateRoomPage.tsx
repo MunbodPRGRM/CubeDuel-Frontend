@@ -6,6 +6,7 @@ import { FormAlert } from '@/components/FormAlert';
 import { SocketGate } from '@/socket/SocketGate';
 import { emitAck, socketErrorMessage } from '@/socket/socket-client';
 import { useSocket } from '@/socket/useSocket';
+import { useQueue } from '@/socket/useQueue';
 import type { RoomCreateResult } from '@/socket/types';
 import type { CubeType } from '@/types/cube';
 
@@ -31,6 +32,7 @@ export default function CreateRoomPage() {
 function CreateRoomForm() {
   const navigate = useNavigate();
   const { socket } = useSocket();
+  const queue = useQueue();
   const [cubeType, setCubeType] = useState<CubeType>('3x3x3');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -40,6 +42,9 @@ function CreateRoomForm() {
     setSubmitting(true);
     setError(null);
     try {
+      // อยู่ในห้องพร้อมกับอยู่ในคิวไม่ได้ (socket-events.md ข้อ 4) — server ล้างให้อยู่แล้ว
+      // แต่ต้องบอกจอฝั่งเราด้วย ไม่งั้นแถบ "กำลังหาคู่" จะค้างอยู่ทั้งที่ออกจากคิวไปแล้ว
+      await queue.leave();
       const result = await emitAck<RoomCreateResult>(socket, 'room:create', {
         cubeType,
         kind: 'custom',

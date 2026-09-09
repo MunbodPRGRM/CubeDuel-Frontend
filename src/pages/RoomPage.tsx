@@ -10,6 +10,8 @@ import { PlayerCubePanel } from '@/room/PlayerCubePanel';
 import { ConnectionBanner, ConnectionErrorCard } from '@/socket/SocketGate';
 import { ROOM_STATE_LABEL } from '@/socket/room-labels';
 import { useMatch, type UseMatchResult } from '@/socket/useMatch';
+import { useMatchResult } from '@/room/useMatchResult';
+import { useQueue } from '@/socket/useQueue';
 import { useRoom } from '@/socket/useRoom';
 import { useSocket } from '@/socket/useSocket';
 import {
@@ -52,8 +54,11 @@ function RoomView({ roomId }: { roomId: number }) {
   const navigate = useNavigate();
   const room = useRoom(roomId);
   const match = useMatch(room.snapshot);
+  const queue = useQueue();
   const { status: socketStatus } = useSocket();
   const { snapshot, status, goneMessage, me, others, isSpectator, isHost } = room;
+  // เข้ามาหลังรอบจบ (กด F5 / ผู้ชมเพิ่งเข้า) จะไม่มี `match:finished` — ขอย้อนหลังแทน
+  const result = useMatchResult(snapshot, match.result);
 
   if (status === 'gone') return <RoomGoneCard message={goneMessage ?? 'ไม่ได้อยู่ในห้องนี้แล้ว'} />;
   // ยังไม่เคยได้ snapshot แรก — แยกให้ชัดว่าติดที่การเชื่อมต่อหรือแค่รอ ack
@@ -65,6 +70,13 @@ function RoomView({ roomId }: { roomId: number }) {
 
   const leave = async () => {
     if (await room.leave()) navigate('/', { replace: true });
+  };
+
+  /** ห้องแข่งขันไม่มี "เล่นอีกครั้ง" — คู่แข่งคนใหม่ต้องมาจากคิว (ADR-040 ข้อ 4) */
+  const requeue = async () => {
+    if (!(await room.leave())) return;
+    navigate('/', { replace: true });
+    await queue.join(snapshot.cubeType);
   };
 
   return (
@@ -88,6 +100,7 @@ function RoomView({ roomId }: { roomId: number }) {
         <MatchPanel
           snapshot={snapshot}
           match={match}
+          result={result}
           me={me}
           focusPlayer={isSpectator ? leftPlayer : me}
           isSpectator={isSpectator}
@@ -96,6 +109,8 @@ function RoomView({ roomId }: { roomId: number }) {
           roomError={room.actionError}
           onSetReady={room.setReady}
           onLeave={leave}
+          onRequeue={requeue}
+          queueBusy={queue.busy}
         />
       </div>
 
@@ -115,6 +130,8 @@ function RoomView({ roomId }: { roomId: number }) {
 interface MatchPanelProps {
   snapshot: RoomSnapshot;
   match: UseMatchResult;
+  /** ผลรอบล่าสุด — จาก `match:finished` หรือขอย้อนหลังทาง REST */
+  result: MatchResult | null;
   me: PlayerPublic | null;
   /** ผู้เล่นที่ตัวเลขเวลาตรงกลางยึดเป็นหลัก — ผู้ชมยึดคนซ้าย */
   focusPlayer: PlayerPublic | null;
@@ -124,11 +141,15 @@ interface MatchPanelProps {
   roomError: string | null;
   onSetReady: (ready: boolean) => Promise<void>;
   onLeave: () => Promise<void>;
+  /** ออกจากห้องแข่งขันแล้วเข้าคิวหาคู่ใหม่ทันที */
+  onRequeue: () => Promise<void>;
+  queueBusy: boolean;
 }
 
 function MatchPanel({
   snapshot,
   match,
+  result,
   me,
   focusPlayer,
   isSpectator,
@@ -137,11 +158,18 @@ function MatchPanel({
   roomError,
   onSetReady,
   onLeave,
+  onRequeue,
+  queueBusy,
 }: MatchPanelProps) {
   const { state } = snapshot;
   const inLobby = state === 'WAITING';
   const finished = state === 'FINISHED';
   const racing = state === 'SOLVING' || state === 'FINAL_COUNTDOWN';
+  /**
+   * ห้องแข่งขันเดินเองทั้งหมด — ไม่มี host ไม่มีปุ่มเริ่ม ไม่มี "พร้อม" และเล่นซ้ำในห้องเดิมไม่ได้
+   * (`socket-events.md` ข้อ 4 · ADR-039 ข้อ 5) `isHost` ใน snapshot ของห้องนี้ไม่มีความหมาย
+   */
+  const rated = snapshot.roomKind === 'competitive';
 
   const myProgress = me ? findProgress(snapshot, me.userId) : null;
   const focusProgress = focusPlayer ? findProgress(snapshot, focusPlayer.userId) : null;
@@ -150,24 +178,30 @@ function MatchPanel({
   const roomIsFull = snapshot.players.length >= snapshot.maxPlayers;
   const everyoneConnected = snapshot.players.every((player) => player.connected);
   const canStart =
-    isHost && (inLobby || finished) && roomIsFull && everyoneConnected && !match.busy && !roomBusy;
+    !rated &&
+    isHost &&
+    (inLobby || finished) &&
+    roomIsFull &&
+    everyoneConnected &&
+    !match.busy &&
+    !roomBusy;
 
   const error = match.actionError ?? roomError;
 
   return (
     <section className="rounded-2xl border border-line bg-navy-850 px-5 py-6 text-center">
       <p className="text-xs text-slate-400">สถานะการเล่น</p>
-      <p className="mt-1 text-2xl font-bold text-brand-400">{headline(snapshot, match.result)}</p>
+      <p className="mt-1 text-2xl font-bold text-brand-400">{headline(snapshot, result)}</p>
 
       <MatchClockBlock snapshot={snapshot} progress={focusProgress} />
 
       <p className="mt-5 min-h-[3.5rem] text-sm leading-6 text-slate-400">
-        {hintText(snapshot, roomIsFull, isSpectator)}
+        {hintText(snapshot, roomIsFull, isSpectator, rated)}
       </p>
 
       <ScrambleBox scramble={snapshot.scramble} />
 
-      <EloRows snapshot={snapshot} result={match.result} />
+      <EloRows snapshot={snapshot} result={result} />
 
       {match.desynced && racing && (
         <p className="mt-4 rounded-xl border border-loss/40 bg-loss/10 px-3 py-2 text-left text-xs leading-5 text-loss">
@@ -190,36 +224,59 @@ function MatchPanel({
           </p>
         ) : (
           <>
-            <div className="grid grid-cols-2 gap-2.5">
-              <button
-                type="button"
-                disabled={roomBusy || !inLobby}
-                onClick={() => void onSetReady(!me?.isReady)}
-                className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                  me?.isReady
-                    ? 'border border-line bg-navy-800 text-slate-200 hover:bg-navy-700'
-                    : 'bg-win/90 text-navy-950 hover:bg-win'
-                }`}
-              >
-                {me?.isReady ? 'ยกเลิกพร้อม' : 'พร้อม'}
-              </button>
-
-              {racing ? (
-                <SurrenderButton
-                  disabled={!canSurrender}
-                  onConfirm={() => void match.surrender()}
-                />
-              ) : (
+            {rated ? (
+              // ห้องแข่งขัน: มีแค่ "ยอมแพ้" ระหว่างแข่ง กับ "หาคู่ใหม่" ตอนจบ
+              <div className="grid gap-2.5">
+                {racing ? (
+                  <SurrenderButton
+                    disabled={!canSurrender}
+                    onConfirm={() => void match.surrender()}
+                  />
+                ) : (
+                  finished && (
+                    <button
+                      type="button"
+                      disabled={roomBusy || queueBusy}
+                      onClick={() => void onRequeue()}
+                      className="rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-brand-500/40"
+                    >
+                      หาคู่ใหม่
+                    </button>
+                  )
+                )}
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-2.5">
                 <button
                   type="button"
-                  disabled={!canStart}
-                  onClick={() => void match.start()}
-                  className="rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-navy-800 disabled:text-slate-500"
+                  disabled={roomBusy || !inLobby}
+                  onClick={() => void onSetReady(!me?.isReady)}
+                  className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                    me?.isReady
+                      ? 'border border-line bg-navy-800 text-slate-200 hover:bg-navy-700'
+                      : 'bg-win/90 text-navy-950 hover:bg-win'
+                  }`}
                 >
-                  {startButtonLabel(isHost, finished, roomIsFull, everyoneConnected)}
+                  {me?.isReady ? 'ยกเลิกพร้อม' : 'พร้อม'}
                 </button>
-              )}
-            </div>
+
+                {racing ? (
+                  <SurrenderButton
+                    disabled={!canSurrender}
+                    onConfirm={() => void match.surrender()}
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    disabled={!canStart}
+                    onClick={() => void match.start()}
+                    className="rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-navy-800 disabled:text-slate-500"
+                  >
+                    {startButtonLabel(isHost, finished, roomIsFull, everyoneConnected)}
+                  </button>
+                )}
+              </div>
+            )}
 
             {/* ระหว่างโหลด/นับถอยหลัง/ตรวจสอบ ยังยอมแพ้ไม่ได้ (server ปฏิเสธ) — บอกไว้ให้ชัด */}
             {(state === 'LOADING' || state === 'COUNTDOWN' || state === 'INSPECTION') && (
@@ -304,9 +361,12 @@ function MatchClockBlock({
   );
 }
 
-/** "NTK ได้แต้ม +15" ตามภาพ `design/Match - Result.png` */
+/**
+ * "NTK ได้แต้ม +15" ตามภาพ `design/Match - Result.png`
+ * ห้องแข่งขันเพิ่มคะแนน **ก่อน → หลัง** ต่อท้ายด้วย เพราะเป็นตัวเลขที่ผู้เล่นมาลุ้นจริง ๆ
+ */
 function EloRows({ snapshot, result }: { snapshot: RoomSnapshot; result: MatchResult | null }) {
-  // ห้องสร้างเองไม่ปรับคะแนนเลย (CLAUDE.md ข้อ 7) — ห้องแข่งขันเปิดจริงในเฟส 5
+  // ห้องสร้างเองไม่ปรับคะแนนเลย (CLAUDE.md ข้อ 7) — ห้องแข่งขันปรับจริงตั้งแต่เฟส 5
   const ratingApplied = result ? result.ratingApplied : snapshot.roomKind === 'competitive';
 
   return (
@@ -317,24 +377,34 @@ function EloRows({ snapshot, result }: { snapshot: RoomSnapshot; result: MatchRe
         return (
           <div key={player.userId} className="flex items-center justify-between gap-3">
             <dt className="truncate text-slate-500">{playerName(player)} ได้แต้ม</dt>
-            <dd
-              className={`tabular shrink-0 ${
-                !ratingApplied || change === null
-                  ? 'text-slate-500'
-                  : change > 0
-                    ? 'text-win'
-                    : change < 0
-                      ? 'text-loss'
-                      : 'text-slate-200'
-              }`}
-            >
-              {!ratingApplied ? 'ไม่มีผล' : change === null ? '—' : formatEloChange(change)}
+            <dd className="flex shrink-0 items-center gap-2">
+              {ratingApplied && entry?.eloBefore != null && entry.eloAfter != null && (
+                <span className="tabular text-xs text-slate-500">
+                  {entry.eloBefore} → <span className="text-slate-300">{entry.eloAfter}</span>
+                </span>
+              )}
+              <span
+                className={`tabular ${
+                  !ratingApplied || change === null
+                    ? 'text-slate-500'
+                    : change > 0
+                      ? 'text-win'
+                      : change < 0
+                        ? 'text-loss'
+                        : 'text-slate-200'
+                }`}
+              >
+                {!ratingApplied ? 'ไม่มีผล' : change === null ? '—' : formatEloChange(change)}
+              </span>
             </dd>
           </div>
         );
       })}
       {!ratingApplied && (
         <p className="pt-1 text-xs text-slate-600">ห้องสร้างเองไม่มีผลต่อคะแนน ELO</p>
+      )}
+      {ratingApplied && snapshot.state === 'FINISHED' && !result && (
+        <p className="pt-1 text-xs text-slate-600">กำลังโหลดคะแนนของรอบนี้…</p>
       )}
     </dl>
   );
@@ -400,13 +470,20 @@ function headline(snapshot: RoomSnapshot, result: MatchResult | null): string {
   return player ? `${playerName(player)} ชนะ` : 'จบการแข่งขัน';
 }
 
-function hintText(snapshot: RoomSnapshot, roomIsFull: boolean, isSpectator: boolean): string {
+function hintText(
+  snapshot: RoomSnapshot,
+  roomIsFull: boolean,
+  isSpectator: boolean,
+  rated: boolean,
+): string {
   switch (snapshot.state) {
     case 'WAITING':
       if (isSpectator) return 'กำลังรอหัวห้องเริ่มการแข่งขัน';
       return roomIsFull
         ? 'ผู้เล่นครบแล้ว รอหัวห้องกดเริ่มการแข่งขัน'
         : `รอผู้เล่นอีก ${snapshot.maxPlayers - snapshot.players.length} คน · ส่งรหัสห้องด้านบนให้เพื่อนกด “ใส่เลขห้อง”`;
+    case 'MATCHED':
+      return 'เจอคู่แข่งแล้ว · ดูคะแนนของอีกฝ่ายไว้ แล้วระบบจะเริ่มให้เองในอีก 2 วินาที';
     case 'LOADING':
       return 'กำลังโหลดคิวบ์ให้ทุกคน · เริ่มพร้อมกันเมื่อทุกเครื่องพร้อม';
     case 'COUNTDOWN':
@@ -418,7 +495,9 @@ function hintText(snapshot: RoomSnapshot, roomIsFull: boolean, isSpectator: bool
     case 'FINAL_COUNTDOWN':
       return 'มีผู้เล่นแก้เสร็จแล้ว · แก้ไม่ทันภายใน 10 วินาทีนี้จะเป็น DNF';
     case 'FINISHED':
-      return 'จบรอบแล้ว · หัวห้องกด “เล่นอีกครั้ง” เพื่อสุ่ม scramble ใหม่ในห้องเดิมได้';
+      return rated
+        ? 'จบรอบแล้ว · คะแนน ELO ถูกปรับให้เรียบร้อย — กด “หาคู่ใหม่” เพื่อเข้าคิวรอบต่อไป'
+        : 'จบรอบแล้ว · หัวห้องกด “เล่นอีกครั้ง” เพื่อสุ่ม scramble ใหม่ในห้องเดิมได้';
     default:
       return '';
   }
@@ -458,7 +537,10 @@ function ScrambleBox({ scramble }: { scramble: string | null }) {
   );
 }
 
-/** การ์ดหัวห้อง: ผู้เล่นสองฝั่ง + รหัสห้องตรงกลาง (กดเพื่อคัดลอก) */
+/**
+ * การ์ดหัวห้อง: ผู้เล่นสองฝั่ง + รหัสห้องตรงกลาง (กดเพื่อคัดลอก)
+ * ห้องแข่งขันไม่มีรหัสห้องและเข้าด้วยรหัสไม่ได้ (ADR-039 ข้อ 5) — ช่องกลางบอกประเภทห้องแทน
+ */
 function RoomHeaderCard({
   snapshot,
   left,
@@ -468,12 +550,18 @@ function RoomHeaderCard({
   left: PlayerPublic | null;
   right: PlayerPublic | null;
 }) {
+  const rated = snapshot.roomKind === 'competitive';
+
   return (
     <section className="grid grid-cols-3 items-center gap-2 rounded-2xl border border-line bg-navy-850 px-4 py-5">
       <PlayerChip player={left} />
       <div className="text-center">
-        <p className="text-xs text-slate-400">เลขห้อง</p>
-        <RoomCodeButton roomCode={snapshot.roomCode} />
+        <p className="text-xs text-slate-400">{rated ? 'ห้องแข่งขัน' : 'เลขห้อง'}</p>
+        {rated ? (
+          <p className="mt-0.5 text-sm font-semibold text-gold-400">มีผลต่อคะแนน ELO</p>
+        ) : (
+          <RoomCodeButton roomCode={snapshot.roomCode} />
+        )}
       </div>
       <PlayerChip player={right} />
     </section>

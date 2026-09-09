@@ -87,7 +87,10 @@ export function PlayerCubePanel({
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium text-slate-100">{playerName(player)}</p>
                 <p className="text-[11px] text-slate-500">
-                  {player.isHost ? 'หัวห้อง' : 'ผู้เล่น'} · {player.eloRating} ELO
+                  {/* ห้องแข่งขันไม่มี host จริง ๆ — `isHost` ใน snapshot ของห้องนั้นไม่มีความหมาย
+                      (socket-events.md ข้อ 4) จึงห้ามเอามาแสดง */}
+                  {snapshot.roomKind !== 'competitive' && player.isHost ? 'หัวห้อง' : 'ผู้เล่น'} ·{' '}
+                  {player.eloRating} ELO
                 </p>
               </div>
             </div>
