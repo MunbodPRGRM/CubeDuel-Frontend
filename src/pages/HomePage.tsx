@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/auth/useAuth';
+import { QueuePanel } from '@/queue/QueuePanel';
+import { useQueue } from '@/socket/useQueue';
 import { useApiData } from '@/hooks/useApiData';
 import { AppHeader } from '@/components/AppHeader';
 import { CubeLogo } from '@/components/CubeLogo';
@@ -9,7 +11,7 @@ import { LeaderboardCard } from '@/components/LeaderboardCard';
 import { StatCard } from '@/components/StatCard';
 import { formatSolveTime, formatWinRate } from '@/lib/format';
 import type { CubeType } from '@/types/cube';
-import type { UserRating } from '@/types/leaderboard';
+import { CUBE_TYPE_LABEL, type UserRating } from '@/types/leaderboard';
 
 export default function HomePage() {
   const { user } = useAuth();
@@ -23,13 +25,16 @@ export default function HomePage() {
       <AppHeader />
 
       <main className="mx-auto max-w-6xl px-4 py-8">
-        <HeroCard isLoggedIn={Boolean(user)} />
+        <HeroCard isLoggedIn={Boolean(user)} cubeType={cubeType} onCubeTypeChange={setCubeType} />
 
         {user && (
           <>
             <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
-              <h2 className="text-sm font-semibold text-slate-300">สถิติของฉัน</h2>
-              <CubeTypePicker value={cubeType} onChange={setCubeType} />
+              <h2 className="text-sm font-semibold text-slate-300">
+                สถิติของฉัน · {CUBE_TYPE_LABEL[cubeType]}
+              </h2>
+              {/* ช่องเลือกประเภทมีตัวเดียวอยู่ในการ์ดด้านบน — คุมทั้งคิวจับคู่และตัวเลขชุดนี้ */}
+              <p className="text-xs text-slate-500">เปลี่ยนประเภทได้ที่การ์ดด้านบน</p>
             </div>
 
             <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -72,7 +77,23 @@ export default function HomePage() {
   );
 }
 
-function HeroCard({ isLoggedIn }: { isLoggedIn: boolean }) {
+interface HeroCardProps {
+  isLoggedIn: boolean;
+  cubeType: CubeType;
+  onCubeTypeChange: (value: CubeType) => void;
+}
+
+/**
+ * การ์ดหลักของหน้าแรก (`design/HomePage.png` + `HomePage - Matching.png`)
+ *
+ * ปุ่ม “จับคู่” สลับเป็น “ยกเลิกการจับคู่” ระหว่างรอคิว แล้วมี `QueuePanel` บอกสถานะอยู่ใต้ปุ่ม
+ * — ไม่ได้แยกเป็นหน้า `/queue` ต่างหาก เพราะดีไซน์วางไว้ในการ์ดนี้ และการเปลี่ยนหน้าไม่ได้
+ * ทำให้คิวมั่นคงขึ้นเลย (คิวเป็นของ socket ไม่ใช่ของหน้า — ADR-040 ข้อ 1)
+ */
+function HeroCard({ isLoggedIn, cubeType, onCubeTypeChange }: HeroCardProps) {
+  const queue = useQueue();
+  const queuing = queue.phase === 'queued';
+
   return (
     <section className="relative overflow-hidden rounded-2xl border border-line bg-navy-850">
       <div
@@ -92,10 +113,42 @@ function HeroCard({ isLoggedIn }: { isLoggedIn: boolean }) {
             แก้ปัญหาให้เร็วที่สุดเพื่อเก็บสะสมแต้ม และไต่ขึ้นสู่ระดับที่สูงกว่า
           </p>
 
-          <div className="mt-8 flex flex-wrap gap-3">
-            {isLoggedIn ? (
-              <>
-                <ComingSoonButton primary label="จับคู่" phase="เฟส 5" />
+          {isLoggedIn ? (
+            <>
+              <div className="mt-7">
+                <p className="text-xs text-slate-500">ประเภทรูบิคที่จะแข่ง</p>
+                <div className="mt-2">
+                  {/* เปลี่ยนประเภทระหว่างอยู่ในคิวไม่ได้ — server ตอบ `E_ALREADY_IN_QUEUE`
+                      ต้อง `queue:leave` ก่อน (socket-events.md ข้อ 4) */}
+                  <CubeTypePicker
+                    value={cubeType}
+                    onChange={onCubeTypeChange}
+                    disabled={queuing}
+                    disabledHint="ออกจากคิวก่อนจึงจะเปลี่ยนประเภทได้"
+                  />
+                </div>
+              </div>
+
+              <div className="mt-5 flex flex-wrap gap-3">
+                {queuing ? (
+                  <button
+                    type="button"
+                    disabled={queue.busy}
+                    onClick={() => void queue.leave()}
+                    className="rounded-xl border border-line bg-navy-800 px-5 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-navy-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    ✕ ยกเลิกการจับคู่
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={queue.busy}
+                    onClick={() => void queue.join(cubeType)}
+                    className="rounded-xl bg-brand-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-brand-500/40"
+                  >
+                    จับคู่
+                  </button>
+                )}
                 <Link
                   to="/practice"
                   className="rounded-xl border border-line bg-navy-800 px-5 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-navy-700"
@@ -114,24 +167,26 @@ function HeroCard({ isLoggedIn }: { isLoggedIn: boolean }) {
                 >
                   ใส่เลขห้อง
                 </Link>
-              </>
-            ) : (
-              <>
-                <Link
-                  to="/register"
-                  className="rounded-xl bg-brand-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-600"
-                >
-                  สมัครสมาชิก
-                </Link>
-                <Link
-                  to="/login"
-                  className="rounded-xl border border-line bg-navy-800 px-5 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-navy-700"
-                >
-                  เข้าสู่ระบบ
-                </Link>
-              </>
-            )}
-          </div>
+              </div>
+
+              <QueuePanel />
+            </>
+          ) : (
+            <div className="mt-8 flex flex-wrap gap-3">
+              <Link
+                to="/register"
+                className="rounded-xl bg-brand-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-600"
+              >
+                สมัครสมาชิก
+              </Link>
+              <Link
+                to="/login"
+                className="rounded-xl border border-line bg-navy-800 px-5 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-navy-700"
+              >
+                เข้าสู่ระบบ
+              </Link>
+            </div>
+          )}
         </div>
 
         <div className="grid shrink-0 place-items-center lg:w-80">
@@ -139,30 +194,6 @@ function HeroCard({ isLoggedIn }: { isLoggedIn: boolean }) {
         </div>
       </div>
     </section>
-  );
-}
-
-/** ปุ่มตามดีไซน์ที่หน้าปลายทางยังไม่ถูกสร้าง — กดไม่ได้ แต่บอกชัดว่าจะมาเมื่อไหร่ */
-function ComingSoonButton({
-  label,
-  phase,
-  primary,
-}: {
-  label: string;
-  phase: string;
-  primary?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      disabled
-      title={`ยังไม่เปิดใช้งาน — จะมาใน${phase}`}
-      className={`cursor-not-allowed rounded-xl px-5 py-2.5 text-sm font-semibold ${
-        primary ? 'bg-brand-500/40 text-white/70' : 'border border-line bg-navy-800 text-slate-500'
-      }`}
-    >
-      {label}
-    </button>
   );
 }
 
@@ -176,7 +207,7 @@ function MatchHistoryCard() {
       <div className="border-t border-line-soft px-5 py-10 text-center">
         <p className="text-sm text-slate-500">ยังไม่มีประวัติการเล่น</p>
         <p className="mt-1 text-xs text-slate-600">
-          ห้องสร้างเองไม่นับเป็นผลแข่ง — ประวัติจะเริ่มมีเมื่อเปิดห้องแข่งขันในเฟส 5
+          ห้องแข่งขันบันทึกผลลง DB แล้ว — หน้ารายการนี้ต่อกับ `GET /users/:id/matches` ในเฟส 7
         </p>
       </div>
     </section>
