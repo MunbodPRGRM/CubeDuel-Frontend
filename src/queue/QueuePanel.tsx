@@ -16,17 +16,21 @@ const QUEUE_TIMEOUT_SECONDS = 180;
 
 export function QueuePanel() {
   const queue = useQueue();
+  /** คิวหลายคนต่างจากคิว 1v1 สองเรื่อง: หาหลายคน และไม่ใช้ช่วงคะแนนเลย (game-rules.md ข้อ 8) */
+  const multi = queue.kind === 'multiplayer';
 
   if (queue.phase === 'timeout') {
     return (
       <div className="mt-5 rounded-xl border border-gold-400/40 bg-gold-400/10 px-4 py-3 text-sm text-gold-400">
         <p className="font-semibold">
-          รอครบ {Math.round((queue.timedOutAfterMs ?? 0) / 1000)} วินาทีแล้วยังไม่เจอคู่
+          รอครบ {Math.round((queue.timedOutAfterMs ?? 0) / 1000)} วินาทีแล้ว
+          {multi ? 'ยังรวมกลุ่มไม่ครบ 3 คน' : 'ยังไม่เจอคู่'}
         </p>
         <p className="mt-1 text-xs leading-5 text-slate-400">
           ตอนนี้ยังไม่มีผู้เล่นคนอื่นรออยู่
-          {queue.cubeType ? ` ในประเภท ${CUBE_TYPE_LABEL[queue.cubeType]}` : ''} · กด “จับคู่”
-          อีกครั้งเพื่อรอต่อ หรือชวนเพื่อนเล่นในห้องสร้างเองไปก่อน
+          {queue.cubeType ? ` ในประเภท ${CUBE_TYPE_LABEL[queue.cubeType]}` : ''} · กด “
+          {multi ? 'ห้องหลายคน' : 'จับคู่'}” อีกครั้งเพื่อรอต่อ
+          หรือชวนเพื่อนเล่นในห้องสร้างเองไปก่อน
         </p>
         <button
           type="button"
@@ -51,7 +55,7 @@ export function QueuePanel() {
     <div className="mt-5">
       <p className="flex flex-wrap items-center gap-2 text-sm text-brand-400">
         <span className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-brand-500/30 border-t-brand-400" />
-        กำลังค้นหาผู้เล่น
+        {multi ? 'กำลังรวมกลุ่มผู้เล่น 3–4 คน' : 'กำลังค้นหาผู้เล่น'}
         <QueueWaitTime queuedAtTs={queue.queuedAtTs} className="tabular font-semibold" />
         <span className="text-slate-500">วินาที</span>
       </p>
@@ -63,12 +67,15 @@ export function QueuePanel() {
             <dd className="text-slate-300">{CUBE_TYPE_LABEL[queue.cubeType]}</dd>
           </div>
         )}
-        <div className="flex gap-1.5">
-          <dt>ช่วงคะแนนที่รับ</dt>
-          <dd className="tabular text-slate-300">
-            {queue.eloWindow === null ? 'ไม่จำกัดแล้ว' : `±${queue.eloWindow}`}
-          </dd>
-        </div>
+        {/* คิวหลายคนจับตามลำดับเข้าคิวล้วน ๆ — โชว์ "±ไม่จำกัด" จะชวนเข้าใจผิดว่ามีเกณฑ์ */}
+        {!multi && (
+          <div className="flex gap-1.5">
+            <dt>ช่วงคะแนนที่รับ</dt>
+            <dd className="tabular text-slate-300">
+              {queue.eloWindow === null ? 'ไม่จำกัดแล้ว' : `±${queue.eloWindow}`}
+            </dd>
+          </div>
+        )}
         <div className="flex gap-1.5">
           <dt>คนในคิวประเภทนี้</dt>
           <dd className="tabular text-slate-300">{queue.playersInQueue} คน</dd>
@@ -80,8 +87,10 @@ export function QueuePanel() {
       </dl>
 
       <p className="mt-2 text-xs leading-5 text-slate-600">
-        ยิ่งรอนาน ระบบยิ่งขยายช่วงคะแนนให้กว้างขึ้นเอง · ปิดหน้านี้หรือหลุดการเชื่อมต่อเมื่อไหร่ =
-        ออกจากคิวทันที
+        {multi
+          ? 'ครบ 4 คนเริ่มทันที · ถ้ามี 3 คนและรอครบ 60 วินาที ระบบจะเริ่มให้ด้วย 3 คน · ไม่ใช้ช่วงคะแนน จับตามลำดับเข้าคิว'
+          : 'ยิ่งรอนาน ระบบยิ่งขยายช่วงคะแนนให้กว้างขึ้นเอง'}{' '}
+        · ปิดหน้านี้หรือหลุดการเชื่อมต่อเมื่อไหร่ = ออกจากคิวทันที
       </p>
     </div>
   );

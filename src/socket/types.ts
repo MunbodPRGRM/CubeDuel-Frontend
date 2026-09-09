@@ -79,11 +79,23 @@ export interface RoomSnapshot {
   /** เวลาที่เริ่มจับเวลา — มีค่าตั้งแต่ SOLVING */
   serverStartTs: number | null;
   /**
-   * แถว `Match` ของรอบล่าสุดในห้องนี้ — `null` จนกว่ารอบแรกจะจบและบันทึกสำเร็จ
-   * ใช้เปิดผลย้อนหลังด้วย `GET /matches/:matchId` ตอนไม่ได้รับ `match:finished` (ADR-040 ข้อ 5)
+   * แถวผลของรอบล่าสุดในห้องนี้ — `null` จนกว่ารอบแรกจะจบและบันทึกสำเร็จ
+   * ใช้เปิดผลย้อนหลังตอนไม่ได้รับ `match:finished` (ADR-040 ข้อ 5)
    */
   matchId: number | null;
+  /** `matchId` เป็นเลขของตารางไหน — `null` เมื่อ `matchId` เป็น `null` (ADR-044 ข้อ 1) */
+  matchKind: MatchKind | null;
 }
+
+/**
+ * ตารางที่เก็บผลของรอบนั้น — **`match_id` กับ `multiplayer_match_id` ชนกันได้ตลอด**
+ * เพราะเป็น auto-increment คนละตัว · `'1v1'` อ่านที่ `GET /matches/:matchId`
+ * `'multiplayer'` อ่านที่ `GET /multiplayer-matches/:multiplayerMatchId` (ADR-044 ข้อ 1)
+ *
+ * ⚠️ **ห้ามเดาจาก `roomKind` เอง** — ห้องหลายคนที่จบด้วยผู้เล่นไม่ถึง 3 คนไม่ได้บันทึกลง
+ * ตารางนั้น เดาผิดแล้วผู้เล่นจะเห็นผลแมตช์ของคนอื่นโดยไม่มีอะไรฟ้อง
+ */
+export type MatchKind = '1v1' | 'multiplayer';
 
 // ---------------------------------------------------------------- error + ack
 
@@ -145,6 +157,12 @@ export interface QueueLeaveResult {
   left: boolean;
 }
 export interface QueueStatusPayload {
+  /**
+   * ช่องคิวที่กำลังรออยู่ — **client จำเองไม่ได้** เพราะ server พาเข้าคิวเองได้เมื่อห้องยุบ
+   * ก่อนเริ่มจับเวลา (ADR-039 ข้อ 6 · ADR-044 ข้อ 2)
+   */
+  kind: QueueKind;
+  cubeType: CubeType;
   waitedMs: number;
   /**
    * null = ไม่จำกัดช่วงคะแนน — คิว 1v1 ที่รอเกิน 120 วิ (game-rules.md ข้อ 8)
@@ -231,6 +249,8 @@ export interface MatchResultEntry {
 export interface MatchResult {
   /** null = ห้องที่ไม่บันทึก DB */
   matchId: number | null;
+  /** `matchId` เป็นเลขของตารางไหน — `null` เมื่อ `matchId` เป็น `null` (ADR-044 ข้อ 1) */
+  matchKind: MatchKind | null;
   roomKind: RoomKind;
   cubeType: CubeType;
   scramble: string;

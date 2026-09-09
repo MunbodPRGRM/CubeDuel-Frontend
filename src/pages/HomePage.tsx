@@ -93,6 +93,11 @@ interface HeroCardProps {
 function HeroCard({ isLoggedIn, cubeType, onCubeTypeChange }: HeroCardProps) {
   const queue = useQueue();
   const queuing = queue.phase === 'queued';
+  /**
+   * อยู่ได้ช่องคิวเดียวเท่านั้น (`E_ALREADY_IN_QUEUE`) — ระหว่างรอจึงเหลือปุ่มเดียวคือ
+   * "ยกเลิก" ของช่องที่รออยู่จริง ไม่ใช่ปุ่มที่กดค้างไว้ (server เป็นคนบอกว่าช่องไหน)
+   */
+  const queuingMulti = queuing && queue.kind === 'multiplayer';
 
   return (
     <section className="relative overflow-hidden rounded-2xl border border-line bg-navy-850">
@@ -137,17 +142,28 @@ function HeroCard({ isLoggedIn, cubeType, onCubeTypeChange }: HeroCardProps) {
                     onClick={() => void queue.leave()}
                     className="rounded-xl border border-line bg-navy-800 px-5 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-navy-700 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    ✕ ยกเลิกการจับคู่
+                    {queuingMulti ? '✕ ยกเลิกการรวมกลุ่ม' : '✕ ยกเลิกการจับคู่'}
                   </button>
                 ) : (
-                  <button
-                    type="button"
-                    disabled={queue.busy}
-                    onClick={() => void queue.join(cubeType)}
-                    className="rounded-xl bg-brand-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-brand-500/40"
-                  >
-                    จับคู่
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      disabled={queue.busy}
+                      onClick={() => void queue.join(cubeType, 'competitive')}
+                      className="rounded-xl bg-brand-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-brand-500/40"
+                    >
+                      จับคู่
+                    </button>
+                    {/* คิวคนละช่องกับ 1v1 โดยสิ้นเชิง — ไม่ใช่ตัวเลือกของปุ่มเดิม (เฟส 6) */}
+                    <button
+                      type="button"
+                      disabled={queue.busy}
+                      onClick={() => void queue.join(cubeType, 'multiplayer')}
+                      className="rounded-xl border border-brand-500/60 bg-navy-800 px-5 py-2.5 text-sm font-semibold text-brand-300 transition hover:bg-navy-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      ห้องหลายคน (3–4)
+                    </button>
+                  </>
                 )}
                 <Link
                   to="/practice"

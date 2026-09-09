@@ -11,10 +11,11 @@ import type { RoomCreateResult } from '@/socket/types';
 import type { CubeType } from '@/types/cube';
 
 /**
- * สร้างห้องสร้างเอง 1v1 แล้วเข้าห้องทันที (`socket-events.md` ข้อ 5)
+ * สร้างห้องที่มีรหัสห้อง แล้วเข้าห้องทันที (`socket-events.md` ข้อ 5)
  *
- * ห้องผู้เล่นหลายคน 3–4 คนเป็นงานเฟส 6 — ฝั่ง server ยังตอบ `E_VALIDATION` อยู่
- * จึงยังไม่มีช่องให้เลือกจำนวนผู้เล่นที่นี่
+ * รองรับสองขนาด: **2 คน** (`kind: 'custom'` — 1 ต่อ 1 มีผู้ชมได้) กับ **3–4 คน**
+ * (`kind: 'multiplayer'` — ไม่มีผู้ชม) · ทั้งคู่เป็นห้องที่ **ไม่ปรับคะแนน ELO** เพราะ
+ * ห้องที่เข้าด้วยรหัสเป็นโหมด `custom` เสมอ ไม่มีฟิลด์ให้ client เลือกเอง (ADR-043 ข้อ 5)
  */
 export default function CreateRoomPage() {
   return (
@@ -29,11 +30,21 @@ export default function CreateRoomPage() {
   );
 }
 
+/** `kind` กับ `maxPlayers` ต้องเข้าคู่กัน ไม่งั้น server ตอบ `E_VALIDATION` */
+const SIZES = [
+  { players: 2, kind: 'custom', label: '2 คน', note: '1 ต่อ 1 · มีผู้ชมได้' },
+  { players: 3, kind: 'multiplayer', label: '3 คน', note: 'ไม่มีผู้ชม' },
+  { players: 4, kind: 'multiplayer', label: '4 คน', note: 'ไม่มีผู้ชม' },
+] as const;
+
+type RoomSize = (typeof SIZES)[number];
+
 function CreateRoomForm() {
   const navigate = useNavigate();
   const { socket } = useSocket();
   const queue = useQueue();
   const [cubeType, setCubeType] = useState<CubeType>('3x3x3');
+  const [size, setSize] = useState<RoomSize>(SIZES[0]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -47,8 +58,8 @@ function CreateRoomForm() {
       await queue.leave();
       const result = await emitAck<RoomCreateResult>(socket, 'room:create', {
         cubeType,
-        kind: 'custom',
-        maxPlayers: 2,
+        kind: size.kind,
+        maxPlayers: size.players,
       });
       // server พาเราเข้าห้องให้แล้วตั้งแต่ตอน create — หน้าห้องแค่ขอ snapshot ต่อ
       navigate(`/room/${result.roomId}`, { replace: true });
@@ -62,7 +73,7 @@ function CreateRoomForm() {
     <section className="rounded-2xl border border-line bg-navy-850 px-6 py-7 sm:px-8">
       <h1 className="text-xl font-bold text-white">สร้างห้อง</h1>
       <p className="mt-1.5 text-sm text-slate-400">
-        ห้องแบบ 1 ต่อ 1 สำหรับเล่นกับเพื่อน — แชร์รหัสห้องให้อีกฝ่ายกด “ใส่เลขห้อง” เพื่อเข้ามา
+        ห้องสำหรับเล่นกับเพื่อน — แชร์รหัสห้องให้อีกฝ่ายกด “ใส่เลขห้อง” เพื่อเข้ามา
       </p>
 
       <div className="mt-7">
@@ -75,10 +86,40 @@ function CreateRoomForm() {
         </p>
       </div>
 
+      <div className="mt-6">
+        <p className="text-sm text-slate-300">จำนวนผู้เล่น</p>
+        <div className="mt-2 grid grid-cols-3 gap-2">
+          {SIZES.map((option) => {
+            const active = option.players === size.players;
+            return (
+              <button
+                key={option.players}
+                type="button"
+                onClick={() => setSize(option)}
+                aria-pressed={active}
+                className={`rounded-xl border px-3 py-2.5 text-center transition ${
+                  active
+                    ? 'border-brand-500 bg-brand-500/10 text-brand-300'
+                    : 'border-line bg-navy-800 text-slate-300 hover:bg-navy-700'
+                }`}
+              >
+                <span className="block text-sm font-semibold">{option.label}</span>
+                <span className="mt-0.5 block text-[11px] text-slate-500">{option.note}</span>
+              </button>
+            );
+          })}
+        </div>
+        <p className="mt-2 text-xs text-slate-500">
+          ห้องเริ่มได้เมื่อผู้เล่นครบตามจำนวนที่เลือก · หัวห้องเป็นคนกดเริ่ม
+        </p>
+      </div>
+
       <dl className="mt-6 grid grid-cols-2 gap-3 rounded-xl border border-line-soft bg-navy-900/60 px-4 py-3.5 text-sm">
         <div>
-          <dt className="text-xs text-slate-500">จำนวนผู้เล่น</dt>
-          <dd className="mt-0.5 text-slate-200">2 คน (1 ต่อ 1)</dd>
+          <dt className="text-xs text-slate-500">รูปแบบห้อง</dt>
+          <dd className="mt-0.5 text-slate-200">
+            {size.players === 2 ? '1 ต่อ 1 (มีผู้ชมได้)' : `${size.players} คน (ไม่มีผู้ชม)`}
+          </dd>
         </div>
         <div>
           <dt className="text-xs text-slate-500">ผลต่อคะแนน ELO</dt>

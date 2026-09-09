@@ -25,11 +25,14 @@ import {
 import { CUBE_TYPE_LABEL } from '@/types/leaderboard';
 
 /**
- * ห้องสร้างเอง 1v1 — ล็อบบี้ + หน้าจอแข่ง + หน้าผลการแข่งขัน อยู่ในหน้าเดียวกัน
+ * ห้องแข่งทุกชนิด (1v1 และ 3–4 คน) — ล็อบบี้ + หน้าจอแข่ง + หน้าผลการแข่งขัน อยู่ในหน้าเดียวกัน
  *
  * โครงสามคอลัมน์ตามภาพ `design/Match - Join.png` / `Match - Playing.png` / `Match - Result.png`
  * ทั้งสามภาพใช้โครงเดียวกันเป๊ะ ต่างกันแค่เนื้อในคอลัมน์กลาง จึงไม่แยกเป็นคนละ route
- * (ADR-037 ข้อ 1) — เปลี่ยน route กลางแมตช์ = คิวบ์สองลูกถูก unmount แล้วสร้าง WebGL ใหม่
+ * (ADR-037 ข้อ 1) — เปลี่ยน route กลางแมตช์ = คิวบ์ถูก unmount แล้วสร้าง WebGL ใหม่
+ *
+ * ห้อง 3–4 คนใช้โครงเดียวกันนี้: **คิวบ์ที่ยึด 1 ตัวทางซ้าย + แถบคู่แข่ง N−1 ตัวทางขวา**
+ * ห้อง 1v1 คือกรณีที่แถบมีตัวเดียว จึงได้ DOM ชุดเดิมทุกตัว (ADR-041 ข้อ 4 · ADR-044 ข้อ 3)
  */
 export default function RoomPage() {
   const { roomId: roomIdParam } = useParams<{ roomId: string }>();
@@ -64,19 +67,32 @@ function RoomView({ roomId }: { roomId: number }) {
   // ยังไม่เคยได้ snapshot แรก — แยกให้ชัดว่าติดที่การเชื่อมต่อหรือแค่รอ ack
   if (!snapshot) return socketStatus === 'error' ? <ConnectionErrorCard /> : <PageSpinner />;
 
-  // ผู้ชมไม่มีที่นั่ง จึงเรียงผู้เล่นตามลำดับที่เข้าห้องแทนที่จะยึด "ฝั่งเรา / ฝั่งคู่แข่ง"
-  const leftPlayer = isSpectator ? (snapshot.players[0] ?? null) : me;
-  const rightPlayer = isSpectator ? (snapshot.players[1] ?? null) : (others[0] ?? null);
+  /**
+   * คิวบ์ก้อนใหญ่ทางซ้าย = ที่นั่งของเรา · **ผู้ชมไม่มีที่นั่ง จึงยึด `players[0]` แทน**
+   * ซึ่งตรงกับพฤติกรรมเดิมของห้อง 1v1 ที่ผู้ชมเห็น `players[0]` ซ้าย `players[1]` ขวา
+   */
+  const focusPlayer = isSpectator ? (snapshot.players[0] ?? null) : me;
+  const rivals = isSpectator ? snapshot.players.slice(1) : others;
+  /** ห้องที่ยังไม่ครบต้องเห็นช่องว่างด้วย ไม่งั้นล็อบบี้ 4 คนจะดูเหมือนห้องเล็กลง */
+  const rivalSlots: (PlayerPublic | null)[] = [...rivals];
+  while (rivalSlots.length < Math.max(1, snapshot.maxPlayers - 1)) rivalSlots.push(null);
+  const compactRivals = rivalSlots.length > 1;
 
   const leave = async () => {
     if (await room.leave()) navigate('/', { replace: true });
   };
 
-  /** ห้องแข่งขันไม่มี "เล่นอีกครั้ง" — คู่แข่งคนใหม่ต้องมาจากคิว (ADR-040 ข้อ 4) */
+  /**
+   * ห้องที่มาจากคิวไม่มี "เล่นอีกครั้ง" — คู่แข่งคนใหม่ต้องมาจากคิว (ADR-040 ข้อ 4 · ADR-043 ข้อ 4)
+   * กลับเข้า **ช่องคิวเดิม** ที่พาเรามาที่ห้องนี้ ไม่ใช่ช่อง 1v1 เสมอไป
+   */
   const requeue = async () => {
     if (!(await room.leave())) return;
     navigate('/', { replace: true });
-    await queue.join(snapshot.cubeType);
+    await queue.join(
+      snapshot.cubeType,
+      snapshot.roomKind === 'multiplayer' ? 'multiplayer' : 'competitive',
+    );
   };
 
   return (
@@ -88,21 +104,21 @@ function RoomView({ roomId }: { roomId: number }) {
       )}
 
       <PlayerCubePanel
-        player={leftPlayer}
+        player={focusPlayer}
         snapshot={snapshot}
-        isMe={!isSpectator && leftPlayer?.userId === me?.userId}
+        isMe={!isSpectator && focusPlayer?.userId === me?.userId}
         emptyLabel={isSpectator ? 'รอผู้เล่นเข้าห้อง' : 'ที่นั่งของคุณ'}
         match={match}
       />
 
       <div className="flex flex-col gap-4">
-        <RoomHeaderCard snapshot={snapshot} left={leftPlayer} right={rightPlayer} />
+        <RoomHeaderCard snapshot={snapshot} focus={focusPlayer} rivals={rivals} />
         <MatchPanel
           snapshot={snapshot}
           match={match}
           result={result}
           me={me}
-          focusPlayer={isSpectator ? leftPlayer : me}
+          focusPlayer={focusPlayer}
           isSpectator={isSpectator}
           isHost={isHost}
           roomBusy={room.busy}
@@ -114,13 +130,27 @@ function RoomView({ roomId }: { roomId: number }) {
         />
       </div>
 
-      <PlayerCubePanel
-        player={rightPlayer}
-        snapshot={snapshot}
-        isMe={!isSpectator && rightPlayer?.userId === me?.userId}
-        emptyLabel="รอผู้เล่นเข้าห้อง"
-        match={match}
-      />
+      {/*
+        แถบคู่แข่ง — ห้อง 1v1 มีแผงเดียว จึงได้กล่องเดิมที่ล็อกความสูงเอง (`compact = false`)
+        ห้อง 3–4 คนให้คอลัมน์นี้ล็อกความสูงแทน แล้วหารให้แผงย่อยเท่า ๆ กัน (ADR-044 ข้อ 3)
+      */}
+      <div
+        className={
+          compactRivals ? 'flex h-[30rem] flex-col gap-3 lg:h-[calc(100vh-8rem)]' : undefined
+        }
+      >
+        {rivalSlots.map((rival, index) => (
+          <PlayerCubePanel
+            key={rival?.userId ?? `empty-${index}`}
+            player={rival}
+            snapshot={snapshot}
+            isMe={false}
+            emptyLabel="รอผู้เล่นเข้าห้อง"
+            match={match}
+            compact={compactRivals}
+          />
+        ))}
+      </div>
     </div>
   );
 }
@@ -166,10 +196,14 @@ function MatchPanel({
   const finished = state === 'FINISHED';
   const racing = state === 'SOLVING' || state === 'FINAL_COUNTDOWN';
   /**
-   * ห้องแข่งขันเดินเองทั้งหมด — ไม่มี host ไม่มีปุ่มเริ่ม ไม่มี "พร้อม" และเล่นซ้ำในห้องเดิมไม่ได้
-   * (`socket-events.md` ข้อ 4 · ADR-039 ข้อ 5) `isHost` ใน snapshot ของห้องนี้ไม่มีความหมาย
+   * **ห้องที่มาจากคิว** (แข่งขัน 1v1 + หลายคนโหมด auto) เดินเองทั้งหมด — ไม่มี host
+   * ไม่มีปุ่มเริ่ม ไม่มี "พร้อม" และเล่นซ้ำในห้องเดิมไม่ได้ เพราะสองห้องนี้ปรับคะแนนจริง
+   * ถ้าเล่นซ้ำได้จะกลายเป็นช่องปั๊มคะแนน (`socket-events.md` ข้อ 4 · ADR-043 ข้อ 4)
+   * — ตรงกับ `isQueueRoom()` ฝั่ง server เป๊ะ · `isHost` ของห้องพวกนี้ไม่มีความหมาย
    */
-  const rated = snapshot.roomKind === 'competitive';
+  const fromQueue =
+    snapshot.roomKind === 'competitive' ||
+    (snapshot.roomKind === 'multiplayer' && snapshot.roomMode === 'auto');
 
   const myProgress = me ? findProgress(snapshot, me.userId) : null;
   const focusProgress = focusPlayer ? findProgress(snapshot, focusPlayer.userId) : null;
@@ -178,7 +212,7 @@ function MatchPanel({
   const roomIsFull = snapshot.players.length >= snapshot.maxPlayers;
   const everyoneConnected = snapshot.players.every((player) => player.connected);
   const canStart =
-    !rated &&
+    !fromQueue &&
     isHost &&
     (inLobby || finished) &&
     roomIsFull &&
@@ -196,7 +230,7 @@ function MatchPanel({
       <MatchClockBlock snapshot={snapshot} progress={focusProgress} />
 
       <p className="mt-5 min-h-[3.5rem] text-sm leading-6 text-slate-400">
-        {hintText(snapshot, roomIsFull, isSpectator, rated)}
+        {hintText(snapshot, roomIsFull, isSpectator, fromQueue)}
       </p>
 
       <ScrambleBox scramble={snapshot.scramble} />
@@ -224,8 +258,8 @@ function MatchPanel({
           </p>
         ) : (
           <>
-            {rated ? (
-              // ห้องแข่งขัน: มีแค่ "ยอมแพ้" ระหว่างแข่ง กับ "หาคู่ใหม่" ตอนจบ
+            {fromQueue ? (
+              // ห้องจากคิว: มีแค่ "ยอมแพ้" ระหว่างแข่ง กับ "เข้าคิวใหม่" ตอนจบ
               <div className="grid gap-2.5">
                 {racing ? (
                   <SurrenderButton
@@ -240,7 +274,7 @@ function MatchPanel({
                       onClick={() => void onRequeue()}
                       className="rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-brand-500/40"
                     >
-                      หาคู่ใหม่
+                      {snapshot.roomKind === 'multiplayer' ? 'เข้าคิวรอบใหม่' : 'หาคู่ใหม่'}
                     </button>
                   )
                 )}
@@ -298,7 +332,10 @@ function MatchPanel({
       <dl className="mt-5 space-y-1.5 text-left text-sm">
         <Row label="ประเภทรูบิค" value={CUBE_TYPE_LABEL[snapshot.cubeType]} />
         <Row label="ผู้เล่น" value={`${snapshot.players.length}/${snapshot.maxPlayers} คน`} />
-        <Row label="ผู้ชม" value={`${snapshot.spectatorCount} คน`} />
+        {/* ห้องผู้เล่นหลายคนไม่รองรับผู้ชม (game-rules.md ข้อ 9) — โชว์ "0 คน" ชวนเข้าใจผิด */}
+        {snapshot.roomKind !== 'multiplayer' && (
+          <Row label="ผู้ชม" value={`${snapshot.spectatorCount} คน`} />
+        )}
       </dl>
     </section>
   );
@@ -361,22 +398,54 @@ function MatchClockBlock({
   );
 }
 
+/** ที่มาของชื่อบนแถวผล — คนที่ออกจากห้องไปแล้วเหลือแค่ `username` จากผลแมตช์ */
+type NameSource = Pick<PlayerPublic, 'username' | 'nickname'>;
+
 /**
  * "NTK ได้แต้ม +15" ตามภาพ `design/Match - Result.png`
- * ห้องแข่งขันเพิ่มคะแนน **ก่อน → หลัง** ต่อท้ายด้วย เพราะเป็นตัวเลขที่ผู้เล่นมาลุ้นจริง ๆ
+ * ห้องที่ปรับคะแนนเพิ่มคะแนน **ก่อน → หลัง** ต่อท้ายด้วย เพราะเป็นตัวเลขที่ผู้เล่นมาลุ้นจริง ๆ
+ *
+ * ห้อง 3–4 คนเรียงตาม `rankNo` แล้วเติมเลขอันดับข้างหน้า **เมื่อมีแถวเกิน 2 แถวเท่านั้น**
+ * เพราะที่ 4 คนต้องรู้ว่าใครที่ 1–4 ส่วนห้อง 1v1 ต้องได้หน้าตาเดิมเป๊ะ (ADR-044 ข้อ 5)
  */
 function EloRows({ snapshot, result }: { snapshot: RoomSnapshot; result: MatchResult | null }) {
-  // ห้องสร้างเองไม่ปรับคะแนนเลย (CLAUDE.md ข้อ 7) — ห้องแข่งขันปรับจริงตั้งแต่เฟส 5
-  const ratingApplied = result ? result.ratingApplied : snapshot.roomKind === 'competitive';
+  // ห้องสร้างเองไม่ปรับคะแนนเลย (CLAUDE.md ข้อ 7) — ห้องแข่งขัน + หลายคนโหมด auto ปรับจริง
+  const ratingApplied = result
+    ? result.ratingApplied
+    : snapshot.roomKind === 'competitive' ||
+      (snapshot.roomKind === 'multiplayer' && snapshot.roomMode === 'auto');
+
+  /**
+   * ก่อนจบรอบยังไม่มีอันดับให้เรียง จึงเรียงตามลำดับที่นั่งไปก่อน
+   * พอมีผลแล้วยึดลำดับของ `result.results` ซึ่ง server เรียงตาม `rankNo` มาให้แล้ว
+   */
+  const rows: { userId: number; entry: MatchResultEntry | null; name: NameSource }[] = result
+    ? result.results.map((entry) => ({
+        userId: entry.userId,
+        entry,
+        // คนที่ออกจากห้องไปแล้วหลังจบรอบยังต้องมีชื่อในตาราง — ใช้ username จากผลแทน
+        name: snapshot.players.find((p) => p.userId === entry.userId) ?? {
+          username: entry.username,
+          nickname: null,
+        },
+      }))
+    : snapshot.players.map((player) => ({ userId: player.userId, entry: null, name: player }));
+
+  // นับจากแถวที่จะวาดจริง — คนที่ออกจากห้องหลังจบรอบยังมีแถว แต่หายไปจาก `snapshot.players`
+  const showRank = rows.length > 2;
 
   return (
     <dl className="mt-5 space-y-1.5 text-left text-sm">
-      {snapshot.players.map((player) => {
-        const entry = result?.results.find((row) => row.userId === player.userId);
+      {rows.map(({ userId, entry, name }) => {
         const change = entry?.eloChange ?? null;
         return (
-          <div key={player.userId} className="flex items-center justify-between gap-3">
-            <dt className="truncate text-slate-500">{playerName(player)} ได้แต้ม</dt>
+          <div key={userId} className="flex items-center justify-between gap-3">
+            <dt className="truncate text-slate-500">
+              {showRank && entry && (
+                <span className="tabular mr-1.5 text-slate-400">#{entry.rankNo}</span>
+              )}
+              {playerName(name)} ได้แต้ม
+            </dt>
             <dd className="flex shrink-0 items-center gap-2">
               {ratingApplied && entry?.eloBefore != null && entry.eloAfter != null && (
                 <span className="tabular text-xs text-slate-500">
@@ -474,8 +543,9 @@ function hintText(
   snapshot: RoomSnapshot,
   roomIsFull: boolean,
   isSpectator: boolean,
-  rated: boolean,
+  fromQueue: boolean,
 ): string {
+  const many = snapshot.maxPlayers > 2;
   switch (snapshot.state) {
     case 'WAITING':
       if (isSpectator) return 'กำลังรอหัวห้องเริ่มการแข่งขัน';
@@ -483,7 +553,9 @@ function hintText(
         ? 'ผู้เล่นครบแล้ว รอหัวห้องกดเริ่มการแข่งขัน'
         : `รอผู้เล่นอีก ${snapshot.maxPlayers - snapshot.players.length} คน · ส่งรหัสห้องด้านบนให้เพื่อนกด “ใส่เลขห้อง”`;
     case 'MATCHED':
-      return 'เจอคู่แข่งแล้ว · ดูคะแนนของอีกฝ่ายไว้ แล้วระบบจะเริ่มให้เองในอีก 2 วินาที';
+      return many
+        ? `รวมกลุ่มได้ ${snapshot.players.length} คนแล้ว · ระบบจะเริ่มให้เองในอีก 2 วินาที`
+        : 'เจอคู่แข่งแล้ว · ดูคะแนนของอีกฝ่ายไว้ แล้วระบบจะเริ่มให้เองในอีก 2 วินาที';
     case 'LOADING':
       return 'กำลังโหลดคิวบ์ให้ทุกคน · เริ่มพร้อมกันเมื่อทุกเครื่องพร้อม';
     case 'COUNTDOWN':
@@ -495,8 +567,10 @@ function hintText(
     case 'FINAL_COUNTDOWN':
       return 'มีผู้เล่นแก้เสร็จแล้ว · แก้ไม่ทันภายใน 10 วินาทีนี้จะเป็น DNF';
     case 'FINISHED':
-      return rated
-        ? 'จบรอบแล้ว · คะแนน ELO ถูกปรับให้เรียบร้อย — กด “หาคู่ใหม่” เพื่อเข้าคิวรอบต่อไป'
+      return fromQueue
+        ? `จบรอบแล้ว · คะแนน ELO ถูกปรับให้เรียบร้อย — กดปุ่มด้านล่างเพื่อเข้าคิวรอบต่อไป${
+            many ? ' (คะแนนคิดแบบจับทุกคู่ในห้อง)' : ''
+          }`
         : 'จบรอบแล้ว · หัวห้องกด “เล่นอีกครั้ง” เพื่อสุ่ม scramble ใหม่ในห้องเดิมได้';
     default:
       return '';
@@ -538,34 +612,51 @@ function ScrambleBox({ scramble }: { scramble: string | null }) {
 }
 
 /**
- * การ์ดหัวห้อง: ผู้เล่นสองฝั่ง + รหัสห้องตรงกลาง (กดเพื่อคัดลอก)
- * ห้องแข่งขันไม่มีรหัสห้องและเข้าด้วยรหัสไม่ได้ (ADR-039 ข้อ 5) — ช่องกลางบอกประเภทห้องแทน
+ * การ์ดหัวห้อง: เรา + รหัสห้องตรงกลาง + คู่แข่ง (กดรหัสเพื่อคัดลอก)
+ * ห้องที่มาจากคิวไม่มีรหัสห้องและเข้าด้วยรหัสไม่ได้ (ADR-039 ข้อ 5) — ช่องกลางบอกชนิดห้องแทน
+ *
+ * ห้อง 3–4 คนวางคู่แข่งเรียงกันในช่องขวาช่องเดียว — ที่ 1 คนได้ผลเหมือนของเดิมเป๊ะ
  */
 function RoomHeaderCard({
   snapshot,
-  left,
-  right,
+  focus,
+  rivals,
 }: {
   snapshot: RoomSnapshot;
-  left: PlayerPublic | null;
-  right: PlayerPublic | null;
+  focus: PlayerPublic | null;
+  rivals: PlayerPublic[];
 }) {
-  const rated = snapshot.roomKind === 'competitive';
+  const noCode = snapshot.roomCode === null;
 
   return (
     <section className="grid grid-cols-3 items-center gap-2 rounded-2xl border border-line bg-navy-850 px-4 py-5">
-      <PlayerChip player={left} />
+      <PlayerChip player={focus} />
       <div className="text-center">
-        <p className="text-xs text-slate-400">{rated ? 'ห้องแข่งขัน' : 'เลขห้อง'}</p>
-        {rated ? (
+        <p className="text-xs text-slate-400">{noCode ? roomKindLabel(snapshot) : 'เลขห้อง'}</p>
+        {noCode ? (
           <p className="mt-0.5 text-sm font-semibold text-gold-400">มีผลต่อคะแนน ELO</p>
         ) : (
           <RoomCodeButton roomCode={snapshot.roomCode} />
         )}
       </div>
-      <PlayerChip player={right} />
+      {rivals.length > 1 ? (
+        <div className="flex flex-wrap items-start justify-center gap-3">
+          {rivals.map((rival) => (
+            <PlayerChip key={rival.userId} player={rival} />
+          ))}
+        </div>
+      ) : (
+        <PlayerChip player={rivals[0] ?? null} />
+      )}
     </section>
   );
+}
+
+/** ชนิดห้องสำหรับช่องกลางของการ์ดหัวห้อง — ใช้เฉพาะห้องที่ไม่มีรหัสห้อง (มาจากคิว) */
+function roomKindLabel(snapshot: RoomSnapshot): string {
+  return snapshot.roomKind === 'multiplayer'
+    ? `ห้องผู้เล่นหลายคน ${snapshot.maxPlayers} คน`
+    : 'ห้องแข่งขัน';
 }
 
 function PlayerChip({ player }: { player: PlayerPublic | null }) {

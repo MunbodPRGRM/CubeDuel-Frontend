@@ -139,6 +139,7 @@ export class ThreeCubeView implements CubeView {
   #pivot: THREE.Group;
   #meshes: THREE.Mesh[] = [];
   #resizeObserver: ResizeObserver;
+  /** id ของเฟรมที่จองไว้แล้วยังไม่ได้วาด — `0` = ไม่มีเฟรมค้างอยู่ (ADR-044 ข้อ 4) */
   #animationFrame = 0;
 
   #scrambledPattern: KPattern;
@@ -208,6 +209,8 @@ export class ThreeCubeView implements CubeView {
     this.#scene.add(fillLight);
 
     this.#controls = new OrbitControls(this.#camera, this.#renderer.domElement);
+    // กล้องขยับ (ลากเอง หรือ damping กำลังคายตัว) = ภาพเปลี่ยน → ขอเฟรมใหม่ (ADR-044 ข้อ 4)
+    this.#controls.addEventListener('change', this.#invalidate);
     this.#controls.enableDamping = true;
     this.#controls.enablePan = false;
     this.#controls.minDistance = MIN_CAMERA_DISTANCE;
@@ -235,15 +238,44 @@ export class ThreeCubeView implements CubeView {
     // ต้องดักที่ container ในจังหวะ capture เพื่อให้ทันก่อน OrbitControls ที่ดักอยู่บน canvas
     container.addEventListener('pointerdown', this.#onPointerDown, { capture: true });
 
-    this.#tick();
+    this.#invalidate();
   }
 
   // ---------------------------------------------------------------- ฉาก
 
+  /**
+   * **ขอวาดหนึ่งเฟรม** — ตัวเดียวที่จองอนิเมชันเฟรมได้ในไฟล์นี้ (ADR-044 ข้อ 4)
+   *
+   * ของเดิมวนวาดทุกเฟรมตลอดเวลา ซึ่งที่ห้อง 4 คนคือ 4 WebGL context ที่วาดภาพนิ่งซ้ำ
+   * 60 ครั้ง/วินาทีฟรี ๆ · ตอนนี้ไม่มีลูปเดินอยู่เบื้องหลังเลย วาดเฉพาะตอนภาพเปลี่ยนจริง
+   *
+   * **ต้องเรียกทุกครั้งที่ทำให้ภาพเปลี่ยน** — ทางที่มีอยู่คือ: `'change'` ของ OrbitControls ·
+   * `#syncMeshes()` · `onUpdate` ของ GSAP · `#onPointerMove` · `#resize()`
+   * ลืมเรียกที่ไหน คิวบ์จะ**ค้าง** ไม่ใช่แค่ช้า
+   */
+  #invalidate = (): void => {
+    if (this.#disposed || this.#animationFrame !== 0) return;
+    this.#animationFrame = requestAnimationFrame(this.#tick);
+  };
+
+  /**
+   * วาดหนึ่งเฟรม แล้วจองเฟรมถัดไป**เฉพาะตอนที่ยังมีอะไรขยับอยู่จริง**
+   *
+   * damping ของกล้องไม่ต้องจองเอง เพราะ `controls.update()` ที่เรียกอยู่ตรงนี้ dispatch
+   * `'change'` ของตัวเองตราบใดที่กล้องยังขยับเกิน EPS แล้ว listener จองเฟรมถัดไปให้ —
+   * ตอนนั้น `#animationFrame` เป็น 0 ไปแล้ว (ล้างเป็นบรรทัดแรก) จึงจองติดเสมอ
+   *
+   * แต่ **GSAP กับการลากนิ้วเดินบน rAF ของตัวเอง ซึ่งอาจทำงานก่อน `#tick` ในเฟรมเดียวกัน**
+   * ตอนนั้น `#invalidate()` เจอเฟรมที่จองไว้แล้วเลยไม่ทำอะไร พอ `#tick` วาดเสร็จก็ไม่มี
+   * เฟรมค้างอยู่ ต้องรอ tick ถัดไปของ GSAP มาจองใหม่ = ได้ครึ่งเฟรมเรต (วัดได้ 32 fps
+   * ตอนหมุนคิวบ์) จึงจองต่อเองที่นี่ตลอดที่ยังมี tween หรือมือลากค้างอยู่
+   */
   #tick = (): void => {
+    this.#animationFrame = 0;
+    if (this.#disposed) return;
     this.#controls.update();
     this.#renderer.render(this.#scene, this.#camera);
-    this.#animationFrame = requestAnimationFrame(this.#tick);
+    if (this.#finishAnimation !== null || this.#gesture?.turn) this.#invalidate();
   };
 
   #resize(): void {
@@ -253,6 +285,7 @@ export class ThreeCubeView implements CubeView {
     this.#camera.aspect = width / height;
     this.#camera.updateProjectionMatrix();
     this.#renderer.setSize(width, height);
+    this.#invalidate();
   }
 
   /** บังคับให้ภาพตรงกับสถานะภายในเป๊ะ ๆ (กันทศนิยมสะสมจากอนิเมชัน — บทเรียนจากเฟส 0.5) */
@@ -282,6 +315,8 @@ export class ThreeCubeView implements CubeView {
       mesh.setRotationFromMatrix(matrix);
       mesh.updateMatrixWorld(true);
     }
+    // ทางออกร่วมของทุกคำสั่งที่ยึดสถานะทั้งก้อน — ขอเฟรมที่นี่ที่เดียวจึงครอบได้หมด
+    this.#invalidate();
   }
 
   // ---------------------------------------------------------------- การหมุน
@@ -401,8 +436,10 @@ export class ThreeCubeView implements CubeView {
         t: 1,
         duration: (this.#playingAlg ? PLAYBACK_TURN_MS : TURN_DURATION_MS) / 1000,
         ease: 'power2.inOut',
-        onUpdate: () =>
-          this.#pivot.quaternion.setFromAxisAngle(axisVector, angle * this.#progress.t),
+        onUpdate: () => {
+          this.#pivot.quaternion.setFromAxisAngle(axisVector, angle * this.#progress.t);
+          this.#invalidate();
+        },
         onComplete: finish,
       });
     });
@@ -547,6 +584,7 @@ export class ThreeCubeView implements CubeView {
     const raw = (dx * turn.screenX + dy * turn.screenY) / turn.screenLengthSq;
     turn.angle = Math.max(-turn.unit, Math.min(turn.unit, raw));
     this.#pivot.quaternion.setFromAxisAngle(turn.axis, turn.angle);
+    this.#invalidate();
   };
 
   #onPointerUp = (): void => this.#endGesture(true);
@@ -656,11 +694,13 @@ export class ThreeCubeView implements CubeView {
       t: 1,
       duration: Math.min(1, distance / turn.unit) * (SNAP_DURATION_MS / 1000),
       ease: 'power2.out',
-      onUpdate: () =>
+      onUpdate: () => {
         this.#pivot.quaternion.setFromAxisAngle(
           turn.axis,
           from + (target - from) * this.#progress.t,
-        ),
+        );
+        this.#invalidate();
+      },
       onComplete: () => this.#releasePivot(turn.pieceIds),
     });
   }
@@ -798,9 +838,11 @@ export class ThreeCubeView implements CubeView {
     this.#moveListeners.clear();
     this.#queue = [];
     gsap.killTweensOf(this.#progress);
-    cancelAnimationFrame(this.#animationFrame);
+    if (this.#animationFrame !== 0) cancelAnimationFrame(this.#animationFrame);
+    this.#animationFrame = 0;
     this.#resizeObserver.disconnect();
     this.#container.removeEventListener('pointerdown', this.#onPointerDown, { capture: true });
+    this.#controls.removeEventListener('change', this.#invalidate);
     this.#controls.dispose();
     for (const mesh of this.#meshes) mesh.geometry.dispose();
     this.#material.dispose();

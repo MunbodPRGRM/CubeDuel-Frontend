@@ -1,4 +1,5 @@
 import { createContext } from 'react';
+import type { QueueKind } from './types';
 import type { CubeType } from '@/types/cube';
 
 /**
@@ -21,9 +22,12 @@ export type QueuePhase =
 export interface QueueState {
   phase: QueuePhase;
   /**
-   * ประเภทรูบิคที่กำลังรออยู่ — `null` ได้เมื่อ server พาเรากลับเข้าคิวเอง
-   * หลังรีเฟรชหน้า (`queue:status` ไม่ได้บอกประเภทมาด้วย)
+   * ช่องคิวที่กำลังรออยู่ — `competitive` = หาคู่ 1v1 · `multiplayer` = หากลุ่ม 3–4 คน
+   * `null` เฉพาะตอน `idle` · ค่านี้มาจาก `queue:status` ของ server ไม่ใช่จำจากตอนกดเอง
+   * เพราะ server พาเรากลับเข้าคิวเองได้เมื่อห้องยุบก่อนเริ่ม (ADR-044 ข้อ 2)
    */
+  kind: QueueKind | null;
+  /** ประเภทรูบิคที่กำลังรออยู่ — `null` เฉพาะตอน `idle` (เหตุผลเดียวกับ `kind`) */
   cubeType: CubeType | null;
   /** เวลาของ **นาฬิกา server** ที่เริ่มรอ — ใช้คู่กับ `ServerClock` เท่านั้น */
   queuedAtTs: number | null;
@@ -39,8 +43,8 @@ export interface QueueContextValue extends QueueState {
   /** กำลังรอ ack ของ `queue:join` / `queue:leave` */
   busy: boolean;
   error: string | null;
-  /** คืน `true` เมื่อเข้าคิวสำเร็จ */
-  join: (cubeType: CubeType) => Promise<boolean>;
+  /** คืน `true` เมื่อเข้าคิวสำเร็จ — `kind` เลือกช่องคิว (1v1 หรือ 3–4 คน) */
+  join: (cubeType: CubeType, kind: QueueKind) => Promise<boolean>;
   leave: () => Promise<void>;
   /** ปิดข้อความหมดเวลา/ข้อผิดพลาดทิ้ง */
   dismiss: () => void;

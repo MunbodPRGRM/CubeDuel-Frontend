@@ -18,6 +18,8 @@ export function QueueBanner() {
 
   if (queue.phase !== 'queued' || pathname === '/') return null;
 
+  const multi = queue.kind === 'multiplayer';
+
   return (
     <div
       role="status"
@@ -31,7 +33,7 @@ export function QueueBanner() {
       >
         <span className="flex items-center gap-2 text-brand-400">
           <span className="h-4 w-4 animate-spin rounded-full border-2 border-brand-500/30 border-t-brand-400" />
-          กำลังหาคู่แข่ง
+          {multi ? 'กำลังรวมกลุ่ม 3–4 คน' : 'กำลังหาคู่แข่ง'}
           {queue.cubeType && (
             <span className="text-slate-400">({CUBE_TYPE_LABEL[queue.cubeType]})</span>
           )}
