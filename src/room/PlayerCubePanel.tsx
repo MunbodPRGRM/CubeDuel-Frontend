@@ -13,15 +13,23 @@ import { LiveTime, type LiveTimeMode } from './LiveTime';
  *
  * ช่องของ **เรา** คือคิวบ์ที่หมุนได้จริงและเป็นตัวยิง `solve:move` / `solve:solved`
  * ช่องของ **คู่แข่ง** เป็นภาพสะท้อนที่เดินตาม `opponent:move` เท่านั้น หมุนเองไม่ได้
+ *
+ * ห้อง 3–4 คนใช้แผงตัวเดียวกันนี้ในโหมด `compact` สำหรับแถบคู่แข่ง (ADR-044 ข้อ 3)
  */
 
 interface PlayerCubePanelProps {
   player: PlayerPublic | null;
   snapshot: RoomSnapshot;
-  /** ช่องนี้เป็นของเราเองหรือไม่ — ผู้ชมได้ `false` ทั้งสองช่อง */
+  /** ช่องนี้เป็นของเราเองหรือไม่ — ผู้ชมได้ `false` ทุกช่อง */
   isMe: boolean;
   emptyLabel: string;
   match: UseMatchResult;
+  /**
+   * แผงย่อสำหรับแถบคู่แข่งของห้อง 3–4 คน — **ย้ายแถวตัวเลขล่างขึ้นไปอยู่บนหัวแผง**
+   * เพราะคิวบ์หลายลูกซ้อนในคอลัมน์เดียวเหลือความสูงลูกละ ~1/3 ถ้าคงแถวล่างไว้ด้วย
+   * จะไม่เหลือที่ให้คิวบ์เลย · ห้อง 1v1 ต้องไม่ส่ง prop นี้ (หน้าตาต้องเหมือนเดิมเป๊ะ)
+   */
+  compact?: boolean;
 }
 
 /** state ที่คิวบ์หมุนได้จริง — ตรงกับฝั่ง server (`match.ts`) */
@@ -35,6 +43,7 @@ export function PlayerCubePanel({
   isMe,
   emptyLabel,
   match,
+  compact = false,
 }: PlayerCubePanelProps) {
   const progress = player ? snapshot.progress.find((p) => p.userId === player.userId) : undefined;
   const inLobby = snapshot.state === 'WAITING';
@@ -77,12 +86,26 @@ export function PlayerCubePanel({
     timeMode = 'elapsed';
   }
 
+  const liveTime = (
+    <LiveTime
+      mode={timeMode}
+      ts={snapshot.serverStartTs}
+      frozenMs={frozenMs}
+      className={`tabular text-brand-400 ${compact ? 'text-sm' : 'text-lg'}`}
+    />
+  );
+
   return (
-    <section className="flex h-[30rem] flex-col rounded-2xl border border-line bg-navy-850/60 p-4 lg:h-[calc(100vh-8rem)]">
+    <section
+      className={`flex flex-col rounded-2xl border border-line bg-navy-850/60 ${
+        // แผงย่อไม่ล็อกความสูงเอง — ปล่อยให้คอลัมน์แม่หารความสูงให้เท่า ๆ กัน
+        compact ? 'min-h-0 flex-1 p-3' : 'h-[30rem] p-4 lg:h-[calc(100vh-8rem)]'
+      }`}
+    >
       <div className="flex items-center justify-between gap-2">
         {player ? (
           <>
-            <div className="flex items-center gap-2">
+            <div className="flex min-w-0 items-center gap-2">
               <Avatar name={playerName(player)} />
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium text-slate-100">{playerName(player)}</p>
@@ -94,9 +117,18 @@ export function PlayerCubePanel({
                 </p>
               </div>
             </div>
+            {/* แผงย่อไม่มีแถวตัวเลขด้านล่าง จึงย้ายตัวเลขที่ต้องเห็นตลอดมาไว้บนหัวแทน */}
+            {compact && (
+              <div className="shrink-0 text-right">
+                <p className={`text-[11px] ${statusClass}`}>{statusText}</p>
+                <p className="text-[11px] text-slate-500">
+                  {liveTime} · <span className="tabular">{moveCount}</span> ท่า
+                </p>
+              </div>
+            )}
             {!player.connected && (
               <span className="shrink-0 rounded-lg border border-loss/40 bg-loss/10 px-2 py-1 text-[11px] text-loss">
-                หลุดการเชื่อมต่อ
+                {compact ? 'หลุด' : 'หลุดการเชื่อมต่อ'}
               </span>
             )}
           </>
@@ -134,25 +166,22 @@ export function PlayerCubePanel({
         )}
       </div>
 
-      <div className="mt-3 grid grid-cols-3 items-end gap-2 rounded-xl border border-line-soft bg-navy-900/60 px-4 py-3">
-        <div>
-          <p className="text-[10px] tracking-[0.15em] text-slate-500">MOVES</p>
-          <p className="tabular text-lg text-slate-200">{moveCount}</p>
+      {!compact && (
+        <div className="mt-3 grid grid-cols-3 items-end gap-2 rounded-xl border border-line-soft bg-navy-900/60 px-4 py-3">
+          <div>
+            <p className="text-[10px] tracking-[0.15em] text-slate-500">MOVES</p>
+            <p className="tabular text-lg text-slate-200">{moveCount}</p>
+          </div>
+          <div className="text-center">
+            <p className="text-[10px] text-slate-500">สถานะ</p>
+            <p className={`text-sm ${statusClass}`}>{statusText}</p>
+          </div>
+          <div className="text-right">
+            <p className="text-[10px] text-slate-500">เวลา</p>
+            {liveTime}
+          </div>
         </div>
-        <div className="text-center">
-          <p className="text-[10px] text-slate-500">สถานะ</p>
-          <p className={`text-sm ${statusClass}`}>{statusText}</p>
-        </div>
-        <div className="text-right">
-          <p className="text-[10px] text-slate-500">เวลา</p>
-          <LiveTime
-            mode={timeMode}
-            ts={snapshot.serverStartTs}
-            frozenMs={frozenMs}
-            className="tabular text-lg text-brand-400"
-          />
-        </div>
-      </div>
+      )}
     </section>
   );
 }

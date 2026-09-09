@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { emitAck, socketErrorMessage } from './socket-client';
 import { QueueContext, type QueueContextValue, type QueueState } from './queue-context';
 import { useSocket } from './useSocket';
-import type { CubeType, QueueJoinResult } from './types';
+import type { CubeType, QueueJoinResult, QueueKind, QueueStatusPayload } from './types';
 
 /**
  * ตัวเดียวของทั้งแอปที่ฟัง `queue:*` — ต้องอยู่ใต้ `<SocketProvider>` และใน Router
@@ -25,6 +25,7 @@ const INITIAL_ELO_WINDOW = 100;
 
 const IDLE: QueueState = {
   phase: 'idle',
+  kind: null,
   cubeType: null,
   queuedAtTs: null,
   eloWindow: null,
@@ -46,25 +47,25 @@ export function QueueProvider({ children }: { children: ReactNode }) {
     if (!socket) return;
 
     const onStatus = ({
+      kind,
+      cubeType,
       waitedMs,
       eloWindow,
       playersInQueue,
-    }: {
-      waitedMs: number;
-      eloWindow: number | null;
-      playersInQueue: number;
-    }) => {
-      setState((prev) => ({
-        // ห้องแข่งขันที่ยุบก่อนเริ่ม → server ใส่เรากลับเข้าคิวเองแล้วส่งสถานะมาเลย
-        // (ADR-039 ข้อ 6) เคสนั้น `prev.phase` ยังเป็น idle อยู่ — ต้องรับเข้ามาเหมือนกัน
+    }: QueueStatusPayload) => {
+      // ห้องที่ยุบก่อนเริ่ม → server ใส่เรากลับเข้าคิวเองแล้วส่งสถานะมาเลย (ADR-039 ข้อ 6)
+      // เคสนั้น `prev.phase` ยังเป็น idle อยู่ — ต้องรับเข้ามาเหมือนกัน และ **ยึด `kind`
+      // กับ `cubeType` ของ server** เพราะเราไม่ได้เป็นคนกดเข้าคิวรอบนี้ (ADR-044 ข้อ 2)
+      setState({
         phase: 'queued',
-        cubeType: prev.cubeType,
-        // ยึดเวลาของ server เสมอ เผื่อเราไม่ได้เป็นคนกดเข้าคิวรอบนี้เอง
+        kind,
+        cubeType,
+        // ยึดเวลาของ server เสมอ ด้วยเหตุผลเดียวกัน
         queuedAtTs: clock.now() - waitedMs,
         eloWindow,
         playersInQueue,
         timedOutAfterMs: null,
-      }));
+      });
       setError(null);
     };
 
@@ -79,6 +80,7 @@ export function QueueProvider({ children }: { children: ReactNode }) {
       setState((prev) => ({
         ...IDLE,
         phase: 'timeout',
+        kind: prev.kind,
         cubeType: prev.cubeType,
         timedOutAfterMs: waitedMs,
       }));
@@ -105,7 +107,7 @@ export function QueueProvider({ children }: { children: ReactNode }) {
   // ---------------------------------------------------------------- คำสั่ง
 
   const join = useCallback(
-    async (cubeType: CubeType): Promise<boolean> => {
+    async (cubeType: CubeType, kind: QueueKind): Promise<boolean> => {
       if (!socket || socketStatus !== 'connected') {
         setError('ยังไม่ได้เชื่อมต่อเซิร์ฟเวอร์ กรุณารอสักครู่แล้วลองใหม่');
         return false;
@@ -113,15 +115,14 @@ export function QueueProvider({ children }: { children: ReactNode }) {
       setBusy(true);
       setError(null);
       try {
-        const result = await emitAck<QueueJoinResult>(socket, 'queue:join', {
-          cubeType,
-          kind: 'competitive',
-        });
+        const result = await emitAck<QueueJoinResult>(socket, 'queue:join', { cubeType, kind });
         setState({
           phase: 'queued',
+          kind,
           cubeType,
           queuedAtTs: result.queuedAtTs,
-          eloWindow: INITIAL_ELO_WINDOW,
+          // คิวหลายคนไม่ใช้ช่วง Elo เลย (game-rules.md ข้อ 8) — `null` = ไม่จำกัด
+          eloWindow: kind === 'multiplayer' ? null : INITIAL_ELO_WINDOW,
           playersInQueue: result.playersInQueue,
           timedOutAfterMs: null,
         });

@@ -37,3 +37,40 @@ export interface MatchDetail {
   /** เรียงตาม `rankNo` แล้ว */
   players: MatchDetailPlayer[];
 }
+
+/**
+ * ผลของแมตช์ผู้เล่นหลายคนที่ขอย้อนหลังทาง REST — `GET /multiplayer-matches/:id`
+ * (`docs/api-contract.md` ข้อ 3) · **คนละตารางกับ `MatchDetail` และเลข id ชนกันได้**
+ * จึงต้องดู `RoomSnapshot.matchKind` ก่อนว่าจะยิงไปที่ endpoint ไหน (ADR-044 ข้อ 1)
+ */
+export interface MultiplayerMatchDetailPlayer {
+  userId: number;
+  username: string;
+  nickname: string | null;
+  /** เก็บใน DB จริง ไม่ได้คำนวณใหม่แบบ 1v1 */
+  rankNo: number;
+  /** วินาที — `null` = DNF/ยอมแพ้ */
+  solveTime: number | null;
+  result: SolveStatus;
+  moveCount: number;
+  /** `null` ทั้งสามช่องในโหมด custom ที่ไม่ปรับคะแนน */
+  eloBefore: number | null;
+  eloAfter: number | null;
+  eloChange: number | null;
+}
+
+export interface MultiplayerMatchDetail {
+  multiplayerMatchId: number;
+  roomMode: 'auto' | 'custom';
+  cubeType: CubeType;
+  scramble: string;
+  roomCode: string | null;
+  /** 3 หรือ 4 */
+  playerCount: number;
+  winnerId: number | null;
+  startedAt: string;
+  finishedAt: string | null;
+  ratingApplied: boolean;
+  /** เรียงตาม `rankNo` แล้ว */
+  players: MultiplayerMatchDetailPlayer[];
+}
