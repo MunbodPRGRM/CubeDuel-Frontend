@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { Avatar } from './Avatar';
 import { useApiData } from '@/hooks/useApiData';
 import { CUBE_TYPE_LABEL, type LeaderboardRow } from '@/types/leaderboard';
@@ -6,7 +7,7 @@ import type { CubeType } from '@/types/cube';
 interface LeaderboardCardProps {
   cubeType: CubeType;
   limit?: number;
-  /** ลิงก์ "ดูทั้งหมด" มุมขวาบน — ยังไม่มีหน้ากระดานอันดับเต็ม (เฟส 7) จึงซ่อนไว้ก่อน */
+  /** ลิงก์ "ดูทั้งหมด" มุมขวาบน — ไปหน้ากระดานอันดับเต็มของประเภทที่กำลังดูอยู่ */
   showViewAll?: boolean;
 }
 
@@ -26,9 +27,12 @@ export function LeaderboardCard({ cubeType, limit = 5, showViewAll }: Leaderboar
           </p>
         </div>
         {showViewAll && (
-          <span className="text-xs text-slate-600" title="หน้ากระดานอันดับเต็มจะมาในเฟส 7">
-            ดูทั้งหมด
-          </span>
+          <Link
+            to={`/leaderboard?cubeType=${encodeURIComponent(cubeType)}`}
+            className="text-xs text-brand-400 transition hover:text-brand-300"
+          >
+            ดูทั้งหมด →
+          </Link>
         )}
       </header>
 
@@ -55,9 +59,12 @@ export function LeaderboardCard({ cubeType, limit = 5, showViewAll }: Leaderboar
                 #{row.rank}
               </span>
               <Avatar name={row.nickname || row.username} size="sm" highlight={row.rank === 1} />
-              <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-200">
+              <Link
+                to={`/users/${row.userId}`}
+                className="min-w-0 flex-1 truncate text-sm font-medium text-slate-200 transition hover:text-white"
+              >
                 {row.nickname || row.username}
-              </span>
+              </Link>
               <span className="text-right">
                 <span className="tabular block text-[13px] font-semibold leading-tight text-brand-400">
                   {row.eloRating}

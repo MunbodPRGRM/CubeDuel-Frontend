@@ -8,10 +8,12 @@ import { AppHeader } from '@/components/AppHeader';
 import { CubeLogo } from '@/components/CubeLogo';
 import { CubeTypePicker } from '@/components/CubeTypePicker';
 import { LeaderboardCard } from '@/components/LeaderboardCard';
+import { MatchHistoryList } from '@/components/MatchHistoryList';
 import { StatCard } from '@/components/StatCard';
 import { formatSolveTime, formatWinRate } from '@/lib/format';
 import type { CubeType } from '@/types/cube';
 import { CUBE_TYPE_LABEL, type UserRating } from '@/types/leaderboard';
+import type { UserStats } from '@/types/stats';
 
 export default function HomePage() {
   const { user } = useAuth();
@@ -19,6 +21,10 @@ export default function HomePage() {
 
   const ratings = useApiData<UserRating[]>(user ? `/users/${user.userId}/ratings` : null);
   const rating = ratings.data?.find((r) => r.cubeType === cubeType);
+  // ao5 ไม่ได้อยู่ในตาราง `Rating` — ต้องคำนวณจากประวัติ จึงเป็นคนละ endpoint (api-contract.md ข้อ 4)
+  const stats = useApiData<UserStats>(
+    user ? `/users/${user.userId}/stats?cubeType=${cubeType}` : null,
+  );
 
   return (
     <div className="min-h-screen bg-navy-900">
@@ -51,8 +57,12 @@ export default function HomePage() {
               />
               <StatCard
                 label="เวลาเฉลี่ย 5 รอบ"
-                value="—"
-                note="จะคำนวณได้เมื่อมีผลแข่งจริง (เฟส 7)"
+                value={formatSolveTime(stats.data?.ao5)}
+                note={
+                  stats.data && stats.data.ao5 === null
+                    ? `ต้องแก้ครบ 5 ครั้งก่อน (ตอนนี้ ${stats.data.totalSolves})`
+                    : undefined
+                }
               />
               <StatCard
                 label="อัตราการชนะ"
@@ -69,7 +79,16 @@ export default function HomePage() {
         )}
 
         <div className="mt-8 grid gap-4 lg:grid-cols-2">
-          <MatchHistoryCard />
+          {user ? (
+            <MatchHistoryList
+              userId={user.userId}
+              limit={5}
+              paginated={false}
+              emptyHint="ลงแข่งสักรอบแล้วผลจะมาโผล่ที่นี่ (ห้องฝึกซ้อมไม่นับ)"
+            />
+          ) : (
+            <SignedOutHistoryCard />
+          )}
           <LeaderboardCard cubeType={cubeType} limit={5} showViewAll />
         </div>
       </main>
@@ -213,7 +232,8 @@ function HeroCard({ isLoggedIn, cubeType, onCubeTypeChange }: HeroCardProps) {
   );
 }
 
-function MatchHistoryCard() {
+/** คนที่ยังไม่ล็อกอินไม่มีประวัติให้ดึง — ชวนเข้าสู่ระบบแทนที่จะโชว์รายการว่าง */
+function SignedOutHistoryCard() {
   return (
     <section className="rounded-2xl border border-line bg-navy-850/80">
       <header className="px-5 py-4">
@@ -221,10 +241,7 @@ function MatchHistoryCard() {
         <p className="mt-0.5 text-xs text-slate-500">การเล่น 5 รอบล่าสุดของคุณ</p>
       </header>
       <div className="border-t border-line-soft px-5 py-10 text-center">
-        <p className="text-sm text-slate-500">ยังไม่มีประวัติการเล่น</p>
-        <p className="mt-1 text-xs text-slate-600">
-          ห้องแข่งขันบันทึกผลลง DB แล้ว — หน้ารายการนี้ต่อกับ `GET /users/:id/matches` ในเฟส 7
-        </p>
+        <p className="text-sm text-slate-500">เข้าสู่ระบบเพื่อดูประวัติการเล่นของคุณ</p>
       </div>
     </section>
   );
