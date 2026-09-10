@@ -14,6 +14,12 @@ import SettingsPage from '@/pages/SettingsPage';
 import MatchResultPage from '@/pages/MatchResultPage';
 import NewsPage from '@/pages/NewsPage';
 import NewsDetailPage from '@/pages/NewsDetailPage';
+import AdminDashboardPage from '@/admin/AdminDashboardPage';
+import AdminUsersPage from '@/admin/AdminUsersPage';
+import AdminReportsPage from '@/admin/AdminReportsPage';
+import AdminFlagsPage from '@/admin/AdminFlagsPage';
+import AdminNewsPage from '@/admin/AdminNewsPage';
+import { RequireAdmin } from '@/admin/RequireAdmin';
 import { RequireAuth } from '@/auth/RequireAuth';
 import { SocketProvider } from '@/socket/SocketProvider';
 import { QueueProvider } from '@/socket/QueueProvider';
@@ -84,6 +90,47 @@ export default function App() {
                 <RequireAuth>
                   <RoomPage />
                 </RequireAuth>
+              }
+            />
+            {/* ส่วนผู้ดูแลระบบ — `RequireAdmin` แค่ซ่อนหน้าจอ ตัวกันจริงคือ `requireAdmin` ฝั่ง server */}
+            <Route
+              path="/admin"
+              element={
+                <RequireAdmin>
+                  <AdminDashboardPage />
+                </RequireAdmin>
+              }
+            />
+            <Route
+              path="/admin/users"
+              element={
+                <RequireAdmin>
+                  <AdminUsersPage />
+                </RequireAdmin>
+              }
+            />
+            <Route
+              path="/admin/reports"
+              element={
+                <RequireAdmin>
+                  <AdminReportsPage />
+                </RequireAdmin>
+              }
+            />
+            <Route
+              path="/admin/flags"
+              element={
+                <RequireAdmin>
+                  <AdminFlagsPage />
+                </RequireAdmin>
+              }
+            />
+            <Route
+              path="/admin/news"
+              element={
+                <RequireAdmin>
+                  <AdminNewsPage />
+                </RequireAdmin>
               }
             />
             <Route path="*" element={<NotFoundPage />} />

@@ -178,6 +178,40 @@ export async function apiFetch<T>(path: string, options: FetchOptions = {}): Pro
   return (await request<T>(path, options)).data;
 }
 
+/**
+ * ส่ง `multipart/form-data` (ฟอร์มข่าวที่แนบรูป — api-contract.md ข้อ 7)
+ *
+ * **ห้ามตั้ง `Content-Type` เอง** — เบราว์เซอร์ต้องเป็นคนใส่พร้อม `boundary` ให้ ถ้าตั้งทับ
+ * ฝั่ง server จะแกะ multipart ไม่ออก · นอกนั้นเหมือน `apiFetch` ทุกอย่าง (แนบ token · ต่ออายุแล้วยิงซ้ำ)
+ */
+export async function apiUpload<T>(
+  path: string,
+  form: FormData,
+  method: 'POST' | 'PATCH' = 'POST',
+): Promise<T> {
+  const send = () => {
+    const headers: Record<string, string> = {};
+    if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+    return fetch(`${BASE_URL}${path}`, { method, headers, credentials: 'include', body: form });
+  };
+
+  let res: Response;
+  try {
+    res = await send();
+  } catch {
+    throw new ApiError(
+      0,
+      'E_INTERNAL',
+      'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ตรวจสอบว่า backend รันอยู่หรือไม่',
+    );
+  }
+
+  if (res.status === 401 && accessToken !== null && (await refreshSession())) res = await send();
+  if (!res.ok) throw await toApiError(res);
+
+  return ((await res.json()) as { data: T }).data;
+}
+
 /** สำหรับ endpoint ที่คืน `meta` มาด้วย (กระดานอันดับ ประวัติการแข่ง ฯลฯ) */
 export async function apiFetchPage<T>(
   path: string,

@@ -5,6 +5,7 @@ import { AppHeader } from '@/components/AppHeader';
 import { CubeTypePicker } from '@/components/CubeTypePicker';
 import { MatchHistoryList } from '@/components/MatchHistoryList';
 import { PageSpinner } from '@/components/PageSpinner';
+import { ReportPlayerDialog } from '@/components/ReportPlayerDialog';
 import { ShareButton } from '@/components/ShareButton';
 import { StatCard } from '@/components/StatCard';
 import { useApiData } from '@/hooks/useApiData';
@@ -62,7 +63,8 @@ function ProfileBody({
   cubeType: CubeType;
   onCubeTypeChange: (value: CubeType) => void;
 }) {
-  const { logout } = useAuth();
+  const { logout, user: viewer } = useAuth();
+  const [reporting, setReporting] = useState(false);
   const profile = useApiData<PublicUser>(`/users/${userId}`);
   const ratings = useApiData<UserRating[]>(`/users/${userId}/ratings`);
   const stats = useApiData<UserStats>(`/users/${userId}/stats?cubeType=${cubeType}`);
@@ -110,6 +112,16 @@ function ProfileBody({
               label="แชร์โปรไฟล์"
               className="rounded-xl border border-line bg-navy-800 px-5 py-2.5 text-sm font-semibold text-slate-300 transition hover:bg-navy-700 hover:text-white"
             />
+            {/* รายงานได้เฉพาะโปรไฟล์คนอื่น และต้องล็อกอินก่อน — ไม่แนบแมตช์ (ADR-051 ข้อ 4) */}
+            {!isOwner && viewer && (
+              <button
+                type="button"
+                onClick={() => setReporting(true)}
+                className="rounded-xl border border-loss/40 px-5 py-2.5 text-sm font-semibold text-loss transition hover:bg-loss/10"
+              >
+                รายงานผู้เล่น
+              </button>
+            )}
             {isOwner && (
               <>
                 <Link
@@ -130,6 +142,14 @@ function ProfileBody({
           </div>
         </div>
       </section>
+
+      {reporting && profile.data && (
+        <ReportPlayerDialog
+          reportedUserId={userId}
+          reportedName={name}
+          onClose={() => setReporting(false)}
+        />
+      )}
 
       <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-sm font-semibold text-slate-300">

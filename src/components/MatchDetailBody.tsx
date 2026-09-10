@@ -1,4 +1,7 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useAuth } from '@/auth/useAuth';
+import { ReportPlayerDialog } from './ReportPlayerDialog';
 import { formatEloChange, formatSolveTime } from '@/lib/format';
 import { CUBE_TYPE_LABEL } from '@/types/leaderboard';
 import type { MatchDetail, MultiplayerMatchDetail } from '@/types/match';
@@ -25,7 +28,14 @@ export function MatchDetailBody({
   detail: MatchDetail | MultiplayerMatchDetail;
   highlightUserId: number;
 }) {
+  const { user } = useAuth();
+  const [reporting, setReporting] = useState<DetailPlayer | null>(null);
   const players: DetailPlayer[] = detail.players;
+  /** แนบแมตช์ไปกับรายงานได้ทันที เพราะกำลังดูผลของแมตช์นั้นอยู่ (ADR-050 ข้อ 1) */
+  const matchRef =
+    'matchId' in detail
+      ? { matchId: detail.matchId }
+      : { multiplayerMatchId: detail.multiplayerMatchId };
   const roomLabel =
     'roomType' in detail
       ? detail.roomType === 'competitive'
@@ -85,7 +95,7 @@ export function MatchDetailBody({
                     : SOLVE_LABEL[player.result]}
                 </span>
               </div>
-              <div className="mt-1.5 flex items-center gap-3 pl-10 text-xs text-slate-500">
+              <div className="mt-1.5 flex flex-wrap items-center gap-3 pl-10 text-xs text-slate-500">
                 <span className="tabular">{player.moveCount} mv</span>
                 {player.eloBefore !== null && player.eloAfter !== null && (
                   <span className="tabular">
@@ -105,11 +115,30 @@ export function MatchDetailBody({
                     {formatEloChange(player.eloChange)}
                   </span>
                 )}
+                {/* รายงานได้เฉพาะคนอื่น และต้องล็อกอินก่อน */}
+                {user && player.userId !== user.userId && (
+                  <button
+                    type="button"
+                    onClick={() => setReporting(player)}
+                    className="ml-auto text-xs text-slate-500 transition hover:text-loss"
+                  >
+                    รายงานผู้เล่น
+                  </button>
+                )}
               </div>
             </li>
           );
         })}
       </ul>
+
+      {reporting && (
+        <ReportPlayerDialog
+          reportedUserId={reporting.userId}
+          reportedName={reporting.nickname || reporting.username}
+          {...matchRef}
+          onClose={() => setReporting(null)}
+        />
+      )}
     </div>
   );
 }
