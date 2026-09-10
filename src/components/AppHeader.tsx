@@ -2,6 +2,7 @@ import { Link, NavLink } from 'react-router-dom';
 import { useAuth } from '@/auth/useAuth';
 import { displayName } from '@/types/auth';
 import { useApiData } from '@/hooks/useApiData';
+import { useTutorial } from '@/tutorial/useTutorial';
 import type { UserRating } from '@/types/leaderboard';
 import { Avatar } from './Avatar';
 import { CubeLogo } from './CubeLogo';
@@ -21,6 +22,7 @@ const NAV_ITEMS = [
 
 export function AppHeader() {
   const { status, user } = useAuth();
+  const tutorial = useTutorial();
 
   // ELO ที่โชว์ข้างชื่อใช้ของ 3x3x3 เป็นตัวแทน (คะแนนแยกกัน 4 ประเภท — ดีไซน์ไม่ได้เผื่อช่องเลือกไว้)
   const ratings = useApiData<UserRating[]>(user ? `/users/${user.userId}/ratings` : null);
@@ -53,6 +55,21 @@ export function AppHeader() {
         </nav>
 
         <div className="ml-auto flex items-center gap-3">
+          {/* ทางเข้าเดียวของ "เปิดคู่มือซ้ำ" — เป็นไอคอนเพราะเมนูหลักเต็มแล้ว และมันไม่ใช่หน้าจอ
+              ที่คนเข้าบ่อยพอจะแย่งที่ของเมนู · ต้องอยู่ในแถบบนเพื่อให้กดได้จากทุกหน้า (ADR-053 ข้อ 4) */}
+          <button
+            type="button"
+            onClick={tutorial.open}
+            aria-label="เปิดคู่มือการใช้งาน"
+            title="คู่มือการใช้งาน"
+            className={`grid h-8 w-8 shrink-0 place-items-center rounded-full border text-sm font-semibold transition ${
+              tutorial.isOpen
+                ? 'border-brand-500 bg-brand-500/15 text-brand-300'
+                : 'border-line bg-navy-850 text-slate-400 hover:text-slate-100'
+            }`}
+          >
+            ?
+          </button>
           {status === 'loading' ? (
             <span className="h-5 w-5 animate-spin rounded-full border-2 border-line border-t-brand-500" />
           ) : user ? (
