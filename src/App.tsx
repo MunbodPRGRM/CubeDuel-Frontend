@@ -8,6 +8,8 @@ import PracticePage from '@/pages/PracticePage';
 import CreateRoomPage from '@/pages/CreateRoomPage';
 import JoinRoomPage from '@/pages/JoinRoomPage';
 import RoomPage from '@/pages/RoomPage';
+import LeaderboardPage from '@/pages/LeaderboardPage';
+import ProfilePage from '@/pages/ProfilePage';
 import { RequireAuth } from '@/auth/RequireAuth';
 import { SocketProvider } from '@/socket/SocketProvider';
 import { QueueProvider } from '@/socket/QueueProvider';
@@ -25,6 +27,11 @@ export default function App() {
             <Route path="/" element={<HomePage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
+            {/* กระดานอันดับกับโปรไฟล์เปิดสาธารณะ (api-contract.md ข้อ 3 และ 5) ไม่ต้องล็อกอิน */}
+            <Route path="/leaderboard" element={<LeaderboardPage />} />
+            <Route path="/users/:userId" element={<ProfilePage />} />
+            {/* ทางลัดไปโปรไฟล์ตัวเอง — เด้งไป /users/:id ให้ URL แชร์ได้เสมอ (ADR-047 ข้อ 5) */}
+            <Route path="/profile" element={<ProfilePage />} />
             {/* ห้องฝึกซ้อมขอ scramble จาก server ซึ่งต้องมี token (api-contract.md ข้อ 6) */}
             <Route
               path="/practice"
