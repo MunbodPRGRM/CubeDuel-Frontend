@@ -12,6 +12,17 @@ const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:4000/api/v1';
  * ส่วน refresh token อยู่ใน httpOnly cookie → ต้องส่ง `credentials: 'include'` ทุกครั้ง
  */
 
+/**
+ * โดเมนของ **API server** (ตัด `/api/v1` ทิ้ง) — ไฟล์ที่อัปโหลด (รูปข่าว) เสิร์ฟจากที่นี่
+ * ไม่ใช่จากโดเมนของเว็บ ตอน deploy สองอย่างนี้อยู่คนละที่กัน (ADR-049 ข้อ 2)
+ */
+const FILE_BASE_URL = BASE_URL.replace(/\/api\/v\d+\/?$/, '');
+
+/** พาธที่ API คืนมา (`/uploads/news/…`) → URL ที่ `<img>` ใช้ได้จริง */
+export function fileUrl(path: string): string {
+  return path.startsWith('/') ? `${FILE_BASE_URL}${path}` : path;
+}
+
 export class ApiError extends Error {
   readonly code: ApiErrorCode;
   readonly status: number;

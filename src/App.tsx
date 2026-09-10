@@ -12,6 +12,8 @@ import LeaderboardPage from '@/pages/LeaderboardPage';
 import ProfilePage from '@/pages/ProfilePage';
 import SettingsPage from '@/pages/SettingsPage';
 import MatchResultPage from '@/pages/MatchResultPage';
+import NewsPage from '@/pages/NewsPage';
+import NewsDetailPage from '@/pages/NewsDetailPage';
 import { RequireAuth } from '@/auth/RequireAuth';
 import { SocketProvider } from '@/socket/SocketProvider';
 import { QueueProvider } from '@/socket/QueueProvider';
@@ -31,6 +33,9 @@ export default function App() {
             <Route path="/register" element={<RegisterPage />} />
             {/* กระดานอันดับกับโปรไฟล์เปิดสาธารณะ (api-contract.md ข้อ 3 และ 5) ไม่ต้องล็อกอิน */}
             <Route path="/leaderboard" element={<LeaderboardPage />} />
+            {/* ข่าวสารเปิดสาธารณะเหมือนกัน (api-contract.md ข้อ 7) */}
+            <Route path="/news" element={<NewsPage />} />
+            <Route path="/news/:newsId" element={<NewsDetailPage />} />
             <Route path="/users/:userId" element={<ProfilePage />} />
             {/* ทางลัดไปโปรไฟล์ตัวเอง — เด้งไป /users/:id ให้ URL แชร์ได้เสมอ (ADR-047 ข้อ 5) */}
             <Route path="/profile" element={<ProfilePage />} />

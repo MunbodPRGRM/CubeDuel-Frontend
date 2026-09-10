@@ -7,6 +7,7 @@ import { useApiData } from '@/hooks/useApiData';
 import { AppHeader } from '@/components/AppHeader';
 import { CubeLogo } from '@/components/CubeLogo';
 import { CubeTypePicker } from '@/components/CubeTypePicker';
+import { LatestNewsCard } from '@/components/LatestNewsCard';
 import { LeaderboardCard } from '@/components/LeaderboardCard';
 import { MatchHistoryList } from '@/components/MatchHistoryList';
 import { StatCard } from '@/components/StatCard';
@@ -91,6 +92,8 @@ export default function HomePage() {
           )}
           <LeaderboardCard cubeType={cubeType} limit={5} showViewAll />
         </div>
+
+        <LatestNewsCard />
       </main>
     </div>
   );

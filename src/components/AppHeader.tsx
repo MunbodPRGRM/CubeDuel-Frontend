@@ -15,6 +15,7 @@ const NAV_ITEMS = [
   { label: 'ฝึกซ้อม', to: '/practice' },
   { label: 'สร้างห้อง', to: '/room/new' },
   { label: 'กระดานจัดอันดับ', to: '/leaderboard' },
+  { label: 'ข่าวสาร', to: '/news' },
   { label: 'โปรไฟล์', to: '/profile' },
 ] as const;
 
