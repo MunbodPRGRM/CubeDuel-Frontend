@@ -15,6 +15,7 @@ const NAV_ITEMS = [
   { label: 'ฝึกซ้อม', to: '/practice' },
   { label: 'สร้างห้อง', to: '/room/new' },
   { label: 'กระดานจัดอันดับ', to: '/leaderboard' },
+  { label: 'ข่าวสาร', to: '/news' },
   { label: 'โปรไฟล์', to: '/profile' },
 ] as const;
 
@@ -34,7 +35,11 @@ export function AppHeader() {
         </Link>
 
         <nav className="hidden items-center gap-6 md:flex">
-          {NAV_ITEMS.map((item) => (
+          {/* เมนูแอดมินโผล่เฉพาะบัญชีแอดมิน — ตัวกันจริงอยู่ฝั่ง server (`requireAdmin`) */}
+          {(user?.role === 'admin'
+            ? [...NAV_ITEMS, { label: 'ผู้ดูแลระบบ', to: '/admin' } as const]
+            : NAV_ITEMS
+          ).map((item) => (
             <NavLink
               key={item.label}
               to={item.to}

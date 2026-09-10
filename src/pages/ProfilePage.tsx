@@ -1,10 +1,12 @@
 import { useState } from 'react';
-import { Navigate, useParams } from 'react-router-dom';
+import { Link, Navigate, useParams } from 'react-router-dom';
 import { useAuth } from '@/auth/useAuth';
 import { AppHeader } from '@/components/AppHeader';
 import { CubeTypePicker } from '@/components/CubeTypePicker';
 import { MatchHistoryList } from '@/components/MatchHistoryList';
 import { PageSpinner } from '@/components/PageSpinner';
+import { ReportPlayerDialog } from '@/components/ReportPlayerDialog';
+import { ShareButton } from '@/components/ShareButton';
 import { StatCard } from '@/components/StatCard';
 import { useApiData } from '@/hooks/useApiData';
 import { formatSolveTime, formatWinRate } from '@/lib/format';
@@ -61,7 +63,8 @@ function ProfileBody({
   cubeType: CubeType;
   onCubeTypeChange: (value: CubeType) => void;
 }) {
-  const { logout } = useAuth();
+  const { logout, user: viewer } = useAuth();
+  const [reporting, setReporting] = useState(false);
   const profile = useApiData<PublicUser>(`/users/${userId}`);
   const ratings = useApiData<UserRating[]>(`/users/${userId}/ratings`);
   const stats = useApiData<UserStats>(`/users/${userId}/stats?cubeType=${cubeType}`);
@@ -101,28 +104,52 @@ function ProfileBody({
             )}
           </div>
 
-          {isOwner && (
-            <div className="flex shrink-0 flex-col gap-2">
-              {/* หน้าแก้ไขโปรไฟล์เป็นเฟส 8 — ปุ่มมีที่ทางตามดีไซน์แล้วแต่ยังกดไม่ได้ */}
+          <div className="flex shrink-0 flex-col gap-2">
+            {/* แชร์ได้ทั้งโปรไฟล์ตัวเองและของคนอื่น — เส้นทาง /users/:id เปิดสาธารณะอยู่แล้ว */}
+            <ShareButton
+              path={`/users/${userId}`}
+              title={`โปรไฟล์ ${name} บน CubeDuel`}
+              label="แชร์โปรไฟล์"
+              className="rounded-xl border border-line bg-navy-800 px-5 py-2.5 text-sm font-semibold text-slate-300 transition hover:bg-navy-700 hover:text-white"
+            />
+            {/* รายงานได้เฉพาะโปรไฟล์คนอื่น และต้องล็อกอินก่อน — ไม่แนบแมตช์ (ADR-051 ข้อ 4) */}
+            {!isOwner && viewer && (
               <button
                 type="button"
-                disabled
-                title="ยังไม่เปิดใช้งาน — จะมาในเฟส 8"
-                className="cursor-not-allowed rounded-xl border border-line bg-navy-800 px-5 py-2.5 text-sm font-semibold text-slate-600"
-              >
-                ⚙ ตั้งค่า
-              </button>
-              <button
-                type="button"
-                onClick={() => void logout()}
+                onClick={() => setReporting(true)}
                 className="rounded-xl border border-loss/40 px-5 py-2.5 text-sm font-semibold text-loss transition hover:bg-loss/10"
               >
-                ออกจากระบบ
+                รายงานผู้เล่น
               </button>
-            </div>
-          )}
+            )}
+            {isOwner && (
+              <>
+                <Link
+                  to="/settings"
+                  className="rounded-xl border border-line bg-navy-800 px-5 py-2.5 text-center text-sm font-semibold text-slate-300 transition hover:bg-navy-700 hover:text-white"
+                >
+                  ⚙ ตั้งค่า
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => void logout()}
+                  className="rounded-xl border border-loss/40 px-5 py-2.5 text-sm font-semibold text-loss transition hover:bg-loss/10"
+                >
+                  ออกจากระบบ
+                </button>
+              </>
+            )}
+          </div>
         </div>
       </section>
+
+      {reporting && profile.data && (
+        <ReportPlayerDialog
+          reportedUserId={userId}
+          reportedName={name}
+          onClose={() => setReporting(false)}
+        />
+      )}
 
       <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-sm font-semibold text-slate-300">

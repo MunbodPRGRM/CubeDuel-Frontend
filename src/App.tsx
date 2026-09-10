@@ -10,6 +10,16 @@ import JoinRoomPage from '@/pages/JoinRoomPage';
 import RoomPage from '@/pages/RoomPage';
 import LeaderboardPage from '@/pages/LeaderboardPage';
 import ProfilePage from '@/pages/ProfilePage';
+import SettingsPage from '@/pages/SettingsPage';
+import MatchResultPage from '@/pages/MatchResultPage';
+import NewsPage from '@/pages/NewsPage';
+import NewsDetailPage from '@/pages/NewsDetailPage';
+import AdminDashboardPage from '@/admin/AdminDashboardPage';
+import AdminUsersPage from '@/admin/AdminUsersPage';
+import AdminReportsPage from '@/admin/AdminReportsPage';
+import AdminFlagsPage from '@/admin/AdminFlagsPage';
+import AdminNewsPage from '@/admin/AdminNewsPage';
+import { RequireAdmin } from '@/admin/RequireAdmin';
 import { RequireAuth } from '@/auth/RequireAuth';
 import { SocketProvider } from '@/socket/SocketProvider';
 import { QueueProvider } from '@/socket/QueueProvider';
@@ -29,9 +39,26 @@ export default function App() {
             <Route path="/register" element={<RegisterPage />} />
             {/* กระดานอันดับกับโปรไฟล์เปิดสาธารณะ (api-contract.md ข้อ 3 และ 5) ไม่ต้องล็อกอิน */}
             <Route path="/leaderboard" element={<LeaderboardPage />} />
+            {/* ข่าวสารเปิดสาธารณะเหมือนกัน (api-contract.md ข้อ 7) */}
+            <Route path="/news" element={<NewsPage />} />
+            <Route path="/news/:newsId" element={<NewsDetailPage />} />
             <Route path="/users/:userId" element={<ProfilePage />} />
             {/* ทางลัดไปโปรไฟล์ตัวเอง — เด้งไป /users/:id ให้ URL แชร์ได้เสมอ (ADR-047 ข้อ 5) */}
             <Route path="/profile" element={<ProfilePage />} />
+            {/* ผลแมตช์แบบมี URL ของตัวเอง — ปลายทางของลิงก์ที่แชร์ออกไป (ADR-048 ข้อ 4) */}
+            <Route path="/matches/:matchId" element={<MatchResultPage kind="1v1" />} />
+            <Route
+              path="/multiplayer-matches/:multiplayerMatchId"
+              element={<MatchResultPage kind="multiplayer" />}
+            />
+            <Route
+              path="/settings"
+              element={
+                <RequireAuth>
+                  <SettingsPage />
+                </RequireAuth>
+              }
+            />
             {/* ห้องฝึกซ้อมขอ scramble จาก server ซึ่งต้องมี token (api-contract.md ข้อ 6) */}
             <Route
               path="/practice"
@@ -63,6 +90,47 @@ export default function App() {
                 <RequireAuth>
                   <RoomPage />
                 </RequireAuth>
+              }
+            />
+            {/* ส่วนผู้ดูแลระบบ — `RequireAdmin` แค่ซ่อนหน้าจอ ตัวกันจริงคือ `requireAdmin` ฝั่ง server */}
+            <Route
+              path="/admin"
+              element={
+                <RequireAdmin>
+                  <AdminDashboardPage />
+                </RequireAdmin>
+              }
+            />
+            <Route
+              path="/admin/users"
+              element={
+                <RequireAdmin>
+                  <AdminUsersPage />
+                </RequireAdmin>
+              }
+            />
+            <Route
+              path="/admin/reports"
+              element={
+                <RequireAdmin>
+                  <AdminReportsPage />
+                </RequireAdmin>
+              }
+            />
+            <Route
+              path="/admin/flags"
+              element={
+                <RequireAdmin>
+                  <AdminFlagsPage />
+                </RequireAdmin>
+              }
+            />
+            <Route
+              path="/admin/news"
+              element={
+                <RequireAdmin>
+                  <AdminNewsPage />
+                </RequireAdmin>
               }
             />
             <Route path="*" element={<NotFoundPage />} />

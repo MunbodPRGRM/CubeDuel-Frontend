@@ -12,6 +12,17 @@ const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:4000/api/v1';
  * ส่วน refresh token อยู่ใน httpOnly cookie → ต้องส่ง `credentials: 'include'` ทุกครั้ง
  */
 
+/**
+ * โดเมนของ **API server** (ตัด `/api/v1` ทิ้ง) — ไฟล์ที่อัปโหลด (รูปข่าว) เสิร์ฟจากที่นี่
+ * ไม่ใช่จากโดเมนของเว็บ ตอน deploy สองอย่างนี้อยู่คนละที่กัน (ADR-049 ข้อ 2)
+ */
+const FILE_BASE_URL = BASE_URL.replace(/\/api\/v\d+\/?$/, '');
+
+/** พาธที่ API คืนมา (`/uploads/news/…`) → URL ที่ `<img>` ใช้ได้จริง */
+export function fileUrl(path: string): string {
+  return path.startsWith('/') ? `${FILE_BASE_URL}${path}` : path;
+}
+
 export class ApiError extends Error {
   readonly code: ApiErrorCode;
   readonly status: number;
@@ -165,6 +176,40 @@ async function request<T>(
 
 export async function apiFetch<T>(path: string, options: FetchOptions = {}): Promise<T> {
   return (await request<T>(path, options)).data;
+}
+
+/**
+ * ส่ง `multipart/form-data` (ฟอร์มข่าวที่แนบรูป — api-contract.md ข้อ 7)
+ *
+ * **ห้ามตั้ง `Content-Type` เอง** — เบราว์เซอร์ต้องเป็นคนใส่พร้อม `boundary` ให้ ถ้าตั้งทับ
+ * ฝั่ง server จะแกะ multipart ไม่ออก · นอกนั้นเหมือน `apiFetch` ทุกอย่าง (แนบ token · ต่ออายุแล้วยิงซ้ำ)
+ */
+export async function apiUpload<T>(
+  path: string,
+  form: FormData,
+  method: 'POST' | 'PATCH' = 'POST',
+): Promise<T> {
+  const send = () => {
+    const headers: Record<string, string> = {};
+    if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+    return fetch(`${BASE_URL}${path}`, { method, headers, credentials: 'include', body: form });
+  };
+
+  let res: Response;
+  try {
+    res = await send();
+  } catch {
+    throw new ApiError(
+      0,
+      'E_INTERNAL',
+      'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ตรวจสอบว่า backend รันอยู่หรือไม่',
+    );
+  }
+
+  if (res.status === 401 && accessToken !== null && (await refreshSession())) res = await send();
+  if (!res.ok) throw await toApiError(res);
+
+  return ((await res.json()) as { data: T }).data;
 }
 
 /** สำหรับ endpoint ที่คืน `meta` มาด้วย (กระดานอันดับ ประวัติการแข่ง ฯลฯ) */
