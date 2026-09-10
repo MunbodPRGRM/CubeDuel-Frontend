@@ -19,7 +19,7 @@
  * **เนื้อพลาสติกสีเข้ม + สติกเกอร์สีลอยอยู่บนหน้า** ผ่านตัวสร้างกลาง `three/convex-piece.ts`
  */
 import type * as THREE from 'three';
-import { TETRA_FACE_COLORS } from '../three/colors.ts';
+import { CLASSIC_SKIN, tetraFaceColors, type CubeSkin } from '../three/colors.ts';
 import {
   buildConvexPiece,
   touchedFaces,
@@ -40,11 +40,17 @@ export const TETRA_VERTICES: readonly (readonly number[])[] = [
   [-1, -1, 1],
 ];
 
-/** หน้าทั้งสี่ของพีระมิด พร้อมสี — ลำดับตรงกับ `TETRA_VERTICES` (หน้าที่อยู่ตรงข้ามจุดยอดนั้น) */
-export const TETRA_FACES: readonly OuterFace[] = TETRA_VERTICES.map((vertex, index) => ({
-  plane: { normal: vertex, d: -1 },
-  color: TETRA_FACE_COLORS[index]!,
-}));
+/** หน้าทั้งสี่ของพีระมิด พร้อมสีของสกินที่เลือก — ลำดับตรงกับ `TETRA_VERTICES` */
+export function tetraFaces(skin: CubeSkin): readonly OuterFace[] {
+  const colors = tetraFaceColors(skin);
+  return TETRA_VERTICES.map((vertex, index) => ({
+    plane: { normal: vertex, d: -1 },
+    color: colors[index]!,
+  }));
+}
+
+/** หน้าทั้งสี่ในสกินตั้งต้น — ระนาบไม่ขึ้นกับสกิน จึงใช้ตัวนี้เป็นตัวแทนตอนคิดรูปทรงได้ */
+export const TETRA_FACES: readonly OuterFace[] = tetraFaces(CLASSIC_SKIN);
 
 /** ระนาบทั้งหมดที่ล้อมชิ้นของ octant นี้ — 3 ระนาบของ octant + 4 หน้าของพีระมิด */
 export function planesFor(octant: readonly number[]): HalfSpace[] {
@@ -68,6 +74,10 @@ export function countOuterFaces(octant: readonly number[]): number {
  */
 export function buildPyramorphixGeometries(
   homeCoords: readonly (readonly number[])[],
+  skin: CubeSkin = CLASSIC_SKIN,
 ): THREE.BufferGeometry[] {
-  return homeCoords.map((coord) => buildConvexPiece(planesFor(coord), TETRA_FACES));
+  const faces = tetraFaces(skin);
+  return homeCoords.map((coord) =>
+    buildConvexPiece(planesFor(coord), faces, undefined, skin.bodyColor),
+  );
 }

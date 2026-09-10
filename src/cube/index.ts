@@ -17,6 +17,7 @@ import { PyraminxModel } from './pyraminx/pyraminx-model.ts';
 import { buildPyramorphixGeometries } from './pyramorphix/pyramorphix-geometry.ts';
 import { PyramorphixModel } from './pyramorphix/pyramorphix-model.ts';
 import { getKPuzzle } from './puzzle.ts';
+import { getSkin } from './three/colors.ts';
 import { ThreeCubeView } from './three/ThreeCubeView.ts';
 import type { CubeView } from './types.ts';
 
@@ -29,13 +30,21 @@ export type {
   CubeView,
 } from './types.ts';
 export { ALLOWED_MOVES, inverseMove, isAllowedMove, normalizeMove } from './moves.ts';
+export { CUBE_SKINS, DEFAULT_SKIN_ID, getSkin, type CubeSkin } from './three/colors.ts';
 
-/** สร้างคิวบ์ 3 มิติลงใน `container` */
+/**
+ * สร้างคิวบ์ 3 มิติลงใน `container`
+ *
+ * @param skinId สกินสีที่ผู้เล่นเลือก (`User.cube_skin`) — รหัสที่ไม่รู้จักตกกลับไปสกินตั้งต้นเอง
+ *   **สีถูกอบลงใน geometry ตั้งแต่ตอนสร้าง** เปลี่ยนสกินจึงต้องสร้าง view ใหม่ทั้งตัว (ADR-048 ข้อ 2)
+ */
 export async function createCubeView(
   cubeType: CubeType,
   container: HTMLElement,
+  skinId?: string | null,
 ): Promise<CubeView> {
   const kpuzzle = await getKPuzzle(cubeType);
+  const skin = getSkin(skinId);
 
   // Pyramorphix = 2x2x2 ที่ตัดเป็นทรงพีระมิด — ตรรกะเหมือนกันเป๊ะ ต่างที่รูปทรงกับกติกาแก้เสร็จ
   if (cubeType === 'pyramorphix') {
@@ -43,7 +52,7 @@ export async function createCubeView(
     return new ThreeCubeView(container, {
       cubeType,
       model,
-      geometries: buildPyramorphixGeometries(model.lattice.homeCoords),
+      geometries: buildPyramorphixGeometries(model.lattice.homeCoords, skin),
       kpuzzle,
       isSolved: () => model.isSolved(),
     });
@@ -54,7 +63,7 @@ export async function createCubeView(
     return new ThreeCubeView(container, {
       cubeType,
       model,
-      geometries: buildPyraminxGeometries(),
+      geometries: buildPyraminxGeometries(skin),
       kpuzzle,
       isSolved: () => model.isSolved(),
     });
@@ -64,7 +73,7 @@ export async function createCubeView(
   return new ThreeCubeView(container, {
     cubeType,
     model,
-    geometries: buildCubeletGeometries(model.n, model.lattice.homeCoords),
+    geometries: buildCubeletGeometries(model.n, model.lattice.homeCoords, skin),
     kpuzzle,
     // **ยอมให้ทั้งลูกถูกหมุนไปทั้งก้อน** — `U D'` (2x2x2) กับ `Uw D'` (3x3x3) หมุนทั้งลูกได้
     // ทั้งที่ไม่มี move `x y z` อยู่ในกติกา ถ้าใช้ `isIdentical` ลูกที่ครบทุกหน้าแล้วจะถูก

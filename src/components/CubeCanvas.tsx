@@ -1,5 +1,12 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
-import { createCubeView, type CubeMoveEvent, type CubeState, type CubeView } from '@/cube';
+import { useAuth } from '@/auth/useAuth';
+import {
+  createCubeView,
+  DEFAULT_SKIN_ID,
+  type CubeMoveEvent,
+  type CubeState,
+  type CubeView,
+} from '@/cube';
 import type { CubeType } from '@/types/cube';
 
 export interface CubeCanvasHandle {
@@ -54,13 +61,21 @@ interface CubeCanvasProps {
    * server สั่งมา (game-rules.md ข้อ 1: `LOADING` = โหลดโมเดล + apply scramble เสร็จ)
    */
   onScrambleApplied?: (scramble: string | null) => void;
+  /**
+   * บังคับสกินสีแทนสกินของบัญชีที่ล็อกอินอยู่ — **ใช้ตอนพรีวิวสกินที่ยังไม่ได้บันทึก**
+   * ในหน้าตั้งค่าเท่านั้น หน้าอื่นอย่าส่ง จะได้เห็นสกินของผู้เล่นเองเสมอ
+   */
+  skinId?: string;
 }
 
 /**
  * กล่องคิวบ์ 3 มิติ — ห่อ `CubeView` (โลกนอก React) ให้ใช้แบบ React ได้
  *
- * ตัว view สร้างใหม่เฉพาะตอน **เปลี่ยนประเภทรูบิค** เท่านั้น ไม่ใช่ทุกครั้งที่ re-render
+ * ตัว view สร้างใหม่เฉพาะตอน **เปลี่ยนประเภทรูบิคหรือเปลี่ยนสกินสี** เท่านั้น ไม่ใช่ทุกครั้งที่ re-render
  * (สร้างใหม่ = โหลด KPuzzle + สร้าง WebGL context ใหม่ ซึ่งแพงมาก)
+ *
+ * สกินอ่านจากบัญชีที่ล็อกอินอยู่ตรงนี้ที่เดียว ทุกหน้าที่วางคิวบ์จึงได้สีของผู้เล่นเองฟรี
+ * โดยไม่ต้องส่ง prop ต่อกันเป็นทอด ๆ (คนที่ยังไม่ล็อกอินเห็นสกินตั้งต้น — ADR-048 ข้อ 2)
  */
 export const CubeCanvas = forwardRef<CubeCanvasHandle, CubeCanvasProps>(function CubeCanvas(
   {
@@ -72,9 +87,12 @@ export const CubeCanvas = forwardRef<CubeCanvasHandle, CubeCanvasProps>(function
     onState,
     onMove,
     onScrambleApplied,
+    skinId: skinOverride,
   },
   ref,
 ) {
+  const { user } = useAuth();
+  const skinId = skinOverride ?? user?.cubeSkin ?? DEFAULT_SKIN_ID;
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<CubeView | null>(null);
   const [view, setView] = useState<CubeView | null>(null);
@@ -101,7 +119,7 @@ export const CubeCanvas = forwardRef<CubeCanvasHandle, CubeCanvasProps>(function
     let disposed = false;
     setError(null);
 
-    void createCubeView(cubeType, container)
+    void createCubeView(cubeType, container, skinId)
       .then((created) => {
         // React StrictMode เรียก effect สองรอบตอน dev — รอบแรกถูกยกเลิกไปแล้ว ต้องทิ้งของที่เพิ่งสร้าง
         if (disposed) {
@@ -129,7 +147,7 @@ export const CubeCanvas = forwardRef<CubeCanvasHandle, CubeCanvasProps>(function
       scrambleRunRef.current += 1;
       onAnimatingRef.current?.(false);
     };
-  }, [cubeType]);
+  }, [cubeType, skinId]);
 
   useEffect(() => {
     if (!view) return;

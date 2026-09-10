@@ -10,7 +10,7 @@
  */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { BODY_COLOR, FACE_COLORS } from '../three/colors.ts';
+import { CLASSIC_SKIN, type CubeSkin, type FaceName } from '../three/colors.ts';
 import { paintGeometry } from '../three/convex-piece.ts';
 
 /** ย่อเนื้อชิ้นลงเพื่อให้เห็น **ร่องระหว่างชิ้น** เหมือนลูกจริง */
@@ -21,7 +21,7 @@ const STICKER_SCALE = 0.78;
 const STICKER_LIFT = 0.002;
 
 /** หน้าที่อยู่ฝั่งนั้นของแกน (0=x, 1=y, 2=z) */
-const FACE_AT: Record<string, string> = {
+const FACE_AT: Record<string, FaceName> = {
   '0:1': 'R',
   '0:-1': 'L',
   '1:1': 'U',
@@ -36,6 +36,7 @@ function buildSticker(
   sign: number,
   center: readonly number[],
   cell: number,
+  skin: CubeSkin,
 ): THREE.BufferGeometry {
   const size = cell * STICKER_SCALE;
   const plane = new THREE.PlaneGeometry(size, size);
@@ -50,7 +51,7 @@ function buildSticker(
   position[axis] += sign * offset;
   plane.translate(position[0]!, position[1]!, position[2]!);
 
-  return paintGeometry(plane, FACE_COLORS[FACE_AT[`${axis}:${sign}`]!]!);
+  return paintGeometry(plane, skin.faceColors[FACE_AT[`${axis}:${sign}`]!]!);
 }
 
 /**
@@ -58,10 +59,12 @@ function buildSticker(
  *
  * @param n จำนวนชั้น
  * @param homeCoords พิกัดบ้านของแต่ละชิ้น (เดินทีละ 2 — ดู `LatticePieceModel`)
+ * @param skin สกินสีที่ผู้เล่นเลือก (ไม่ส่ง = `classic`) — เปลี่ยนสกินต้องสร้าง geometry ใหม่ทั้งชุด
  */
 export function buildCubeletGeometries(
   n: number,
   homeCoords: readonly (readonly number[])[],
+  skin: CubeSkin = CLASSIC_SKIN,
 ): THREE.BufferGeometry[] {
   const outer = n - 1;
   /** ความกว้างของหนึ่งชิ้น เมื่อทั้งลูกกินพื้นที่ [-1, 1] เท่ากับ Pyramorphix */
@@ -75,10 +78,10 @@ export function buildCubeletGeometries(
       cell * BODY_SCALE,
     ).translate(center[0]!, center[1]!, center[2]!);
 
-    const parts = [paintGeometry(body, BODY_COLOR)];
+    const parts = [paintGeometry(body, skin.bodyColor)];
     for (let axis = 0; axis < 3; axis++) {
       for (const sign of [1, -1]) {
-        if (coord[axis] === sign * outer) parts.push(buildSticker(axis, sign, center, cell));
+        if (coord[axis] === sign * outer) parts.push(buildSticker(axis, sign, center, cell, skin));
       }
     }
 

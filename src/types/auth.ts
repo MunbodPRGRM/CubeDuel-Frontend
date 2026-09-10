@@ -45,6 +45,12 @@ export interface RegisterInput {
   nickname?: string | null;
 }
 
+/** `PATCH /users/me` — ส่งเฉพาะช่องที่จะแก้ · `nickname: null` = ล้างชื่อเล่นทิ้ง */
+export interface UpdateProfileInput {
+  nickname?: string | null;
+  cubeSkin?: string;
+}
+
 export interface LoginInput {
   identifier: string;
   password: string;

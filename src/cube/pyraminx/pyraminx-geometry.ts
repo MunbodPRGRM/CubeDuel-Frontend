@@ -15,7 +15,7 @@
  * `u_i = 1/3` และ `u_i = 5/3` พอดี
  */
 import type * as THREE from 'three';
-import { TETRA_FACE_COLORS } from '../three/colors.ts';
+import { CLASSIC_SKIN, tetraFaceColors, type CubeSkin } from '../three/colors.ts';
 import {
   buildConvexPiece,
   touchedFaces,
@@ -47,11 +47,17 @@ function atMost(vertex: number, value: number): HalfSpace {
   return { normal: matApply(ORIENTATION, VERTEX_AXES[vertex]!).map((v) => -v), d: -value };
 }
 
-/** หน้าทั้งสี่ของพีระมิด (หน้า index `i` อยู่ตรงข้ามจุดยอด `i`) พร้อมสี */
-export const PYRAMINX_FACES: readonly OuterFace[] = VERTEX_AXES.map((_, vertex) => ({
-  plane: atLeast(vertex, -1),
-  color: TETRA_FACE_COLORS[COLOR_OF_OPPOSITE_VERTEX[vertex]!]!,
-}));
+/** หน้าทั้งสี่ของพีระมิด (หน้า index `i` อยู่ตรงข้ามจุดยอด `i`) พร้อมสีของสกินที่เลือก */
+export function pyraminxFaces(skin: CubeSkin): readonly OuterFace[] {
+  const colors = tetraFaceColors(skin);
+  return VERTEX_AXES.map((_, vertex) => ({
+    plane: atLeast(vertex, -1),
+    color: colors[COLOR_OF_OPPOSITE_VERTEX[vertex]!]!,
+  }));
+}
+
+/** หน้าทั้งสี่ในสกินตั้งต้น — ระนาบไม่ขึ้นกับสกิน จึงใช้ตัวนี้เป็นตัวแทนตอนคิดรูปทรงได้ */
+export const PYRAMINX_FACES: readonly OuterFace[] = pyraminxFaces(CLASSIC_SKIN);
 
 const TETRA_SHELL: readonly HalfSpace[] = PYRAMINX_FACES.map((face) => face.plane);
 
@@ -86,8 +92,11 @@ export function stickerCount(pieceIndex: number): number {
 }
 
 /** geometry ของทุกชิ้น เรียงตรงกับ id ของชิ้นใน `PyraminxModel` */
-export function buildPyraminxGeometries(): THREE.BufferGeometry[] {
-  return PYRAMINX_PIECES.map((_, index) => buildConvexPiece(planesForPiece(index), PYRAMINX_FACES));
+export function buildPyraminxGeometries(skin: CubeSkin = CLASSIC_SKIN): THREE.BufferGeometry[] {
+  const faces = pyraminxFaces(skin);
+  return PYRAMINX_PIECES.map((_, index) =>
+    buildConvexPiece(planesForPiece(index), faces, undefined, skin.bodyColor),
+  );
 }
 
 /** ทิศของจุดยอดในระบบพิกัดที่เห็นบนจอ — สคริปต์ verify ใช้ตรวจว่า U ชี้ขึ้นจริง */

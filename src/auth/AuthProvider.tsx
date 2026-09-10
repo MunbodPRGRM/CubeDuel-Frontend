@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { apiFetch, refreshSession, setAccessToken, setSessionListener } from '@/lib/api';
-import type { AuthSession, LoginInput, RegisterInput, SelfUser } from '@/types/auth';
+import type {
+  AuthSession,
+  LoginInput,
+  RegisterInput,
+  SelfUser,
+  UpdateProfileInput,
+} from '@/types/auth';
 import { AuthContext, type AuthContextValue } from './auth-context';
 
 /**
@@ -78,9 +84,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [applySession]);
 
+  /** ผลลัพธ์ของ PATCH คือโปรไฟล์ชุดเต็ม → ทับของเดิมทั้งก้อน ไม่ต้องเดาว่าช่องไหนเปลี่ยน */
+  const updateProfile = useCallback(async (input: UpdateProfileInput) => {
+    const updated = await apiFetch<SelfUser>('/users/me', { method: 'PATCH', body: input });
+    setUser(updated);
+  }, []);
+
+  const deleteAccount = useCallback(
+    async (password?: string) => {
+      // server เพิกถอน refresh token ทั้งหมดให้แล้วในทรานแซกชันเดียวกับการลบ — ฝั่งนี้แค่ล้าง state
+      await apiFetch('/auth/account', { method: 'DELETE', body: { password } });
+      applySession(null);
+    },
+    [applySession],
+  );
+
   const value = useMemo<AuthContextValue>(
-    () => ({ status, user, login, register, logout, logoutAll }),
-    [status, user, login, register, logout, logoutAll],
+    () => ({ status, user, login, register, logout, logoutAll, updateProfile, deleteAccount }),
+    [status, user, login, register, logout, logoutAll, updateProfile, deleteAccount],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

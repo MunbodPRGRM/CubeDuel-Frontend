@@ -10,6 +10,8 @@ import JoinRoomPage from '@/pages/JoinRoomPage';
 import RoomPage from '@/pages/RoomPage';
 import LeaderboardPage from '@/pages/LeaderboardPage';
 import ProfilePage from '@/pages/ProfilePage';
+import SettingsPage from '@/pages/SettingsPage';
+import MatchResultPage from '@/pages/MatchResultPage';
 import { RequireAuth } from '@/auth/RequireAuth';
 import { SocketProvider } from '@/socket/SocketProvider';
 import { QueueProvider } from '@/socket/QueueProvider';
@@ -32,6 +34,20 @@ export default function App() {
             <Route path="/users/:userId" element={<ProfilePage />} />
             {/* ทางลัดไปโปรไฟล์ตัวเอง — เด้งไป /users/:id ให้ URL แชร์ได้เสมอ (ADR-047 ข้อ 5) */}
             <Route path="/profile" element={<ProfilePage />} />
+            {/* ผลแมตช์แบบมี URL ของตัวเอง — ปลายทางของลิงก์ที่แชร์ออกไป (ADR-048 ข้อ 4) */}
+            <Route path="/matches/:matchId" element={<MatchResultPage kind="1v1" />} />
+            <Route
+              path="/multiplayer-matches/:multiplayerMatchId"
+              element={<MatchResultPage kind="multiplayer" />}
+            />
+            <Route
+              path="/settings"
+              element={
+                <RequireAuth>
+                  <SettingsPage />
+                </RequireAuth>
+              }
+            />
             {/* ห้องฝึกซ้อมขอ scramble จาก server ซึ่งต้องมี token (api-contract.md ข้อ 6) */}
             <Route
               path="/practice"

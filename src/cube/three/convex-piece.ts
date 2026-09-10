@@ -205,11 +205,13 @@ function buildSticker(
  *
  * @param planes ระนาบทั้งหมดที่ล้อมชิ้นนี้ (ทั้งรอยตัดข้างในและหน้าจริงของรูบิค)
  * @param outerFaces หน้าจริงของรูบิคพร้อมสี — ชิ้นที่ไม่ได้แตะหน้าไหน ก็ไม่มีสติกเกอร์ของหน้านั้น
+ * @param bodyColor สีเนื้อพลาสติกของสกินที่ผู้เล่นเลือก (ไม่ส่ง = สกิน `classic`)
  */
 export function buildConvexPiece(
   planes: readonly HalfSpace[],
   outerFaces: readonly OuterFace[],
   style: PieceStyle = DEFAULT_PIECE_STYLE,
+  bodyColor: number = BODY_COLOR,
 ): THREE.BufferGeometry {
   const raw = pieceCorners(planes);
   if (raw.length < 4) {
@@ -222,7 +224,7 @@ export function buildConvexPiece(
   const body = keepBasicAttributes(
     paintGeometry(
       new ConvexGeometry(corners.map((p) => new THREE.Vector3(p[0]!, p[1]!, p[2]!))),
-      BODY_COLOR,
+      bodyColor,
     ),
   );
   const parts: THREE.BufferGeometry[] = [body];
