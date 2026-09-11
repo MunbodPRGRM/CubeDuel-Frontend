@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Pagination } from '@/components/Pagination';
 import { useApiPage } from '@/hooks/useApiPage';
-import { ApiError, apiFetch } from '@/lib/api';
+import { apiFetch } from '@/lib/api';
 import {
   formatAdminDate,
   REPORT_ACTION_LABEL,
@@ -11,6 +11,7 @@ import {
 } from '@/types/admin';
 import { AdminDialog } from './AdminDialog';
 import { AdminLayout, AdminNotice } from './AdminLayout';
+import { errorMessage } from '@/lib/errors';
 
 const PAGE_SIZE = 20;
 const STATUS_TABS = [
@@ -58,7 +59,9 @@ export default function AdminReportsPage() {
 
       {reports.error && (
         <div className="mt-4">
-          <AdminNotice tone="error">{reports.error}</AdminNotice>
+          <AdminNotice tone="error" onRetry={reports.reload}>
+            {reports.error}
+          </AdminNotice>
         </div>
       )}
       {reports.data?.length === 0 && !reports.loading && (
@@ -213,7 +216,7 @@ function ResolveDialog({
       });
       onResolved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'ตัดสินรายงานไม่สำเร็จ');
+      setError(errorMessage(err, 'ตัดสินรายงานไม่สำเร็จ'));
     } finally {
       setSaving(false);
     }

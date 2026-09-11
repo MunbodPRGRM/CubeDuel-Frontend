@@ -10,6 +10,7 @@ import { TextField } from '@/components/TextField';
 import { useApiData } from '@/hooks/useApiData';
 import { ApiError, apiFetch } from '@/lib/api';
 import { DEFAULT_SKIN_ID } from '@/cube';
+import { errorMessage } from '@/lib/errors';
 import { displayName, type SelfUser } from '@/types/auth';
 import type { UserRating } from '@/types/leaderboard';
 
@@ -140,10 +141,8 @@ function ProfilePanel({ user }: { user: SelfUser }) {
       await updateProfile({ nickname: nickname.trim() || null, cubeSkin: skinId });
       setSaved(true);
     } catch (err) {
-      if (err instanceof ApiError) {
-        setError(err.message);
-        setFieldError(err.fields?.nickname);
-      } else setError('บันทึกไม่สำเร็จ');
+      setFieldError(err instanceof ApiError ? err.fields?.nickname : undefined);
+      setError(errorMessage(err, 'บันทึกไม่สำเร็จ'));
     } finally {
       setSaving(false);
     }
@@ -298,10 +297,8 @@ function ChangePasswordForm() {
       await logout();
       navigate('/login', { replace: true });
     } catch (err) {
-      if (err instanceof ApiError) {
-        setError(err.message);
-        setFields(err.fields ?? {});
-      } else setError('เปลี่ยนรหัสผ่านไม่สำเร็จ');
+      setFields(err instanceof ApiError ? (err.fields ?? {}) : {});
+      setError(errorMessage(err, 'เปลี่ยนรหัสผ่านไม่สำเร็จ'));
     } finally {
       setSaving(false);
     }
@@ -376,7 +373,7 @@ function DeleteAccountSection() {
       await deleteAccount(password);
       navigate('/', { replace: true });
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'ลบบัญชีไม่สำเร็จ');
+      setError(errorMessage(err, 'ลบบัญชีไม่สำเร็จ'));
     } finally {
       setWorking(false);
     }

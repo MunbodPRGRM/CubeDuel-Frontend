@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { NOT_CONNECTED_MESSAGE } from '@/lib/errors';
 import { emitAck, socketErrorMessage } from './socket-client';
 import { QueueContext, type QueueContextValue, type QueueState } from './queue-context';
 import { useSocket } from './useSocket';
@@ -109,7 +110,7 @@ export function QueueProvider({ children }: { children: ReactNode }) {
   const join = useCallback(
     async (cubeType: CubeType, kind: QueueKind): Promise<boolean> => {
       if (!socket || socketStatus !== 'connected') {
-        setError('ยังไม่ได้เชื่อมต่อเซิร์ฟเวอร์ กรุณารอสักครู่แล้วลองใหม่');
+        setError(NOT_CONNECTED_MESSAGE);
         return false;
       }
       setBusy(true);

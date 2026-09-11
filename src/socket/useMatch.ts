@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/auth/useAuth';
 import type { CubeMoveEvent } from '@/cube';
+import { NOT_CONNECTED_MESSAGE } from '@/lib/errors';
 import { SocketAckError, emitAck, socketErrorMessage } from './socket-client';
 import { useSocket } from './useSocket';
 import type { AckError, MatchResult, RoomSnapshot, SolveSolvedResult } from './types';
@@ -153,7 +154,7 @@ export function useMatch(snapshot: RoomSnapshot | null): UseMatchResult {
   const run = useCallback(async (event: 'room:start' | 'solve:surrender'): Promise<void> => {
     const s = socketRef.current;
     if (!s) {
-      setActionError('ยังไม่ได้เชื่อมต่อเซิร์ฟเวอร์ กรุณารอสักครู่แล้วลองใหม่');
+      setActionError(NOT_CONNECTED_MESSAGE);
       return;
     }
     setBusy(true);

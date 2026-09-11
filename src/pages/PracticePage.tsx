@@ -4,8 +4,9 @@ import { AppHeader } from '@/components/AppHeader';
 import { CubeCanvas, type CubeCanvasHandle } from '@/components/CubeCanvas';
 import { CubeTypePicker } from '@/components/CubeTypePicker';
 import type { CubeMoveEvent, CubeState } from '@/cube';
-import { ApiError, apiFetch } from '@/lib/api';
+import { apiFetch } from '@/lib/api';
 import { averageOfN, bestTime, meanTime } from '@/lib/averages';
+import { errorMessage } from '@/lib/errors';
 import { formatSolveTime } from '@/lib/format';
 import {
   appendSolve,
@@ -126,7 +127,7 @@ export default function PracticePage() {
       } catch (err) {
         if (scrambleRequestRef.current !== run) return;
         setScrambling(false);
-        setScrambleError(err instanceof ApiError ? err.message : 'ขอ scramble ไม่สำเร็จ');
+        setScrambleError(errorMessage(err, 'ขอ scramble ไม่สำเร็จ'));
       } finally {
         if (scrambleRequestRef.current === run) setLoadingScramble(false);
       }

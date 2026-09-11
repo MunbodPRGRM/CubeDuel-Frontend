@@ -1,5 +1,6 @@
 import { useSearchParams } from 'react-router-dom';
 import { AppHeader } from '@/components/AppHeader';
+import { ErrorNotice } from '@/components/ErrorScreen';
 import { NewsCard } from '@/components/NewsCard';
 import { Pagination } from '@/components/Pagination';
 import { useApiPage } from '@/hooks/useApiPage';
@@ -33,11 +34,7 @@ export default function NewsPage() {
           <p className="mt-1 text-sm text-slate-500">ประกาศจากผู้ดูแลระบบ · เรียงจากใหม่ไปเก่า</p>
         </header>
 
-        {news.error && (
-          <p className="mt-6 rounded-2xl border border-line bg-navy-850/80 px-6 py-12 text-center text-sm text-loss">
-            {news.error}
-          </p>
-        )}
+        {news.error && <ErrorNotice message={news.error} onRetry={news.reload} className="mt-6" />}
 
         {news.data?.length === 0 && !news.loading && (
           <p className="mt-6 rounded-2xl border border-line bg-navy-850/80 px-6 py-12 text-center text-sm text-slate-500">

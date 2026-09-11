@@ -1,6 +1,7 @@
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { useAuth } from '@/auth/useAuth';
 import { AppHeader } from '@/components/AppHeader';
+import { ErrorNotice } from '@/components/ErrorScreen';
 import { MatchDetailBody } from '@/components/MatchDetailBody';
 import { ShareButton } from '@/components/ShareButton';
 import { useApiData } from '@/hooks/useApiData';
@@ -47,7 +48,13 @@ export default function MatchResultPage({ kind }: { kind: '1v1' | 'multiplayer' 
 
         <div className="mt-4 rounded-2xl border border-line bg-navy-850/80">
           {loading && <p className="px-5 py-12 text-center text-sm text-slate-500">กำลังโหลด…</p>}
-          {error && <p className="px-5 py-12 text-center text-sm text-loss">{error}</p>}
+          {error && (
+            <ErrorNotice
+              message={error}
+              onRetry={kind === '1v1' ? duel.reload : multi.reload}
+              className="border-0 bg-transparent"
+            />
+          )}
           {/* ไม่ได้ล็อกอินก็เปิดดูได้ (endpoint เป็น 🌐) — แค่ไม่มีแถวไหนถูกไฮไลต์ */}
           {duel.data && <MatchDetailBody detail={duel.data} highlightUserId={user?.userId ?? 0} />}
           {multi.data && (

@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/auth/useAuth';
 import { ApiError } from '@/lib/api';
+import { errorMessage } from '@/lib/errors';
 import { validateEmail, validatePassword, validateUsername } from '@/lib/validation';
 import { AuthLayout } from '@/components/AuthLayout';
 import { FormAlert } from '@/components/FormAlert';
@@ -61,12 +62,10 @@ export default function RegisterPage() {
       });
       navigate('/', { replace: true });
     } catch (err) {
-      if (err instanceof ApiError) {
-        if (err.fields) setFieldErrors(err.fields);
-        setFormError(err.message);
-      } else {
-        setFormError('เกิดข้อผิดพลาดที่ไม่คาดคิด กรุณาลองใหม่อีกครั้ง');
-      }
+      // ต้องรู้จัก `ApiError` ตรงนี้เพราะต้องการ `fields` ไปไฮไลต์ช่องที่ผิด
+      // ส่วนข้อความรวมยกให้ `errorMessage()` เหมือนทุกที่ในแอป
+      if (err instanceof ApiError && err.fields) setFieldErrors(err.fields);
+      setFormError(errorMessage(err, 'เกิดข้อผิดพลาดที่ไม่คาดคิด กรุณาลองใหม่อีกครั้ง'));
     } finally {
       setLoading(false);
     }

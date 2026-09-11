@@ -6,6 +6,7 @@ import { AuthLayout } from '@/components/AuthLayout';
 import { FormAlert } from '@/components/FormAlert';
 import { SubmitButton } from '@/components/SubmitButton';
 import { LockIcon, TextField, UserIcon } from '@/components/TextField';
+import { errorMessage } from '@/lib/errors';
 
 export default function LoginPage() {
   const { user, login } = useAuth();
@@ -36,12 +37,10 @@ export default function LoginPage() {
       await login({ identifier: identifier.trim(), password });
       navigate(from, { replace: true });
     } catch (err) {
-      if (err instanceof ApiError) {
-        if (err.fields) setFieldErrors(err.fields);
-        setFormError(err.message);
-      } else {
-        setFormError('เกิดข้อผิดพลาดที่ไม่คาดคิด กรุณาลองใหม่อีกครั้ง');
-      }
+      // ต้องรู้จัก `ApiError` ตรงนี้เพราะต้องการ `fields` ไปไฮไลต์ช่องที่ผิด
+      // ส่วนข้อความรวมยกให้ `errorMessage()` เหมือนทุกที่ในแอป
+      if (err instanceof ApiError && err.fields) setFieldErrors(err.fields);
+      setFormError(errorMessage(err, 'เกิดข้อผิดพลาดที่ไม่คาดคิด กรุณาลองใหม่อีกครั้ง'));
     } finally {
       setLoading(false);
     }

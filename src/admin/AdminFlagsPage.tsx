@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { Pagination } from '@/components/Pagination';
 import { useApiData } from '@/hooks/useApiData';
 import { useApiPage } from '@/hooks/useApiPage';
-import { ApiError, apiFetch } from '@/lib/api';
+import { apiFetch } from '@/lib/api';
 import {
   FLAG_REASON_LABEL,
   FLAG_VERDICT_LABEL,
@@ -14,6 +14,7 @@ import {
 } from '@/types/admin';
 import { AdminDialog } from './AdminDialog';
 import { AdminLayout, AdminNotice } from './AdminLayout';
+import { errorMessage } from '@/lib/errors';
 
 const PAGE_SIZE = 20;
 const VERDICT_TABS = [
@@ -71,7 +72,9 @@ export default function AdminFlagsPage() {
 
       {flags.error && (
         <div className="mt-4">
-          <AdminNotice tone="error">{flags.error}</AdminNotice>
+          <AdminNotice tone="error" onRetry={flags.reload}>
+            {flags.error}
+          </AdminNotice>
         </div>
       )}
       {flags.data?.length === 0 && !flags.loading && (
@@ -199,7 +202,7 @@ function FlagDialog({
       });
       onReviewed();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'บันทึกผลตรวจไม่สำเร็จ');
+      setError(errorMessage(err, 'บันทึกผลตรวจไม่สำเร็จ'));
     } finally {
       setSaving(false);
     }

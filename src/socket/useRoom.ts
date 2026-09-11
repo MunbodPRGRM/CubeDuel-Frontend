@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/auth/useAuth';
+import { NOT_CONNECTED_MESSAGE } from '@/lib/errors';
 import { emitAck, socketErrorMessage, type TypedClientSocket } from './socket-client';
 import { useSocket } from './useSocket';
 import type { PlayerPublic, RoomSnapshot, RoomSnapshotResult } from './types';
@@ -136,7 +137,7 @@ export function useRoom(roomId: number): UseRoomResult {
   const run = useCallback(
     async (action: (socket: TypedClientSocket) => Promise<unknown>): Promise<boolean> => {
       if (!socket) {
-        setActionError('ยังไม่ได้เชื่อมต่อเซิร์ฟเวอร์ กรุณารอสักครู่แล้วลองใหม่');
+        setActionError(NOT_CONNECTED_MESSAGE);
         return false;
       }
       setBusy(true);

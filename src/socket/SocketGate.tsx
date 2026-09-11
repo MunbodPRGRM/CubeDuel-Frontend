@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react';
 import { PageSpinner } from '@/components/PageSpinner';
+import { useOnline } from '@/hooks/useOnline';
+import { ERROR_MESSAGES, errorMessage } from '@/lib/errors';
 import { useSocket } from './useSocket';
 
 /**
@@ -17,10 +19,19 @@ export function SocketGate({ children }: { children: ReactNode }) {
   if (status === 'connected') return <>{children}</>;
   if (status === 'error') return <ConnectionErrorCard />;
 
+  return <Connecting />;
+}
+
+/** ระหว่างรอต่อ — ถ้าเครื่องหลุดเน็ตอยู่ ต้องบอกสาเหตุ ไม่ใช่ปล่อยให้หมุนเฉย ๆ ไม่รู้จบ */
+function Connecting() {
+  const online = useOnline();
+
   return (
     <div className="text-center">
       <PageSpinner />
-      <p className="text-sm text-slate-500">กำลังเชื่อมต่อเซิร์ฟเวอร์…</p>
+      <p className="text-sm text-slate-500">
+        {online ? 'กำลังเชื่อมต่อเซิร์ฟเวอร์…' : `${ERROR_MESSAGES.E_NETWORK} กำลังรอเน็ตกลับมา…`}
+      </p>
     </div>
   );
 }
@@ -31,9 +42,7 @@ export function ConnectionErrorCard() {
   return (
     <div className="mx-auto max-w-md rounded-2xl border border-loss/40 bg-loss/5 px-6 py-8 text-center">
       <p className="font-semibold text-loss">เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ</p>
-      <p className="mt-2 text-sm text-slate-400">
-        {error?.message ?? 'ไม่ทราบสาเหตุ กรุณาลองใหม่อีกครั้ง'}
-      </p>
+      <p className="mt-2 text-sm text-slate-400">{errorMessage(error)}</p>
       <button
         type="button"
         onClick={reconnect}
@@ -51,6 +60,7 @@ export function ConnectionErrorCard() {
  */
 export function ConnectionBanner() {
   const { status, error, reconnect } = useSocket();
+  const online = useOnline();
 
   if (status === 'connected') return null;
 
@@ -69,8 +79,10 @@ export function ConnectionBanner() {
       )}
       <span>
         {isError
-          ? (error?.message ?? 'การเชื่อมต่อหลุด')
-          : 'การเชื่อมต่อหลุด กำลังต่อใหม่ให้อัตโนมัติ…'}
+          ? errorMessage(error)
+          : online
+            ? 'การเชื่อมต่อหลุด กำลังต่อใหม่ให้อัตโนมัติ… ที่นั่งในห้องยังอยู่'
+            : 'เน็ตหลุด — ที่นั่งในห้องยังอยู่ ระบบจะต่อกลับให้เองเมื่อเน็ตกลับมา'}
       </span>
       {isError && (
         <button type="button" onClick={reconnect} className="underline underline-offset-2">

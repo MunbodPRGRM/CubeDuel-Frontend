@@ -1,4 +1,5 @@
-import type { ApiErrorCode, AuthSession } from '@/types/auth';
+import type { AuthSession } from '@/types/auth';
+import { ERROR_MESSAGES, type AppErrorCode } from './errors';
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:4000/api/v1';
 
@@ -24,14 +25,18 @@ export function fileUrl(path: string): string {
 }
 
 export class ApiError extends Error {
-  readonly code: ApiErrorCode;
+  /**
+   * รหัสตาม `docs/api-contract.md` ข้อ 1 — แต่ประกาศเป็น `AppErrorCode` เพราะตัวห่อนี้
+   * สร้าง error ของฝั่ง client เองด้วยตอนยิงไม่ถึง server (`E_NETWORK`)
+   */
+  readonly code: AppErrorCode;
   readonly status: number;
   /** ข้อความรายฟิลด์จาก server เช่น { email: 'อีเมลนี้ถูกใช้ไปแล้ว' } */
   readonly fields?: Record<string, string>;
 
   constructor(
     status: number,
-    code: ApiErrorCode,
+    code: AppErrorCode,
     message: string,
     fields?: Record<string, string>,
   ) {
@@ -88,14 +93,14 @@ async function rawFetch(path: string, options: FetchOptions): Promise<Response> 
 async function toApiError(res: Response): Promise<ApiError> {
   try {
     const body = (await res.json()) as {
-      error?: { code: ApiErrorCode; message: string; fields?: Record<string, string> };
+      error?: { code: AppErrorCode; message: string; fields?: Record<string, string> };
     };
     if (body.error)
       return new ApiError(res.status, body.error.code, body.error.message, body.error.fields);
   } catch {
     // server ตอบไม่ใช่ JSON (เช่น proxy พัง) — ตกไปใช้ข้อความกลางด้านล่าง
   }
-  return new ApiError(res.status, 'E_INTERNAL', 'ติดต่อเซิร์ฟเวอร์ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
+  return new ApiError(res.status, 'E_INTERNAL', ERROR_MESSAGES.E_INTERNAL);
 }
 
 // ---------------------------------------------------------------- ต่ออายุ token
@@ -155,11 +160,8 @@ async function request<T>(
   try {
     res = await rawFetch(path, options);
   } catch {
-    throw new ApiError(
-      0,
-      'E_INTERNAL',
-      'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ตรวจสอบว่า backend รันอยู่หรือไม่',
-    );
+    // ยิงไม่ถึง server เลย (เน็ตหลุด / backend ไม่ได้รัน) — คนละเรื่องกับ server ตอบ 500
+    throw new ApiError(0, 'E_NETWORK', ERROR_MESSAGES.E_NETWORK);
   }
 
   // 401 บน endpoint ทั่วไป = access token หมดอายุ → ต่ออายุแล้วยิงซ้ำหนึ่งครั้ง
@@ -199,11 +201,8 @@ export async function apiUpload<T>(
   try {
     res = await send();
   } catch {
-    throw new ApiError(
-      0,
-      'E_INTERNAL',
-      'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ตรวจสอบว่า backend รันอยู่หรือไม่',
-    );
+    // ยิงไม่ถึง server เลย (เน็ตหลุด / backend ไม่ได้รัน) — คนละเรื่องกับ server ตอบ 500
+    throw new ApiError(0, 'E_NETWORK', ERROR_MESSAGES.E_NETWORK);
   }
 
   if (res.status === 401 && accessToken !== null && (await refreshSession())) res = await send();

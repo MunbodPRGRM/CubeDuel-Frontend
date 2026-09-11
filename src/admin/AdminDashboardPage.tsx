@@ -14,7 +14,11 @@ export default function AdminDashboardPage() {
   return (
     <AdminLayout title="แดชบอร์ด" description="ภาพรวมของระบบ ณ ตอนนี้">
       {dash.loading && <AdminNotice>กำลังโหลด…</AdminNotice>}
-      {dash.error && <AdminNotice tone="error">{dash.error}</AdminNotice>}
+      {dash.error && (
+        <AdminNotice tone="error" onRetry={dash.reload}>
+          {dash.error}
+        </AdminNotice>
+      )}
 
       {d && (
         <>
