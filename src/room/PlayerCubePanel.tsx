@@ -3,7 +3,12 @@ import { Avatar } from '@/components/Avatar';
 import { CubeCanvas, type CubeCanvasHandle } from '@/components/CubeCanvas';
 import type { CubeMoveEvent, CubeState } from '@/cube';
 import { SOLVE_STATUS_LABEL } from '@/socket/room-labels';
-import { playerName, type PlayerPublic, type RoomSnapshot } from '@/socket/types';
+import {
+  playerName,
+  type PlayerPublic,
+  type RoomSnapshot,
+  type SolveStatus,
+} from '@/socket/types';
 import type { UseMatchResult } from '@/socket/useMatch';
 import { useSocket } from '@/socket/useSocket';
 import { LiveTime, type LiveTimeMode } from './LiveTime';
@@ -149,6 +154,7 @@ export function PlayerCubePanel({
             <SelfCube
               snapshot={snapshot}
               match={match}
+              status={progress?.status}
               canTurn={
                 snapshot.state === 'WAITING' ||
                 (isSolvingState(snapshot.state) && progress?.status === 'solving')
@@ -159,6 +165,7 @@ export function PlayerCubePanel({
             <MirrorCube
               snapshot={snapshot}
               userId={player.userId}
+              status={progress?.status}
               serverMoveCount={progress?.moveCount ?? 0}
             />
           )
@@ -187,11 +194,31 @@ export function PlayerCubePanel({
   );
 }
 
+/**
+ * server บอกว่าคนนี้ **แก้เสร็จแล้ว** แต่ภาพคิวบ์ยังไม่ครบสี → เล่นอนิเมชันแก้ให้ดู
+ *
+ * ทางปกติไม่เข้าเงื่อนไขนี้เลย — ท่าสุดท้ายลงบัญชีของคิวบ์ก่อน server ตัดสินเสมอ
+ * ที่เข้าได้คือปุ่ม "เสร็จทันที (ทดสอบ)" ที่ server ตัดสินโดยไม่มี move (ADR-060 ข้อ 5)
+ * · ท่าที่ `solve()` เล่นเป็น `source: 'program'` ซึ่ง `sendMove` ทิ้งอยู่แล้ว ไม่หลุดขึ้น server
+ */
+function useSolveWhenServerSaysSolved(
+  cubeRef: { current: CubeCanvasHandle | null },
+  status: SolveStatus | undefined,
+): void {
+  useEffect(() => {
+    if (status !== 'solved') return;
+    const cube = cubeRef.current;
+    if (cube?.getState()?.solved === false) void cube.solve();
+  }, [cubeRef, status]);
+}
+
 // ---------------------------------------------------------------- คิวบ์ของเราเอง
 
 interface SelfCubeProps {
   snapshot: RoomSnapshot;
   match: UseMatchResult;
+  /** สถานะรอบนี้ของเราตาม server — ใช้กับ `useSolveWhenServerSaysSolved` */
+  status: SolveStatus | undefined;
   canTurn: boolean;
   onMoveCount: (count: number) => void;
 }
@@ -202,9 +229,10 @@ interface SelfCubeProps {
  * ⚠️ ห้ามส่ง `animateScramble` เด็ดขาด (ADR-032 ข้อ 1) ห้องแข่งต้องได้ scramble ทันที
  * ไม่งั้นเครื่องเร็วจะเห็นลูกที่พร้อมแก้ก่อนเครื่องช้า
  */
-function SelfCube({ snapshot, match, canTurn, onMoveCount }: SelfCubeProps) {
+function SelfCube({ snapshot, match, status, canTurn, onMoveCount }: SelfCubeProps) {
   const cubeRef = useRef<CubeCanvasHandle>(null);
   const { sendMove, reportSolved, reportCubeReady } = match;
+  useSolveWhenServerSaysSolved(cubeRef, status);
 
   /**
    * เข้ารอบใหม่ → ล้างบัญชี move ของคิวบ์ให้แน่ใจว่า `seq` เริ่มที่ 1 ตรงกับ server
@@ -263,6 +291,8 @@ function SelfCube({ snapshot, match, canTurn, onMoveCount }: SelfCubeProps) {
 interface MirrorCubeProps {
   snapshot: RoomSnapshot;
   userId: number;
+  /** สถานะรอบนี้ของคนนี้ตาม server — ใช้กับ `useSolveWhenServerSaysSolved` */
+  status: SolveStatus | undefined;
   /** จำนวน move ที่ server บอกว่าคนนี้หมุนไปแล้ว — ใช้จับว่าภาพของเราตกหล่นหรือยัง */
   serverMoveCount: number;
 }
@@ -274,9 +304,10 @@ interface MirrorCubeProps {
  * ผู้ชมเข้าระหว่างแข่ง) จะไม่มีทางรู้ move ที่คู่แข่งหมุนไปก่อนหน้า — snapshot มีแต่ตัวเลข
  * `moveCount` ไม่มี move stream ภาพจึงค้างอยู่ที่ scramble ต้องบอกผู้ใช้ตรง ๆ ว่าไม่ครบ
  */
-function MirrorCube({ snapshot, userId, serverMoveCount }: MirrorCubeProps) {
+function MirrorCube({ snapshot, userId, status, serverMoveCount }: MirrorCubeProps) {
   const { socket } = useSocket();
   const cubeRef = useRef<CubeCanvasHandle>(null);
+  useSolveWhenServerSaysSolved(cubeRef, status);
   /** จำนวนท่าที่เราสะท้อนสำเร็จในรอบนี้ */
   const mirroredRef = useRef(0);
   const [incomplete, setIncomplete] = useState(false);

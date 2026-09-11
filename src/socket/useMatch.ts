@@ -36,6 +36,11 @@ export interface UseMatchResult {
   start: () => Promise<void>;
   /** `solve:surrender` — ยอมแพ้ = DNF */
   surrender: () => Promise<void>;
+  /**
+   * `solve:dev_finish` — ปุ่ม "เสร็จทันที" สำหรับทดสอบ (ADR-060) · server ปฏิเสธถ้าไม่ได้เปิดสวิตช์
+   * ภาพคิวบ์ครบสีตามมาเองจาก `PlayerCubePanel` เมื่อ snapshot บอกว่าเรา `solved`
+   */
+  devFinish: () => Promise<void>;
   /** คิวบ์ของเราใส่ scramble เสร็จแล้ว → `solve:ready` (ยิงได้ครั้งเดียวต่อรอบ) */
   reportCubeReady: () => void;
   /** ผู้เล่นหมุนหนึ่งท่า → `solve:move` (fire-and-forget) */
@@ -151,25 +156,30 @@ export function useMatch(snapshot: RoomSnapshot | null): UseMatchResult {
 
   // ---------------------------------------------------------------- คำสั่งที่รอ ack
 
-  const run = useCallback(async (event: 'room:start' | 'solve:surrender'): Promise<void> => {
-    const s = socketRef.current;
-    if (!s) {
-      setActionError(NOT_CONNECTED_MESSAGE);
-      return;
-    }
-    setBusy(true);
-    setActionError(null);
-    try {
-      await emitAck<null>(s, event, {});
-    } catch (err: unknown) {
-      setActionError(socketErrorMessage(err));
-    } finally {
-      setBusy(false);
-    }
-  }, []);
+  const run = useCallback(
+    async (event: 'room:start' | 'solve:surrender' | 'solve:dev_finish'): Promise<void> => {
+      const s = socketRef.current;
+      if (!s) {
+        setActionError(NOT_CONNECTED_MESSAGE);
+        return;
+      }
+      setBusy(true);
+      setActionError(null);
+      try {
+        // ผลของ ack ไม่ได้ใช้ — ความจริงมาจาก `room:state` ที่ตามมาเสมอ (ADR-036 ข้อ 4)
+        await emitAck<unknown>(s, event, {});
+      } catch (err: unknown) {
+        setActionError(socketErrorMessage(err));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [],
+  );
 
   const start = useCallback(() => run('room:start'), [run]);
   const surrender = useCallback(() => run('solve:surrender'), [run]);
+  const devFinish = useCallback(() => run('solve:dev_finish'), [run]);
 
   // ---------------------------------------------------------------- คำสั่งระหว่างแก้
 
@@ -244,6 +254,7 @@ export function useMatch(snapshot: RoomSnapshot | null): UseMatchResult {
     reloadedMidSolve,
     start,
     surrender,
+    devFinish,
     reportCubeReady,
     sendMove,
     reportSolved,

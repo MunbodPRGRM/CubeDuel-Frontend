@@ -313,6 +313,19 @@ function MatchPanel({
               </div>
             )}
 
+            {/* ปุ่มทดสอบ — โผล่เฉพาะเมื่อ server เปิดสวิตช์ · เวลาหยุด ณ ตอนกด (ADR-060)
+                ⚠️ ถอดออกก่อน deploy · เงื่อนไขกดได้เท่ากับปุ่มยอมแพ้ (ผู้เล่นที่ยังแก้อยู่) */}
+            {snapshot.devInstantFinish && racing && (
+              <button
+                type="button"
+                disabled={!canSurrender || match.busy}
+                onClick={() => void match.devFinish()}
+                className="rounded-xl border border-dashed border-gold-400/60 px-4 py-2.5 text-sm font-semibold text-gold-400 transition hover:bg-gold-400/10 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                เสร็จทันที (ทดสอบ)
+              </button>
+            )}
+
             {/* ระหว่างโหลด/นับถอยหลัง/ตรวจสอบ ยังยอมแพ้ไม่ได้ (server ปฏิเสธ) — บอกไว้ให้ชัด */}
             {(state === 'LOADING' || state === 'COUNTDOWN' || state === 'INSPECTION') && (
               <p className="text-xs text-slate-500">ยอมแพ้ได้เมื่อเริ่มจับเวลาแล้วเท่านั้น</p>
