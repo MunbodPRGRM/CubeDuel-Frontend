@@ -1,10 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/auth/useAuth';
-import type { CubeMoveEvent } from '@/cube';
+import type { CameraPose, CubeMoveEvent } from '@/cube';
 import { NOT_CONNECTED_MESSAGE } from '@/lib/errors';
 import { SocketAckError, emitAck, socketErrorMessage } from './socket-client';
 import { useSocket } from './useSocket';
-import type { AckError, MatchResult, RoomSnapshot, SolveSolvedResult } from './types';
+import { isCameraRelayState } from './types';
+import type {
+  AckError,
+  MatchResult,
+  RoomSnapshot,
+  SolveCameraPayload,
+  SolveSolvedResult,
+} from './types';
 
 /**
  * ฝั่ง client ของ **ลำดับการแข่ง** (`room:start` + `solve:*` + `match:finished`)
@@ -47,11 +54,25 @@ export interface UseMatchResult {
   sendMove: (event: CubeMoveEvent) => void;
   /** คิวบ์ของเราครบทุกหน้าแล้ว → `solve:solved` ให้ server replay ตรวจแล้วตัดสิน */
   reportSolved: (moveCount: number) => void;
+  /**
+   * มุมกล้องของเราเปลี่ยน → `solve:camera` (ADR-062) — throttle ทุก 80 ms และส่งท่าสุดท้ายเสมอ
+   * นอกช่วงที่ server ส่งต่อ หรือเป็นผู้ชม = ทิ้ง
+   */
+  sendCamera: (pose: CameraPose) => void;
 }
 
 /** state ที่ผู้เล่นหมุนคิวบ์ได้จริง (นอกเหนือจากนี้ server ปฏิเสธทุกท่า) */
 function isSolvingState(state: RoomSnapshot['state']): boolean {
   return state === 'SOLVING' || state === 'FINAL_COUNTDOWN';
+}
+
+/** ส่งมุมกล้องได้อย่างมากทุกเท่านี้ (~12 ครั้ง/วินาที — roadmap เฟส 12 ก้อนที่ 5) */
+const CAMERA_SEND_INTERVAL_MS = 80;
+
+/** ปัดทศนิยมให้ข้อความเล็ก — ความละเอียดนี้เกินกว่าที่ตาเห็นความต่างอยู่แล้ว (ADR-062 ข้อ 1) */
+function toCameraPayload(pose: CameraPose): SolveCameraPayload {
+  const [x, y, z, w] = pose.quaternion.map((value) => Math.round(value * 1e4) / 1e4);
+  return { q: [x!, y!, z!, w!], d: Math.round(pose.distance * 1e3) / 1e3 };
 }
 
 export function useMatch(snapshot: RoomSnapshot | null): UseMatchResult {
@@ -246,6 +267,43 @@ export function useMatch(snapshot: RoomSnapshot | null): UseMatchResult {
     [myProgress],
   );
 
+  // ---------------------------------------------------------------- มุมกล้อง (ADR-062)
+
+  /** ท่าล่าสุดที่ยังไม่ได้ส่ง — ส่งแต่ตัวล่าสุดเสมอ ตัวกลางทางทิ้งได้ */
+  const pendingCameraRef = useRef<CameraPose | null>(null);
+  const cameraTimerRef = useRef<number | null>(null);
+  const lastCameraSentRef = useRef(0);
+
+  const flushCamera = useCallback(() => {
+    cameraTimerRef.current = null;
+    const pose = pendingCameraRef.current;
+    pendingCameraRef.current = null;
+    // ตรวจตอน **จะส่งจริง** — รอบอาจจบระหว่างรอ 80 ms (ADR-062 ข้อ 3)
+    const s = socketRef.current;
+    const snap = snapshotRef.current;
+    if (!pose || !s || !snap || !isCameraRelayState(snap.state) || !myProgress()) return;
+    lastCameraSentRef.current = Date.now();
+    // ไม่มี ack · ผิดแล้ว server ทิ้งเงียบ (socket-events.md ข้อ 7)
+    s.emit('solve:camera', toCameraPayload(pose));
+  }, [myProgress]);
+
+  const sendCamera = useCallback(
+    (pose: CameraPose) => {
+      pendingCameraRef.current = pose;
+      if (cameraTimerRef.current !== null) return; // มีรอบส่งตั้งไว้แล้ว จะหยิบตัวล่าสุดไปเอง
+      const wait = Math.max(0, lastCameraSentRef.current + CAMERA_SEND_INTERVAL_MS - Date.now());
+      cameraTimerRef.current = window.setTimeout(flushCamera, wait);
+    },
+    [flushCamera],
+  );
+
+  useEffect(
+    () => () => {
+      if (cameraTimerRef.current !== null) window.clearTimeout(cameraTimerRef.current);
+    },
+    [],
+  );
+
   return {
     result,
     busy,
@@ -258,5 +316,6 @@ export function useMatch(snapshot: RoomSnapshot | null): UseMatchResult {
     reportCubeReady,
     sendMove,
     reportSolved,
+    sendCamera,
   };
 }
