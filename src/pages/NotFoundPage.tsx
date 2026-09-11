@@ -5,7 +5,7 @@ export default function NotFoundPage() {
   return (
     <div className="min-h-screen bg-navy-900">
       <AppHeader />
-      <main className="mx-auto max-w-6xl px-4 py-24 text-center">
+      <main className="page-wide px-4 py-24 text-center">
         <p className="tabular text-6xl font-bold text-navy-700">404</p>
         <h1 className="mt-4 text-xl font-bold text-white">ไม่พบหน้าที่ต้องการ</h1>
         <p className="mt-2 text-sm text-slate-500">ลิงก์อาจพิมพ์ผิด หรือหน้านี้ยังไม่ถูกสร้าง</p>

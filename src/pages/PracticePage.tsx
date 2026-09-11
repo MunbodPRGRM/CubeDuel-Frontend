@@ -289,12 +289,13 @@ export default function PracticePage() {
         }[phase];
 
   return (
-    <div className="min-h-screen bg-navy-900">
+    // จอ `lg` ขึ้นไปล็อกความสูงเท่าจอ หน้าไม่เลื่อน — แผงควบคุมเลื่อนในตัวเองแทน (ADR-059 ข้อ 3)
+    <div className="min-h-screen bg-navy-900 lg:flex lg:h-[calc(100dvh-var(--offline-banner-h,0px))] lg:min-h-0 lg:flex-col lg:overflow-hidden">
       <AppHeader />
 
-      <main className="mx-auto grid max-w-6xl gap-4 px-4 py-6 lg:grid-cols-[1fr_22rem]">
+      <main className="page-wide grid gap-4 px-4 py-4 lg:min-h-0 lg:flex-1 lg:grid-cols-[1fr_22rem]">
         {/* ---------------- ฝั่งซ้าย: คิวบ์ 3 มิติ ---------------- */}
-        <section className="relative h-[62vh] min-h-[22rem] overflow-hidden rounded-2xl border border-line bg-navy-850 lg:h-[calc(100vh-7rem)]">
+        <section className="relative h-[62vh] min-h-[22rem] overflow-hidden rounded-2xl border border-line bg-navy-850 lg:h-full lg:min-h-0">
           {/* `null` จนกว่า scramble **ของประเภทนี้** จะมาถึง — ห้ามเอาของประเภทเก่ามาใส่เด็ดขาด
               (`null` = คิวบ์ครบทุกหน้า ซึ่งเป็นภาพที่ต้องเห็นตอนเข้าห้องพอดี) */}
           <CubeCanvas
@@ -339,7 +340,7 @@ export default function PracticePage() {
         </section>
 
         {/* ---------------- ฝั่งขวา: แผงควบคุม ---------------- */}
-        <aside className="flex flex-col gap-4 self-start">
+        <aside className="flex flex-col gap-4 self-start lg:max-h-full lg:min-h-0 lg:overflow-y-auto">
           <section className="rounded-2xl border border-line bg-navy-850/80 px-5 py-4">
             <p className="text-center text-xs text-slate-400">สถานะการเล่น</p>
             <h1 className="text-center text-2xl font-bold text-brand-400">ห้องฝึกซ้อม</h1>

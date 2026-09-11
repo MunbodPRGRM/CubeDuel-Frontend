@@ -94,7 +94,7 @@ export default function LeaderboardPage() {
     <div className="min-h-screen bg-navy-900">
       <AppHeader />
 
-      <main className="mx-auto max-w-6xl px-4 py-8">
+      <main className="page-wide px-4 py-8">
         <h1 className="text-3xl font-extrabold text-white">กระดานจัดอันดับ</h1>
         <p className="mt-2 text-sm text-slate-400">
           นี่คือระดับสูงสุดของผู้เล่นทั้งหมด คุณอยู่ระดับไหนล่ะ?

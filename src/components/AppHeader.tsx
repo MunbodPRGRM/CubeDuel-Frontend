@@ -30,7 +30,7 @@ export function AppHeader() {
 
   return (
     <header className="border-b border-line bg-navy-950/70 backdrop-blur">
-      <div className="mx-auto flex h-16 max-w-6xl items-center gap-8 px-4">
+      <div className="page-wide flex h-16 items-center gap-8 px-4">
         <Link to="/" className="flex shrink-0 items-center gap-2.5">
           <CubeLogo size={30} />
           <span className="text-lg font-bold tracking-tight text-white">CubeDuel</span>

@@ -30,7 +30,7 @@ export function AdminLayout({
   return (
     <div className="min-h-screen bg-navy-900">
       <AppHeader />
-      <main className="mx-auto grid max-w-6xl gap-6 px-4 py-8 lg:grid-cols-[220px_minmax(0,1fr)]">
+      <main className="page-wide grid gap-6 px-4 py-8 lg:grid-cols-[220px_minmax(0,1fr)]">
         <aside>
           <p className="px-1 text-sm text-slate-500">ผู้ดูแลระบบ</p>
           <nav className="mt-2 space-y-1">

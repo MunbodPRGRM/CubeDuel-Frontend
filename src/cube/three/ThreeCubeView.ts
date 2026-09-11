@@ -66,10 +66,30 @@ const PLAYBACK_TURN_MS = 250;
 /** เว้นจังหวะระหว่างท่า ให้เห็นชัดว่าจบท่าหนึ่งแล้วถึงขึ้นท่าใหม่ */
 const PLAYBACK_GAP_MS = 60;
 
-/** ทุกประเภทวาดในกล่อง [-1, 1] เท่ากันหมด กล้องจึงใช้ค่าชุดเดียวได้ */
-const CAMERA_POSITION: readonly [number, number, number] = [3.4, 2.6, 3.4];
+/**
+ * ทุกประเภทวาดในกล่อง [-1, 1] เท่ากันหมด กล้องจึงใช้ค่าชุดเดียวได้
+ *
+ * ถอยออก ×1.4 จากทิศเดิม `[3.4, 2.6, 3.4]` ให้คิวบ์กินความสูงกล่อง ~65% แทน ~92% (ADR-059 ข้อ 4)
+ * — ย่อที่กล้อง ไม่ย่อ geometry เพราะการลากหมุนชั้นคิดจากการฉายจุดลงจอ
+ */
+const CAMERA_POSITION: readonly [number, number, number] = [4.76, 3.64, 4.76];
+/** มุมมองของกล้อง (องศา) — เป็นมุม **แนวตั้ง** ตามนิยามของ `PerspectiveCamera` */
+const CAMERA_FOV = 38;
 const MIN_CAMERA_DISTANCE = 3;
 const MAX_CAMERA_DISTANCE = 12;
+
+/**
+ * มุมกล้องแนวตั้งสำหรับกล่องสัดส่วน `aspect` (กว้าง ÷ สูง)
+ *
+ * กล่องกว้างกว่าสูงใช้ `CAMERA_FOV` ตรง ๆ · กล่อง **สูงกว่ากว้าง** (มือถือแนวตั้ง) ถ้าใช้ค่าเดิม
+ * ด้านข้างจะแคบกว่าด้านบนแล้วคิวบ์ล้นกรอบ → ขยายมุมแนวตั้งให้ **มุมแนวนอน** เท่ากับ `CAMERA_FOV` แทน
+ * ไม่แตะระยะกล้อง ระยะที่ผู้เล่นซูมไว้จึงไม่เด้งกลับตอน resize (ADR-059 ข้อ 4)
+ */
+function fovFor(aspect: number): number {
+  if (!(aspect > 0) || aspect >= 1) return CAMERA_FOV;
+  const halfHorizontal = THREE.MathUtils.degToRad(CAMERA_FOV / 2);
+  return THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(halfHorizontal) / aspect));
+}
 
 export interface ThreeCubeViewSpec {
   cubeType: CubeType;
@@ -189,7 +209,7 @@ export class ThreeCubeView implements CubeView {
     const height = container.clientHeight || 400;
 
     this.#scene = new THREE.Scene();
-    this.#camera = new THREE.PerspectiveCamera(38, width / height, 0.1, 100);
+    this.#camera = new THREE.PerspectiveCamera(fovFor(width / height), width / height, 0.1, 100);
     this.#camera.position.set(...CAMERA_POSITION);
     this.#camera.lookAt(0, 0, 0);
 
@@ -283,6 +303,7 @@ export class ThreeCubeView implements CubeView {
     const height = this.#container.clientHeight;
     if (width === 0 || height === 0) return;
     this.#camera.aspect = width / height;
+    this.#camera.fov = fovFor(this.#camera.aspect);
     this.#camera.updateProjectionMatrix();
     this.#renderer.setSize(width, height);
     this.#invalidate();
