@@ -34,7 +34,7 @@ export default function SettingsPage() {
   return (
     <div className="min-h-screen bg-navy-900">
       <AppHeader />
-      <main className="mx-auto grid max-w-6xl gap-6 px-4 py-8 lg:grid-cols-[280px_minmax(0,1fr)]">
+      <main className="page-wide grid gap-6 px-4 py-8 lg:grid-cols-[280px_minmax(0,1fr)]">
         <SettingsSidebar user={user} tab={tab} onTabChange={setTab} />
         <section>
           <header className="mb-4">

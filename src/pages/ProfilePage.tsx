@@ -41,7 +41,7 @@ export default function ProfilePage() {
   return (
     <div className="min-h-screen bg-navy-900">
       <AppHeader />
-      <main className="mx-auto max-w-6xl px-4 py-8">
+      <main className="page-wide px-4 py-8">
         <ProfileBody
           userId={userId}
           isOwner={user?.userId === userId}

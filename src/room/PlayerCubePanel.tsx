@@ -99,7 +99,8 @@ export function PlayerCubePanel({
     <section
       className={`flex flex-col rounded-2xl border border-line bg-navy-850/60 ${
         // แผงย่อไม่ล็อกความสูงเอง — ปล่อยให้คอลัมน์แม่หารความสูงให้เท่า ๆ กัน
-        compact ? 'min-h-0 flex-1 p-3' : 'h-[30rem] p-4 lg:h-[calc(100vh-8rem)]'
+        // แผงเต็มบนจอ `lg` สูงเท่าแถวของ grid ที่ล็อกไว้เท่าจอแล้ว (ADR-059 ข้อ 3)
+        compact ? 'min-h-0 flex-1 p-3' : 'h-[30rem] p-4 lg:h-full lg:min-h-0'
       }`}
     >
       <div className="flex items-center justify-between gap-2">

@@ -31,7 +31,7 @@ export default function HomePage() {
     <div className="min-h-screen bg-navy-900">
       <AppHeader />
 
-      <main className="mx-auto max-w-6xl px-4 py-8">
+      <main className="page-wide px-4 py-8">
         <HeroCard isLoggedIn={Boolean(user)} cubeType={cubeType} onCubeTypeChange={setCubeType} />
 
         {user && (

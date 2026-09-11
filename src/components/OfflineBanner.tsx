@@ -35,11 +35,16 @@ export function OfflineBanner() {
   useEffect(() => {
     if (height === 0) return;
 
+    const root = document.documentElement;
     const previous = document.body.style.paddingTop;
     document.body.style.paddingTop = `${height}px`;
+    // หน้าที่ล็อกความสูงเท่าจอ (ห้องแข่ง · ห้องฝึกซ้อม) ต้องหักความสูงแถบนี้ออกเอง
+    // ไม่งั้น `100dvh` + padding ข้างบน = ล้นจอเท่าความสูงแถบพอดี (ADR-059 ข้อ 3)
+    root.style.setProperty('--offline-banner-h', `${height}px`);
 
     return () => {
       document.body.style.paddingTop = previous;
+      root.style.removeProperty('--offline-banner-h');
     };
   }, [height]);
 

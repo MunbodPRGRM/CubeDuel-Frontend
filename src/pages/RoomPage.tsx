@@ -40,9 +40,10 @@ export default function RoomPage() {
   const valid = Number.isInteger(roomId) && roomId > 0;
 
   return (
-    <div className="min-h-screen bg-navy-900">
+    // จอ `lg` ขึ้นไปล็อกความสูงเท่าจอ หน้าไม่เลื่อน · จอแคบคอลัมน์ซ้อนกันจึงยังเลื่อนได้ (ADR-059 ข้อ 3)
+    <div className="min-h-screen bg-navy-900 lg:flex lg:h-[calc(100dvh-var(--offline-banner-h,0px))] lg:min-h-0 lg:flex-col lg:overflow-hidden">
       <AppHeader />
-      <main className="mx-auto max-w-6xl px-4 py-6">
+      <main className="page-wide px-4 py-4 lg:min-h-0 lg:flex-1">
         {valid ? <RoomView roomId={roomId} /> : <RoomGoneCard message="เลขห้องในลิงก์ไม่ถูกต้อง" />}
       </main>
     </div>
@@ -96,60 +97,60 @@ function RoomView({ roomId }: { roomId: number }) {
   };
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[1fr_360px_1fr]">
-      {socketStatus !== 'connected' && (
-        <div className="lg:col-span-3">
-          <ConnectionBanner />
-        </div>
-      )}
+    <div className="flex flex-col gap-4 lg:h-full">
+      {socketStatus !== 'connected' && <ConnectionBanner />}
 
-      <PlayerCubePanel
-        player={focusPlayer}
-        snapshot={snapshot}
-        isMe={!isSpectator && focusPlayer?.userId === me?.userId}
-        emptyLabel={isSpectator ? 'รอผู้เล่นเข้าห้อง' : 'ที่นั่งของคุณ'}
-        match={match}
-      />
-
-      <div className="flex flex-col gap-4">
-        <RoomHeaderCard snapshot={snapshot} focus={focusPlayer} rivals={rivals} />
-        <MatchPanel
+      {/* layout สามคอลัมน์ "แบบเดิม" — ก้อนที่ 6 ของเฟส 12 จะเป็นตัวเลือกหนึ่ง ห้ามลบ (ADR-059 ข้อ 5) */}
+      <div className="grid gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-[1fr_360px_1fr]">
+        <PlayerCubePanel
+          player={focusPlayer}
           snapshot={snapshot}
+          isMe={!isSpectator && focusPlayer?.userId === me?.userId}
+          emptyLabel={isSpectator ? 'รอผู้เล่นเข้าห้อง' : 'ที่นั่งของคุณ'}
           match={match}
-          result={result}
-          me={me}
-          focusPlayer={focusPlayer}
-          isSpectator={isSpectator}
-          isHost={isHost}
-          roomBusy={room.busy}
-          roomError={room.actionError}
-          onSetReady={room.setReady}
-          onLeave={leave}
-          onRequeue={requeue}
-          queueBusy={queue.busy}
         />
-      </div>
 
-      {/*
-        แถบคู่แข่ง — ห้อง 1v1 มีแผงเดียว จึงได้กล่องเดิมที่ล็อกความสูงเอง (`compact = false`)
-        ห้อง 3–4 คนให้คอลัมน์นี้ล็อกความสูงแทน แล้วหารให้แผงย่อยเท่า ๆ กัน (ADR-044 ข้อ 3)
-      */}
-      <div
-        className={
-          compactRivals ? 'flex h-[30rem] flex-col gap-3 lg:h-[calc(100vh-8rem)]' : undefined
-        }
-      >
-        {rivalSlots.map((rival, index) => (
-          <PlayerCubePanel
-            key={rival?.userId ?? `empty-${index}`}
-            player={rival}
+        {/* จอเตี้ยกว่าเนื้อหา → เลื่อนในคอลัมน์นี้เอง ปุ่มยอมแพ้/ออกจากห้องต้องกดถึงเสมอ */}
+        <div className="flex flex-col gap-4 lg:min-h-0 lg:overflow-y-auto">
+          <RoomHeaderCard snapshot={snapshot} focus={focusPlayer} rivals={rivals} />
+          <MatchPanel
             snapshot={snapshot}
-            isMe={false}
-            emptyLabel="รอผู้เล่นเข้าห้อง"
             match={match}
-            compact={compactRivals}
+            result={result}
+            me={me}
+            focusPlayer={focusPlayer}
+            isSpectator={isSpectator}
+            isHost={isHost}
+            roomBusy={room.busy}
+            roomError={room.actionError}
+            onSetReady={room.setReady}
+            onLeave={leave}
+            onRequeue={requeue}
+            queueBusy={queue.busy}
           />
-        ))}
+        </div>
+
+        {/*
+          แถบคู่แข่ง — ห้อง 1v1 มีแผงเดียว จึงได้กล่องเดิมที่ล็อกความสูงเอง (`compact = false`)
+          ห้อง 3–4 คนให้คอลัมน์นี้ล็อกความสูงแทน แล้วหารให้แผงย่อยเท่า ๆ กัน (ADR-044 ข้อ 3)
+        */}
+        <div
+          className={
+            compactRivals ? 'flex h-[30rem] flex-col gap-3 lg:h-auto lg:min-h-0' : 'lg:min-h-0'
+          }
+        >
+          {rivalSlots.map((rival, index) => (
+            <PlayerCubePanel
+              key={rival?.userId ?? `empty-${index}`}
+              player={rival}
+              snapshot={snapshot}
+              isMe={false}
+              emptyLabel="รอผู้เล่นเข้าห้อง"
+              match={match}
+              compact={compactRivals}
+            />
+          ))}
+        </div>
       </div>
     </div>
   );
