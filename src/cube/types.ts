@@ -53,6 +53,13 @@ export interface SetScrambleOptions {
   animate?: boolean;
 }
 
+/**
+ * โหมดหมุนกล้อง (ADR-061)
+ *   - `locked` = หมุนรอบแกนตั้ง ข้ามขั้วบน/ล่างไม่ได้ คิวบ์ไม่คว่ำ (ค่าเริ่มต้น — `OrbitControls`)
+ *   - `free` = หมุนได้ทุกทิศ พลิกคว่ำได้ (`TrackballControls`)
+ */
+export type CameraMode = 'locked' | 'free';
+
 export interface CubeView {
   readonly cubeType: CubeType;
 
@@ -82,6 +89,12 @@ export interface CubeView {
    * ใช้ช่วง inspection ที่กติกาให้พลิกดูได้แต่ห้ามหมุน (game-rules.md ข้อ 2)
    */
   setTurnsEnabled(enabled: boolean): void;
+
+  /**
+   * สลับโหมดหมุนกล้อง ล็อก ↔ อิสระ (ADR-061) — ระยะซูมคงเดิม
+   * กลับเป็น `locked` แล้วภาพที่เอียง/คว่ำอยู่จะตั้งตรง · view ใหม่เริ่มที่ `locked` เสมอ
+   */
+  setCameraMode(mode: CameraMode): void;
 
   /** สถานะปัจจุบัน */
   getState(): CubeState;

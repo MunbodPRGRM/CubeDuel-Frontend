@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AppHeader } from '@/components/AppHeader';
+import { CameraModeToggle } from '@/components/CameraModeToggle';
 import { CubeCanvas, type CubeCanvasHandle } from '@/components/CubeCanvas';
 import { CubeTypeSelect } from '@/components/CubeTypeSelect';
 import type { CubeMoveEvent, CubeState } from '@/cube';
@@ -459,6 +460,8 @@ export default function PracticePage() {
                 className="h-4 w-4 accent-[var(--color-brand-500)]"
               />
             </label>
+
+            <CameraModeToggle className="mt-2" />
 
             <Link
               to="/"
