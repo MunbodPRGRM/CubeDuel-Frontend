@@ -1,24 +1,35 @@
-import { useState, type FormEvent } from 'react';
-import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { useEffect, useState, type FormEvent } from 'react';
+import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/auth/useAuth';
 import { ApiError } from '@/lib/api';
 import { AuthLayout } from '@/components/AuthLayout';
 import { FormAlert } from '@/components/FormAlert';
+import { GoogleButton, OrDivider } from '@/components/GoogleButton';
 import { SubmitButton } from '@/components/SubmitButton';
 import { LockIcon, TextField, UserIcon } from '@/components/TextField';
-import { errorMessage } from '@/lib/errors';
+import { errorMessage, oauthErrorMessage } from '@/lib/errors';
 
 export default function LoginPage() {
   const { user, login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const from = (location.state as { from?: string } | null)?.from ?? '/';
+  // เข้าสู่ระบบด้วย Google ไม่ผ่าน → server พากลับมาที่นี่พร้อม `?oauth_error=` (ADR-058 ข้อ 3)
+  const [searchParams, setSearchParams] = useSearchParams();
+  const oauthError = searchParams.get('oauth_error');
 
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [formError, setFormError] = useState<string>();
+  const [formError, setFormError] = useState<string | undefined>(() =>
+    oauthErrorMessage(oauthError),
+  );
   const [loading, setLoading] = useState(false);
+
+  // อ่านข้อความไปแล้ว → ลบออกจาก URL กดรีเฟรชจะได้ไม่ขึ้นซ้ำ
+  useEffect(() => {
+    if (oauthError) setSearchParams({}, { replace: true });
+  }, [oauthError, setSearchParams]);
 
   if (user) return <Navigate to={from} replace />;
 
@@ -98,6 +109,10 @@ export default function LoginPage() {
 
         <SubmitButton loading={loading}>เข้าสู่ระบบ</SubmitButton>
       </form>
+
+      <OrDivider />
+      {/* ส่งหน้าที่ RequireAuth เด้งมาไปด้วย — ล็อกอินด้วย Google แล้วกลับที่เดิมเหมือนล็อกอินด้วยรหัสผ่าน */}
+      <GoogleButton label="เข้าสู่ระบบด้วย Google" returnTo={from} />
     </AuthLayout>
   );
 }

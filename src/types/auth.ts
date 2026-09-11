@@ -18,6 +18,8 @@ export interface SelfUser {
   email: string;
   cubeSkin: string;
   status: UserStatus;
+  /** `false` = บัญชี Google ที่ยังไม่เคยตั้งรหัสผ่าน — หน้าตั้งค่าไม่ถามรหัสเดิม/รหัสยืนยัน (ADR-058 ข้อ 6) */
+  hasPassword: boolean;
 }
 
 export interface AuthSession {
