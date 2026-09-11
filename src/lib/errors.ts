@@ -56,6 +56,27 @@ export const ERROR_MESSAGES: Record<AppErrorCode, string> = {
 };
 
 /**
+ * รหัส `?oauth_error=` ที่ server แนบมาตอนพากลับหน้าเข้าสู่ระบบ (api-contract.md ข้อ 2 · ADR-058)
+ * ไม่ใช่รหัส error ของ API — การเข้าสู่ระบบด้วย Google เป็นการเปิดหน้าเว็บ ไม่มี envelope ให้แกะ
+ * สองตัวที่ความหมายตรงกับรหัส API ใช้ข้อความเดียวกันกับคลังข้างบน
+ */
+const OAUTH_ERROR_MESSAGES: Record<string, string> = {
+  unavailable: 'ยังไม่เปิดให้เข้าสู่ระบบด้วย Google กรุณาใช้ชื่อผู้ใช้และรหัสผ่านแทน',
+  cancelled: 'ยกเลิกการเข้าสู่ระบบด้วย Google แล้ว',
+  invalid_state: 'การเข้าสู่ระบบด้วย Google หมดเวลาหรือไม่ถูกต้อง กรุณากดปุ่มอีกครั้ง',
+  email_unverified: 'อีเมลของบัญชี Google นี้ยังไม่ได้ยืนยัน กรุณายืนยันอีเมลกับ Google ก่อน',
+  suspended: ERROR_MESSAGES.E_ACCOUNT_SUSPENDED,
+  rate_limited: ERROR_MESSAGES.E_RATE_LIMITED,
+  failed: 'เข้าสู่ระบบด้วย Google ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง',
+};
+
+/** `null` = ไม่มีรหัสใน URL · รหัสที่ไม่รู้จักตกไปใช้ข้อความของ `failed` */
+export function oauthErrorMessage(code: string | null): string | undefined {
+  if (!code) return undefined;
+  return OAUTH_ERROR_MESSAGES[code] ?? OAUTH_ERROR_MESSAGES.failed;
+}
+
+/**
  * ข้อความตอนสั่งงานทั้งที่ socket ยังไม่ต่อ — ไม่ใช่ error จาก server จึงไม่มีรหัส
  * แต่ต้องพูดเหมือนกันทุกที่ที่เจอ (คิวจับคู่ · หน้าห้อง · ตอนแข่ง)
  */

@@ -23,6 +23,7 @@ type Tab = 'profile' | 'security';
  *   1. `username` กับ `email` เป็นช่อง **อ่านอย่างเดียว** (ข้อ 1)
  *   2. ช่อง "รายละเอียดเพิ่มเติม" (bio) ไม่มีคอลัมน์รองรับ (ADR-047 ข้อ 5) → ใช้ที่ตรงนั้นให้ **สกินสีคิวบ์** แทน (ข้อ 2)
  *   3. แท็บความปลอดภัยเพิ่มช่อง **รหัสผ่านปัจจุบัน** ที่ดีไซน์ไม่ได้วาดไว้ — API บังคับ (ข้อ 3)
+ *      · บัญชี Google ที่ยังไม่มีรหัสผ่าน (`hasPassword = false`) ไม่ถามทั้งรหัสเดิมและรหัสยืนยันตอนลบบัญชี (ADR-058 ข้อ 6)
  */
 export default function SettingsPage() {
   const { user, status } = useAuth();
@@ -262,13 +263,13 @@ function SecurityPanel({ user }: { user: SelfUser }) {
         />
       </Row>
 
-      <ChangePasswordForm />
-      <DeleteAccountSection />
+      <ChangePasswordForm hasPassword={user.hasPassword} />
+      <DeleteAccountSection hasPassword={user.hasPassword} />
     </div>
   );
 }
 
-function ChangePasswordForm() {
+function ChangePasswordForm({ hasPassword }: { hasPassword: boolean }) {
   const { logout } = useAuth();
   const navigate = useNavigate();
   const [current, setCurrent] = useState('');
@@ -291,7 +292,8 @@ function ChangePasswordForm() {
     try {
       await apiFetch('/auth/change-password', {
         method: 'POST',
-        body: { currentPassword: current, newPassword: next },
+        // บัญชีที่ยังไม่มีรหัสผ่านห้ามส่ง `currentPassword: ''` — server ตีกลับว่าสั้นเกิน
+        body: hasPassword ? { currentPassword: current, newPassword: next } : { newPassword: next },
       });
       // server เพิกถอน refresh token ทุกอุปกรณ์หลังเปลี่ยนรหัสผ่าน (ADR-013) → ต้องเข้าสู่ระบบใหม่
       await logout();
@@ -308,16 +310,27 @@ function ChangePasswordForm() {
     <form onSubmit={(e) => void submit(e)} className="space-y-6">
       {error && <FormAlert message={error} />}
 
-      <Row label="รหัสผ่านปัจจุบัน" hint="ยืนยันว่าเป็นเจ้าของบัญชีจริงก่อนตั้งรหัสผ่านใหม่">
-        <TextField
-          label=""
-          type="password"
-          autoComplete="current-password"
-          value={current}
-          onChange={(e) => setCurrent(e.target.value)}
-          error={fields.currentPassword}
-        />
-      </Row>
+      {hasPassword ? (
+        <Row label="รหัสผ่านปัจจุบัน" hint="ยืนยันว่าเป็นเจ้าของบัญชีจริงก่อนตั้งรหัสผ่านใหม่">
+          <TextField
+            label=""
+            type="password"
+            autoComplete="current-password"
+            value={current}
+            onChange={(e) => setCurrent(e.target.value)}
+            error={fields.currentPassword}
+          />
+        </Row>
+      ) : (
+        <Row
+          label="ตั้งรหัสผ่าน"
+          hint="ตั้งไว้เพื่อเข้าสู่ระบบด้วยชื่อผู้ใช้หรืออีเมลได้อีกทาง นอกจาก Google"
+        >
+          <p className="rounded-xl border border-line bg-navy-950/40 px-4 py-3 text-sm text-slate-400">
+            บัญชีนี้เข้าสู่ระบบด้วย Google และยังไม่มีรหัสผ่าน
+          </p>
+        </Row>
+      )}
 
       <Row
         label="รหัสผ่านใหม่"
@@ -358,7 +371,7 @@ function ChangePasswordForm() {
   );
 }
 
-function DeleteAccountSection() {
+function DeleteAccountSection({ hasPassword }: { hasPassword: boolean }) {
   const { deleteAccount } = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
@@ -370,7 +383,8 @@ function DeleteAccountSection() {
     setError(null);
     setWorking(true);
     try {
-      await deleteAccount(password);
+      // ไม่มีรหัสผ่าน → ไม่ส่งช่องนี้เลย (server ยกเว้นให้บัญชี Google — api-contract.md ข้อ 2)
+      await deleteAccount(hasPassword ? password : undefined);
       navigate('/', { replace: true });
     } catch (err) {
       setError(errorMessage(err, 'ลบบัญชีไม่สำเร็จ'));
@@ -402,15 +416,17 @@ function DeleteAccountSection() {
               <FormAlert message={error} />
             </div>
           )}
-          <div className="mt-3 max-w-sm">
-            <TextField
-              label="รหัสผ่านเพื่อยืนยัน"
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          </div>
+          {hasPassword && (
+            <div className="mt-3 max-w-sm">
+              <TextField
+                label="รหัสผ่านเพื่อยืนยัน"
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </div>
+          )}
           <div className="mt-4 flex gap-3">
             <button
               type="button"
