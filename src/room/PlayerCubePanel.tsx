@@ -4,7 +4,9 @@ import { CubeCanvas, type CubeCanvasHandle } from '@/components/CubeCanvas';
 import type { CubeMoveEvent, CubeState } from '@/cube';
 import { SOLVE_STATUS_LABEL } from '@/socket/room-labels';
 import {
+  isCameraRelayState,
   playerName,
+  type OpponentCameraPayload,
   type PlayerPublic,
   type RoomSnapshot,
   type SolveStatus,
@@ -231,8 +233,16 @@ interface SelfCubeProps {
  */
 function SelfCube({ snapshot, match, status, canTurn, onMoveCount }: SelfCubeProps) {
   const cubeRef = useRef<CubeCanvasHandle>(null);
-  const { sendMove, reportSolved, reportCubeReady } = match;
+  const { sendMove, reportSolved, reportCubeReady, sendCamera } = match;
   useSolveWhenServerSaysSolved(cubeRef, status);
+
+  // เข้า INSPECTION = คู่แข่งเริ่มตามมุมกล้องเรา → ส่งท่าปัจจุบันไปหนึ่งครั้งแม้ยังไม่ได้ขยับ
+  // (ช่วง LOADING/COUNTDOWN อาจหมุนไว้แล้วแต่ยังไม่ถึงช่วงที่ส่ง — ADR-062 ข้อ 3)
+  useEffect(() => {
+    if (snapshot.state !== 'INSPECTION') return;
+    const pose = cubeRef.current?.getCameraPose();
+    if (pose) sendCamera(pose);
+  }, [snapshot.state, sendCamera]);
 
   /**
    * เข้ารอบใหม่ → ล้างบัญชี move ของคิวบ์ให้แน่ใจว่า `seq` เริ่มที่ 1 ตรงกับ server
@@ -281,6 +291,7 @@ function SelfCube({ snapshot, match, status, canTurn, onMoveCount }: SelfCubePro
         onMove={handleMove}
         onState={handleState}
         onScrambleApplied={handleScrambleApplied}
+        onCameraChange={sendCamera}
       />
     </div>
   );
@@ -341,6 +352,31 @@ function MirrorCube({ snapshot, userId, status, serverMoveCount }: MirrorCubePro
     };
   }, [socket, userId]);
 
+  /**
+   * มุมกล้องของคนนี้ (ADR-062) — ตามบังคับตลอดช่วงที่ server ส่งต่อ แล้วคืนการคุมกล้องให้เรา
+   * `tracking` = ได้ท่าของเขามาแล้วในช่วงนี้ ใช้โชว์ป้ายบอกว่าทำไมลากกล้องเองไม่ได้
+   */
+  const [tracking, setTracking] = useState(false);
+  useEffect(() => {
+    if (!socket) return;
+    const onCamera = (payload: OpponentCameraPayload) => {
+      if (payload.userId !== userId) return;
+      cubeRef.current?.followCamera({ quaternion: payload.q, distance: payload.d });
+      setTracking(true);
+    };
+    socket.on('opponent:camera', onCamera);
+    return () => {
+      socket.off('opponent:camera', onCamera);
+    };
+  }, [socket, userId]);
+
+  const relaying = isCameraRelayState(snapshot.state);
+  useEffect(() => {
+    if (relaying) return;
+    cubeRef.current?.stopFollowingCamera();
+    setTracking(false);
+  }, [relaying]);
+
   return (
     <>
       <div className="absolute inset-0">
@@ -348,10 +384,15 @@ function MirrorCube({ snapshot, userId, status, serverMoveCount }: MirrorCubePro
           ref={cubeRef}
           cubeType={snapshot.cubeType}
           scramble={snapshot.scramble}
-          // คู่แข่งหมุนให้ดูเอง — เราหมุนแทนเขาไม่ได้ (แต่ลากกล้องดูรอบ ๆ ได้เสมอ)
+          // คู่แข่งหมุนให้ดูเอง — เราหมุนแทนเขาไม่ได้ · กล้องลากเองได้เฉพาะนอกช่วงที่ตามมุมของเขา
           turnsEnabled={false}
         />
       </div>
+      {tracking && (
+        <p className="pointer-events-none absolute bottom-2 left-2 rounded-md bg-navy-900/80 px-2 py-0.5 text-[10px] text-slate-400 backdrop-blur">
+          มุมกล้องของผู้เล่นคนนี้
+        </p>
+      )}
       {incomplete && snapshot.scramble !== null && (
         <p className="pointer-events-none absolute inset-x-3 top-3 rounded-lg border border-gold-400/40 bg-navy-900/85 px-3 py-1.5 text-center text-[11px] text-gold-400 backdrop-blur">
           ภาพคิวบ์ของคู่แข่งไม่ครบ (เข้ามากลางรอบ) · ตัวเลขด้านล่างยังถูกต้อง

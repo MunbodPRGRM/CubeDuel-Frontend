@@ -60,6 +60,19 @@ export interface SetScrambleOptions {
  */
 export type CameraMode = 'locked' | 'free';
 
+/**
+ * ท่าของกล้อง (ADR-062) — คิวบ์อยู่ที่จุดศูนย์กลางและกล้องมองเข้าหาเสมอ (ไม่มี pan)
+ * ตำแหน่งกล้องจึงได้จาก `quaternion · (0, 0, distance)` ไม่ต้องเก็บแยก
+ */
+export interface CameraPose {
+  /** การหมุนของกล้องในพิกัดโลก `[x, y, z, w]` */
+  quaternion: readonly [number, number, number, number];
+  /** ระยะจากจุดศูนย์กลางคิวบ์ถึงกล้อง */
+  distance: number;
+}
+
+export type CameraPoseListener = (pose: CameraPose) => void;
+
 export interface CubeView {
   readonly cubeType: CubeType;
 
@@ -95,6 +108,24 @@ export interface CubeView {
    * กลับเป็น `locked` แล้วภาพที่เอียง/คว่ำอยู่จะตั้งตรง · view ใหม่เริ่มที่ `locked` เสมอ
    */
   setCameraMode(mode: CameraMode): void;
+
+  /** ท่าของกล้องตอนนี้ */
+  getCameraPose(): CameraPose;
+
+  /**
+   * รับแจ้งเมื่อผู้ใช้ **ขยับกล้องเอง** (ลาก/ซูม/สลับโหมด) — คืนฟังก์ชันสำหรับเลิกรับแจ้ง
+   * ไม่ยิงตอนกำลังตามมุมกล้องของคนอื่น · ห้องแข่งเอาไปส่ง `solve:camera` (ADR-062)
+   */
+  subscribeCamera(listener: CameraPoseListener): () => void;
+
+  /**
+   * ตามมุมกล้องของคนอื่น (คิวบ์คู่แข่ง — ADR-062) — กล้องเลื่อนเข้าหาท่านี้อย่างนุ่ม
+   * เรียกซ้ำได้ทุกครั้งที่มีท่าใหม่ · ระหว่างนี้ผู้ใช้ลาก/ซูมคิวบ์ลูกนี้เองไม่ได้
+   */
+  followCamera(pose: CameraPose): void;
+
+  /** เลิกตาม — คืนการคุมกล้องให้ผู้ใช้ตามโหมดล็อก/อิสระที่ตั้งไว้ (ไม่มีอะไรเกิดขึ้นถ้าไม่ได้ตามอยู่) */
+  stopFollowingCamera(): void;
 
   /** สถานะปัจจุบัน */
   getState(): CubeState;

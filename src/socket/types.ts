@@ -36,6 +36,11 @@ export function isActiveState(state: RoomState): boolean {
   return ACTIVE_STATES.includes(state);
 }
 
+/** state ที่ server ส่งต่อมุมกล้อง — INSPECTION + ช่วงจับเวลา ตรงกับ `relayCamera` ฝั่ง server (ADR-062) */
+export function isCameraRelayState(state: RoomState): boolean {
+  return state === 'INSPECTION' || state === 'SOLVING' || state === 'FINAL_COUNTDOWN';
+}
+
 export interface PlayerPublic {
   userId: number;
   username: string;
@@ -234,6 +239,18 @@ export interface SolveSolvedResult {
   rankNo: number;
 }
 
+/**
+ * `solve:camera` — มุมกล้องของผู้เล่น (ADR-062)
+ * `q` = quaternion ของกล้อง `[x, y, z, w]` · `d` = ระยะจากจุดศูนย์กลางคิวบ์ → ตำแหน่ง = `q · (0, 0, d)`
+ */
+export interface SolveCameraPayload {
+  q: [number, number, number, number];
+  d: number;
+}
+export interface OpponentCameraPayload extends SolveCameraPayload {
+  userId: number;
+}
+
 export type DnfReason = 'surrender' | 'timeout' | 'disconnect' | 'invalid';
 
 // ---------------------------------------------------------------- ผลการแข่งขัน
@@ -285,6 +302,8 @@ export interface ClientToServerEvents {
   'solve:surrender': (payload: Record<string, never>, ack?: AckFn<null>) => void;
   /** ปุ่มทดสอบ — server ปฏิเสธเสมอถ้าไม่ได้เปิดสวิตช์ (ADR-060) */
   'solve:dev_finish': (payload: Record<string, never>, ack?: AckFn<SolveSolvedResult>) => void;
+  /** ไม่มี ack · ผิดแล้ว server ทิ้งเงียบ ไม่ส่ง `error` กลับ (ADR-062) */
+  'solve:camera': (payload: SolveCameraPayload) => void;
 }
 
 export interface ServerToClientEvents {
@@ -318,6 +337,7 @@ export interface ServerToClientEvents {
     serverTs: number;
   }) => void;
   'opponent:progress': (payload: { userId: number; moveCount: number; elapsedMs: number }) => void;
+  'opponent:camera': (payload: OpponentCameraPayload) => void;
   'player:solved': (payload: {
     userId: number;
     solveTimeMs: number;

@@ -22,6 +22,8 @@ import type { CubeType } from '@/types/cube';
 import { inverseMove, isAllowedMove } from '../moves.ts';
 import type {
   CameraMode,
+  CameraPose,
+  CameraPoseListener,
   CubeMoveEvent,
   CubeMoveListener,
   CubeMoveSource,
@@ -84,6 +86,11 @@ const MAX_CAMERA_DISTANCE = 12;
  * ช้ากว่าโหมดล็อกมากจนรู้สึกหนืด (ADR-061 ข้อ 4)
  */
 const FREE_ROTATE_SPEED = 3;
+/**
+ * ค่าคงที่เวลา (ms) ของการเลื่อนกล้องตามมุมของคนอื่น — ข้อมูลมาทีละ ~80 ms (ADR-062 ข้อ 4)
+ * เลื่อนแบบ exponential เข้าหาท่าล่าสุดทุกเฟรม ได้ภาพนุ่มโดยไม่ต้องรู้ว่าข้อความถัดไปจะมาเมื่อไหร่
+ */
+const FOLLOW_SMOOTHING_MS = 90;
 
 /**
  * มุมกล้องแนวตั้งสำหรับกล่องสัดส่วน `aspect` (กว้าง ÷ สูง)
@@ -173,6 +180,12 @@ export class ThreeCubeView implements CubeView {
   #controlsActive = false;
   /** listener ที่รอเปิดหมุนกล้องคืนตอนปล่อยนิ้ว (ADR-061 ข้อ 5) — `null` = ไม่มีค้างอยู่ */
   #releaseRotate: (() => void) | null = null;
+  /** คนที่ฟังการขยับกล้องของผู้ใช้ (ห้องแข่งส่งต่อให้คู่แข่ง — ADR-062) */
+  #cameraListeners = new Set<CameraPoseListener>();
+  /** ท่ากล้องเป้าหมายตอน **ตามมุมกล้องของคนอื่น** — `null` = ผู้ใช้คุมกล้องเอง */
+  #follow: { quaternion: THREE.Quaternion; distance: number } | null = null;
+  /** `performance.now()` ของเฟรมที่เลื่อนกล้องตามล่าสุด — `0` = ยังไม่เริ่ม/ถึงเป้าแล้ว */
+  #followAt = 0;
   #material: THREE.Material;
   #pivot: THREE.Group;
   #meshes: THREE.Mesh[] = [];
@@ -309,12 +322,48 @@ export class ThreeCubeView implements CubeView {
   #tick = (): void => {
     this.#animationFrame = 0;
     if (this.#disposed) return;
-    this.#controls.update();
+    // ตอนตามมุมกล้องของคนอื่น ห้ามให้ตัวคุมแตะกล้อง — `OrbitControls.update()` เรียก `lookAt`
+    // ที่ตัด roll ทิ้ง ภาพจะไม่ตรงกับที่คู่แข่งที่ใช้โหมดอิสระเห็นจริง (ADR-062 ข้อ 4)
+    const following = this.#follow !== null && this.#stepFollow(performance.now());
+    if (this.#follow === null) this.#controls.update();
     this.#renderer.render(this.#scene, this.#camera);
-    if (this.#finishAnimation !== null || this.#gesture?.turn || this.#controlsActive) {
+    if (
+      this.#finishAnimation !== null ||
+      this.#gesture?.turn ||
+      this.#controlsActive ||
+      following
+    ) {
       this.#invalidate();
     }
   };
+
+  /**
+   * เลื่อนกล้องเข้าหาท่าเป้าหมายหนึ่งเฟรม (exponential ตามเวลาจริง) — คืน `true` ถ้ายังไม่ถึง
+   * ตั้ง `camera.up` ตามไปด้วย โหมดอิสระจะได้ใช้ต่อได้ถูกทิศตอนเลิกตาม
+   */
+  #stepFollow(now: number): boolean {
+    const follow = this.#follow!;
+    const camera = this.#camera;
+    // เฟรมแรก / แท็บเพิ่งกลับมาจากเบื้องหลัง — ไม่ให้ก้าวเดียวกระโดดยาวเกิน
+    const dt = this.#followAt === 0 ? 16 : Math.min(now - this.#followAt, 100);
+    const k = 1 - Math.exp(-dt / FOLLOW_SMOOTHING_MS);
+
+    camera.quaternion.slerp(follow.quaternion, k);
+    const current = camera.position.length();
+    let distance = current + (follow.distance - current) * k;
+
+    const arrived =
+      camera.quaternion.angleTo(follow.quaternion) < 1e-3 &&
+      Math.abs(follow.distance - distance) < 1e-3;
+    if (arrived) {
+      camera.quaternion.copy(follow.quaternion);
+      distance = follow.distance;
+    }
+    camera.position.set(0, 0, distance).applyQuaternion(camera.quaternion);
+    camera.up.set(0, 1, 0).applyQuaternion(camera.quaternion);
+    this.#followAt = arrived ? 0 : now;
+    return !arrived;
+  }
 
   #resize(): void {
     const width = this.#container.clientWidth;
@@ -349,11 +398,11 @@ export class ThreeCubeView implements CubeView {
       controls.keys = ['', '', ''];
       controls.minDistance = MIN_CAMERA_DISTANCE;
       controls.maxDistance = MAX_CAMERA_DISTANCE;
-      controls.addEventListener('change', this.#invalidate);
+      controls.addEventListener('change', this.#onControlsChange);
       controls.addEventListener('start', this.#onControlsStart);
       controls.addEventListener('end', this.#onControlsEnd);
       this.#detachControls = () => {
-        controls.removeEventListener('change', this.#invalidate);
+        controls.removeEventListener('change', this.#onControlsChange);
         controls.removeEventListener('start', this.#onControlsStart);
         controls.removeEventListener('end', this.#onControlsEnd);
       };
@@ -369,9 +418,30 @@ export class ThreeCubeView implements CubeView {
     controls.enablePan = false;
     controls.minDistance = MIN_CAMERA_DISTANCE;
     controls.maxDistance = MAX_CAMERA_DISTANCE;
-    controls.addEventListener('change', this.#invalidate);
-    this.#detachControls = () => controls.removeEventListener('change', this.#invalidate);
+    controls.addEventListener('change', this.#onControlsChange);
+    this.#detachControls = () => controls.removeEventListener('change', this.#onControlsChange);
     return controls;
+  }
+
+  /** กล้องขยับเพราะผู้ใช้ (หรือ damping คายตัว) = ภาพเปลี่ยน + แจ้งคนที่ฟังมุมกล้อง */
+  #onControlsChange = (): void => {
+    this.#invalidate();
+    this.#emitCamera();
+  };
+
+  #emitCamera(): void {
+    if (this.#cameraListeners.size === 0) return;
+    const pose = this.getCameraPose();
+    for (const listener of this.#cameraListeners) listener(pose);
+  }
+
+  /** ทิ้งตัวคุมตัวเก่าแล้วสร้างตัวของ `#cameraMode` ใหม่บนกล้องตัวเดิม */
+  #rebuildControls(): void {
+    this.#detachControls();
+    this.#controls.dispose();
+    this.#controlsActive = false;
+    this.#controls = this.#createControls(this.#cameraMode);
+    this.#invalidate();
   }
 
   #onControlsStart = (): void => {
@@ -961,14 +1031,52 @@ export class ThreeCubeView implements CubeView {
 
   setCameraMode(mode: CameraMode): void {
     if (this.#disposed || mode === this.#cameraMode) return;
+    this.#cameraMode = mode;
+    // กำลังตามมุมกล้องของคนอื่น — ตัวคุมถูกปิดอยู่ ค่อยสร้างตัวของโหมดใหม่ตอนเลิกตาม (ADR-062 ข้อ 4)
+    if (this.#follow) return;
     // ท่าลากหน้าคิวบ์ปิดหมุนกล้องของตัวเก่าไว้ — ปัดให้จบก่อนทิ้งตัวนั้น
     this.#endGesture(true);
-    this.#detachControls();
-    this.#controls.dispose();
-    this.#controlsActive = false;
-    this.#cameraMode = mode;
-    this.#controls = this.#createControls(mode);
+    this.#rebuildControls();
+    // กลับเป็นล็อกแล้วภาพตั้งตรง = ท่ากล้องเปลี่ยน
+    this.#emitCamera();
+  }
+
+  getCameraPose(): CameraPose {
+    const q = this.#camera.quaternion;
+    return { quaternion: [q.x, q.y, q.z, q.w], distance: this.#camera.position.length() };
+  }
+
+  subscribeCamera(listener: CameraPoseListener): () => void {
+    this.#cameraListeners.add(listener);
+    return () => this.#cameraListeners.delete(listener);
+  }
+
+  followCamera(pose: CameraPose): void {
+    if (this.#disposed) return;
+    const quaternion = new THREE.Quaternion(...pose.quaternion);
+    // ข้อมูลเสีย (เวกเตอร์ศูนย์ / NaN) ทิ้งไป ดีกว่าให้กล้องหายไปทั้งภาพ
+    if (!(quaternion.lengthSq() > 1e-6) || !Number.isFinite(pose.distance)) return;
+    quaternion.normalize();
+    const distance = THREE.MathUtils.clamp(pose.distance, MIN_CAMERA_DISTANCE, MAX_CAMERA_DISTANCE);
+
+    if (!this.#follow) {
+      this.#endGesture(false);
+      // คิวบ์ที่ตามมุมกล้องคนอื่นหมุนหน้าไม่ได้อยู่แล้ว (คิวบ์คู่แข่ง) จึงปิด `enabled` ได้
+      // ไม่เข้าเงื่อนไขของ ADR-029 ที่ห้ามปิดเพราะ pinch ระหว่างหมุนหน้าคิวบ์
+      this.#controls.enabled = false;
+      this.#controlsActive = false;
+      this.#followAt = 0;
+    }
+    this.#follow = { quaternion, distance };
     this.#invalidate();
+  }
+
+  stopFollowingCamera(): void {
+    if (this.#disposed || !this.#follow) return;
+    this.#follow = null;
+    this.#followAt = 0;
+    // ตัวคุมตัวเดิมไม่รู้ว่ากล้องถูกขยับไป — สร้างใหม่บนกล้องที่อยู่ท่าล่าสุดของคู่แข่ง
+    this.#rebuildControls();
   }
 
   getState(): CubeState {
@@ -993,6 +1101,8 @@ export class ThreeCubeView implements CubeView {
     this.#idleWaiters = [];
     this.#listeners.clear();
     this.#moveListeners.clear();
+    this.#cameraListeners.clear();
+    this.#follow = null;
     this.#queue = [];
     gsap.killTweensOf(this.#progress);
     if (this.#animationFrame !== 0) cancelAnimationFrame(this.#animationFrame);

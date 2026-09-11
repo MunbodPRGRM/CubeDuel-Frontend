@@ -3,6 +3,7 @@ import { useAuth } from '@/auth/useAuth';
 import {
   createCubeView,
   DEFAULT_SKIN_ID,
+  type CameraPose,
   type CubeMoveEvent,
   type CubeState,
   type CubeView,
@@ -29,6 +30,12 @@ export interface CubeCanvasHandle {
    * ของการหยุดเวลาตอนกดปุ่ม "เสร็จทันที" (game-rules.md ข้อ 12.2 · ADR-032 ข้อ 2)
    */
   getState(): CubeState | null;
+  /** ท่ากล้องตอนนี้ — `null` เมื่อยังสร้าง view ไม่เสร็จ */
+  getCameraPose(): CameraPose | null;
+  /** ตามมุมกล้องของคนอื่น (คิวบ์คู่แข่ง — ADR-062) · เรียกซ้ำได้ทุกครั้งที่มีท่าใหม่ */
+  followCamera(pose: CameraPose): void;
+  /** เลิกตาม — คืนการคุมกล้องให้ผู้ใช้ */
+  stopFollowingCamera(): void;
 }
 
 interface CubeCanvasProps {
@@ -62,6 +69,8 @@ interface CubeCanvasProps {
    * server สั่งมา (game-rules.md ข้อ 1: `LOADING` = โหลดโมเดล + apply scramble เสร็จ)
    */
   onScrambleApplied?: (scramble: string | null) => void;
+  /** ผู้ใช้ขยับกล้องของคิวบ์ลูกนี้เอง — ห้องแข่งส่งต่อให้คู่แข่งเห็น (ADR-062) */
+  onCameraChange?: (pose: CameraPose) => void;
   /**
    * บังคับสกินสีแทนสกินของบัญชีที่ล็อกอินอยู่ — **ใช้ตอนพรีวิวสกินที่ยังไม่ได้บันทึก**
    * ในหน้าตั้งค่าเท่านั้น หน้าอื่นอย่าส่ง จะได้เห็นสกินของผู้เล่นเองเสมอ
@@ -89,6 +98,7 @@ export const CubeCanvas = forwardRef<CubeCanvasHandle, CubeCanvasProps>(function
     onState,
     onMove,
     onScrambleApplied,
+    onCameraChange,
     skinId: skinOverride,
   },
   ref,
@@ -112,6 +122,8 @@ export const CubeCanvas = forwardRef<CubeCanvasHandle, CubeCanvasProps>(function
   onAnimatingRef.current = onScrambleAnimatingChange;
   const onScrambleAppliedRef = useRef(onScrambleApplied);
   onScrambleAppliedRef.current = onScrambleApplied;
+  const onCameraChangeRef = useRef(onCameraChange);
+  onCameraChangeRef.current = onCameraChange;
   /** ลำดับของอนิเมชัน scramble ล่าสุด — ตัวที่ตกรุ่นห้ามแจ้งว่า "จบแล้ว" ทับตัวใหม่ */
   const scrambleRunRef = useRef(0);
 
@@ -132,6 +144,7 @@ export const CubeCanvas = forwardRef<CubeCanvasHandle, CubeCanvasProps>(function
         viewRef.current = created;
         created.subscribe((state) => onStateRef.current?.(state));
         created.subscribeMoves((event) => onMoveRef.current?.(event));
+        created.subscribeCamera((pose) => onCameraChangeRef.current?.(pose));
         // ตอน dev เรียกจากคอนโซลได้ เช่น `__cubeView.applyMove('U')` — ใช้ทดสอบมือ ไม่ติดไปกับ build จริง
         if (import.meta.env.DEV)
           (window as unknown as { __cubeView?: CubeView }).__cubeView = created;
@@ -207,6 +220,9 @@ export const CubeCanvas = forwardRef<CubeCanvasHandle, CubeCanvasProps>(function
         }
       },
       getState: () => viewRef.current?.getState() ?? null,
+      getCameraPose: () => viewRef.current?.getCameraPose() ?? null,
+      followCamera: (pose: CameraPose) => viewRef.current?.followCamera(pose),
+      stopFollowingCamera: () => viewRef.current?.stopFollowingCamera(),
     }),
     [],
   );

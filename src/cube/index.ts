@@ -23,6 +23,8 @@ import type { CubeView } from './types.ts';
 
 export type {
   CameraMode,
+  CameraPose,
+  CameraPoseListener,
   CubeMoveEvent,
   CubeMoveListener,
   CubeMoveSource,
