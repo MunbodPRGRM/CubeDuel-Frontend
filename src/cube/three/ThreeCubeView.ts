@@ -2,7 +2,7 @@
  * **ตัววาดคิวบ์ 3 มิติตัวเดียวของทั้งแอป** — Three.js + GSAP (ADR-026, เฟส 3.5 ก้อนที่ 1)
  *
  * ยกมาจาก `PyramorphixCubeView` เดิมแล้วถอดส่วนที่รู้จัก Pyramorphix ออกให้หมด
- * เหลือแต่งานที่ทุกประเภทใช้เหมือนกัน: ฉาก · กล้อง · OrbitControls · คิวอนิเมชัน ·
+ * เหลือแต่งานที่ทุกประเภทใช้เหมือนกัน: ฉาก · กล้อง · ตัวคุมกล้อง (ล็อก/อิสระ) · คิวอนิเมชัน ·
  * resize · raycast · ลากเพื่อหมุนชั้น · ผูกสถานะกับ `KPattern`
  *
  * แบ่งหน้าที่กับ `PuzzleModel` แบบนี้:
@@ -15,11 +15,13 @@
 import gsap from 'gsap';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { TrackballControls } from 'three/examples/jsm/controls/TrackballControls.js';
 import { Alg } from 'cubing/alg';
 import type { KPattern, KPuzzle } from 'cubing/kpuzzle';
 import type { CubeType } from '@/types/cube';
 import { inverseMove, isAllowedMove } from '../moves.ts';
 import type {
+  CameraMode,
   CubeMoveEvent,
   CubeMoveListener,
   CubeMoveSource,
@@ -77,6 +79,11 @@ const CAMERA_POSITION: readonly [number, number, number] = [4.76, 3.64, 4.76];
 const CAMERA_FOV = 38;
 const MIN_CAMERA_DISTANCE = 3;
 const MAX_CAMERA_DISTANCE = 12;
+/**
+ * ความเร็วหมุนของโหมดอิสระ (`TrackballControls`) — ค่าเดิม 1 ลากสุดความกว้างกล่องได้แค่ ~115°
+ * ช้ากว่าโหมดล็อกมากจนรู้สึกหนืด (ADR-061 ข้อ 4)
+ */
+const FREE_ROTATE_SPEED = 3;
 
 /**
  * มุมกล้องแนวตั้งสำหรับกล่องสัดส่วน `aspect` (กว้าง ÷ สูง)
@@ -154,7 +161,18 @@ export class ThreeCubeView implements CubeView {
   #scene: THREE.Scene;
   #camera: THREE.PerspectiveCamera;
   #renderer: THREE.WebGLRenderer;
-  #controls: OrbitControls;
+  /** ตัวคุมกล้องของโหมดปัจจุบัน — สลับได้ด้วย `setCameraMode` (ADR-061) */
+  #controls: OrbitControls | TrackballControls;
+  #cameraMode: CameraMode = 'locked';
+  /** ถอด listener ที่ผูกไว้กับตัวคุมตัวปัจจุบัน — ต้องเรียกก่อน `dispose()` ของมันทุกครั้ง */
+  #detachControls: () => void = () => {};
+  /**
+   * ตัวคุมกำลังถูกลากอยู่ (ระหว่าง `'start'` ถึง `'end'`) — ใช้เฉพาะโหมดอิสระ
+   * `TrackballControls` หมุนกล้องใน `update()` เท่านั้น จึงต้องมีคนวาดทุกเฟรมระหว่างนี้ (ADR-061 ข้อ 3)
+   */
+  #controlsActive = false;
+  /** listener ที่รอเปิดหมุนกล้องคืนตอนปล่อยนิ้ว (ADR-061 ข้อ 5) — `null` = ไม่มีค้างอยู่ */
+  #releaseRotate: (() => void) | null = null;
   #material: THREE.Material;
   #pivot: THREE.Group;
   #meshes: THREE.Mesh[] = [];
@@ -228,13 +246,8 @@ export class ThreeCubeView implements CubeView {
     fillLight.position.set(-5, -2, -4);
     this.#scene.add(fillLight);
 
-    this.#controls = new OrbitControls(this.#camera, this.#renderer.domElement);
-    // กล้องขยับ (ลากเอง หรือ damping กำลังคายตัว) = ภาพเปลี่ยน → ขอเฟรมใหม่ (ADR-044 ข้อ 4)
-    this.#controls.addEventListener('change', this.#invalidate);
-    this.#controls.enableDamping = true;
-    this.#controls.enablePan = false;
-    this.#controls.minDistance = MIN_CAMERA_DISTANCE;
-    this.#controls.maxDistance = MAX_CAMERA_DISTANCE;
+    // เริ่มที่โหมดล็อกเสมอ — `CubeCanvas` สลับให้ตามค่าที่ผู้เล่นตั้งไว้ทันทีหลังสร้าง
+    this.#controls = this.#createControls('locked');
 
     this.#material = new THREE.MeshStandardMaterial({
       vertexColors: true,
@@ -269,7 +282,7 @@ export class ThreeCubeView implements CubeView {
    * ของเดิมวนวาดทุกเฟรมตลอดเวลา ซึ่งที่ห้อง 4 คนคือ 4 WebGL context ที่วาดภาพนิ่งซ้ำ
    * 60 ครั้ง/วินาทีฟรี ๆ · ตอนนี้ไม่มีลูปเดินอยู่เบื้องหลังเลย วาดเฉพาะตอนภาพเปลี่ยนจริง
    *
-   * **ต้องเรียกทุกครั้งที่ทำให้ภาพเปลี่ยน** — ทางที่มีอยู่คือ: `'change'` ของ OrbitControls ·
+   * **ต้องเรียกทุกครั้งที่ทำให้ภาพเปลี่ยน** — ทางที่มีอยู่คือ: `'change'`/`'start'` ของตัวคุมกล้อง ·
    * `#syncMeshes()` · `onUpdate` ของ GSAP · `#onPointerMove` · `#resize()`
    * ลืมเรียกที่ไหน คิวบ์จะ**ค้าง** ไม่ใช่แค่ช้า
    */
@@ -289,13 +302,18 @@ export class ThreeCubeView implements CubeView {
    * ตอนนั้น `#invalidate()` เจอเฟรมที่จองไว้แล้วเลยไม่ทำอะไร พอ `#tick` วาดเสร็จก็ไม่มี
    * เฟรมค้างอยู่ ต้องรอ tick ถัดไปของ GSAP มาจองใหม่ = ได้ครึ่งเฟรมเรต (วัดได้ 32 fps
    * ตอนหมุนคิวบ์) จึงจองต่อเองที่นี่ตลอดที่ยังมี tween หรือมือลากค้างอยู่
+   *
+   * โหมดอิสระจองต่อตลอดที่ตัวคุมถูกลากอยู่ด้วย — `TrackballControls` ไม่หมุนกล้องใน handler
+   * ของ pointer เลย แค่จดตำแหน่งไว้ให้ `update()` ข้างล่างเอาไปหมุน (ADR-061 ข้อ 3)
    */
   #tick = (): void => {
     this.#animationFrame = 0;
     if (this.#disposed) return;
     this.#controls.update();
     this.#renderer.render(this.#scene, this.#camera);
-    if (this.#finishAnimation !== null || this.#gesture?.turn) this.#invalidate();
+    if (this.#finishAnimation !== null || this.#gesture?.turn || this.#controlsActive) {
+      this.#invalidate();
+    }
   };
 
   #resize(): void {
@@ -306,7 +324,108 @@ export class ThreeCubeView implements CubeView {
     this.#camera.fov = fovFor(this.#camera.aspect);
     this.#camera.updateProjectionMatrix();
     this.#renderer.setSize(width, height);
+    this.#measureTrackball();
     this.#invalidate();
+  }
+
+  // ---------------------------------------------------------------- ตัวคุมกล้อง (ADR-061)
+
+  /**
+   * สร้างตัวคุมของโหมดนั้นบน **กล้องตัวเดิม** — ระยะซูมกับทิศที่มองอยู่จึงคงเดิมตอนสลับ
+   *
+   * กล้องขยับ (ลากเอง หรือ damping กำลังคายตัว) = ภาพเปลี่ยน → `'change'` ขอเฟรมใหม่ (ADR-044 ข้อ 4)
+   */
+  #createControls(mode: CameraMode): OrbitControls | TrackballControls {
+    const dom = this.#renderer.domElement;
+
+    if (mode === 'free') {
+      const controls = new TrackballControls(this.#camera, dom);
+      controls.rotateSpeed = FREE_ROTATE_SPEED;
+      // ไม่มีแรงเฉื่อย — damping ของตัวนี้หรี่ลงไม่มีวันเป็นศูนย์ และค้างไว้ระหว่างที่ปิดหมุน
+      // (จับหน้าคิวบ์) แล้วหมุนต่อเองตอนเปิดคืน (ADR-061 ข้อ 4)
+      controls.staticMoving = true;
+      controls.noPan = true;
+      // ค่าเดิม A/S/D ฟังจาก `window` ทั้งหน้า — กด S ค้างแล้วลาก = ซูมแทนหมุน
+      controls.keys = ['', '', ''];
+      controls.minDistance = MIN_CAMERA_DISTANCE;
+      controls.maxDistance = MAX_CAMERA_DISTANCE;
+      controls.addEventListener('change', this.#invalidate);
+      controls.addEventListener('start', this.#onControlsStart);
+      controls.addEventListener('end', this.#onControlsEnd);
+      this.#detachControls = () => {
+        controls.removeEventListener('change', this.#invalidate);
+        controls.removeEventListener('start', this.#onControlsStart);
+        controls.removeEventListener('end', this.#onControlsEnd);
+      };
+      return controls;
+    }
+
+    // `OrbitControls` คิดทุกอย่างจาก `camera.up` ตอนสร้าง — ต้องตั้งตรงก่อน ไม่งั้นแกนตั้ง
+    // ของโหมดล็อกจะเอียงตามมุมที่โหมดอิสระทิ้งไว้ (ADR-061 ข้อ 1)
+    this.#camera.up.set(0, 1, 0);
+    this.#camera.lookAt(0, 0, 0);
+    const controls = new OrbitControls(this.#camera, dom);
+    controls.enableDamping = true;
+    controls.enablePan = false;
+    controls.minDistance = MIN_CAMERA_DISTANCE;
+    controls.maxDistance = MAX_CAMERA_DISTANCE;
+    controls.addEventListener('change', this.#invalidate);
+    this.#detachControls = () => controls.removeEventListener('change', this.#invalidate);
+    return controls;
+  }
+
+  #onControlsStart = (): void => {
+    this.#controlsActive = true;
+    this.#invalidate();
+  };
+
+  #onControlsEnd = (): void => {
+    this.#controlsActive = false;
+    this.#invalidate();
+  };
+
+  /**
+   * `TrackballControls` จำตำแหน่งกล่องบนหน้าไว้คิดจุดศูนย์กลางการหมุน — ต้องวัดใหม่ทั้งตอน
+   * resize และตอนกด เพราะ layout เลื่อนได้โดยขนาดไม่เปลี่ยน (แถบออฟไลน์โผล่) — ADR-061 ข้อ 4
+   */
+  #measureTrackball(): void {
+    if (this.#controls instanceof TrackballControls) this.#controls.handleResize();
+  }
+
+  /**
+   * เปิด/ปิด **เฉพาะการหมุน** กล้อง — ห้ามแตะ `controls.enabled` เด็ดขาด
+   * ตัวคุมต้องนับนิ้วต่อไป ไม่งั้น pinch zoom จะพังทุกครั้งที่นิ้วแรกลงบนตัวคิวบ์ (ADR-029)
+   */
+  #setRotateEnabled(enabled: boolean): void {
+    if (this.#controls instanceof TrackballControls) this.#controls.noRotate = !enabled;
+    else this.#controls.enableRotate = enabled;
+  }
+
+  /**
+   * ท่าลากหน้าคิวบ์ถูกตัดจบ **ระหว่างที่ยังกดค้าง** (ทิศกำกวม · นิ้วที่สอง · โปรแกรมสั่งทับ)
+   * → เปิดหมุนกล้องคืนตอนปล่อย ไม่ใช่ตอนนี้ (ADR-061 ข้อ 5)
+   *
+   * `TrackballControls` ไม่ได้จดจุดเริ่มตอนกดเพราะหมุนถูกปิดอยู่ ถ้าเปิดทันที การขยับครั้งแรก
+   * จะกระชากกล้องไปตามระยะที่ค้างในตัวมัน · `OrbitControls` ได้ผลเหมือนเดิม (ไม่เข้า state หมุน
+   * ตั้งแต่ตอนกดอยู่แล้ว) · pinch ยังซูมได้ เพราะปิดแค่การหมุน
+   */
+  #reenableRotateOnRelease(): void {
+    if (this.#disposed || this.#releaseRotate) return;
+    const release = (): void => {
+      this.#clearReleaseRotate();
+      if (!this.#disposed) this.#setRotateEnabled(true);
+    };
+    this.#releaseRotate = release;
+    window.addEventListener('pointerup', release);
+    window.addEventListener('pointercancel', release);
+  }
+
+  #clearReleaseRotate(): void {
+    const pending = this.#releaseRotate;
+    if (!pending) return;
+    this.#releaseRotate = null;
+    window.removeEventListener('pointerup', pending);
+    window.removeEventListener('pointercancel', pending);
   }
 
   /** บังคับให้ภาพตรงกับสถานะภายในเป๊ะ ๆ (กันทศนิยมสะสมจากอนิเมชัน — บทเรียนจากเฟส 0.5) */
@@ -539,9 +658,11 @@ export class ThreeCubeView implements CubeView {
   }
 
   #onPointerDown = (event: PointerEvent): void => {
+    // ก่อนตัวคุมกล้องจะได้ event นี้ (เราดักจังหวะ capture) — ดู `#measureTrackball`
+    this.#measureTrackball();
     if (event.button !== 0) return;
 
-    // นิ้วที่สองระหว่างลากหน้าคิวบ์ = กำลังจะซูม → ปิดท่าที่ค้าง แล้วปล่อยให้ OrbitControls รับช่วง
+    // นิ้วที่สองระหว่างลากหน้าคิวบ์ = กำลังจะซูม → ปิดท่าที่ค้าง แล้วปล่อยให้ตัวคุมกล้องรับช่วง
     if (this.#gesture) {
       this.#endGesture(true);
       return;
@@ -549,7 +670,7 @@ export class ThreeCubeView implements CubeView {
     if (!this.#turnsEnabled || this.#playingAlg) return;
 
     let hit = this.#raycast(event);
-    if (!hit) return; // ไม่โดนตัวคิวบ์ = ปล่อยให้ OrbitControls หมุนกล้องตามปกติ
+    if (!hit) return; // ไม่โดนตัวคิวบ์ = ปล่อยให้ตัวคุมกล้องหมุนกล้องตามปกติ
 
     // ท่าก่อนหน้ายังดีดไม่เข้าที่ → ตัดจบก่อน แล้ว **ยิงรังสีใหม่** เพราะชิ้นเพิ่งกระโดดเข้าที่
     if (this.#finishAnimation || this.#queue.length > 0) {
@@ -558,9 +679,9 @@ export class ThreeCubeView implements CubeView {
       if (!hit) return;
     }
 
-    // **ห้ามปิด `controls.enabled`** — ต้องให้ OrbitControls นับนิ้วต่อไป ไม่งั้นนิ้วที่สอง
+    // **ห้ามปิด `controls.enabled`** — ต้องให้ตัวคุมกล้องนับนิ้วต่อไป ไม่งั้นนิ้วที่สอง
     // จะไม่ถูกนับ แล้ว pinch zoom จะพังทุกครั้งที่นิ้วแรกลงบนตัวคิวบ์ (ADR-029)
-    this.#controls.enableRotate = false;
+    this.#setRotateEnabled(false);
     this.#gesture = {
       pointerId: event.pointerId,
       pieceId: hit.pieceId,
@@ -608,7 +729,7 @@ export class ThreeCubeView implements CubeView {
     this.#invalidate();
   };
 
-  #onPointerUp = (): void => this.#endGesture(true);
+  #onPointerUp = (): void => this.#endGesture(true, true);
 
   /**
    * แกนที่ลากชิ้นนี้แล้วหมุนได้ **หลังตัดแกนที่ตั้งฉากกับหน้าที่จับออก**
@@ -678,13 +799,16 @@ export class ThreeCubeView implements CubeView {
   /**
    * จบท่าที่ลากอยู่ — `snap = true` คือปัดเข้าช่วงที่ใกล้ที่สุดแล้วลงบัญชีเป็น move จริง
    * (`false` = คืนชั้นกลับที่เดิม ใช้ตอนถูกขัดจังหวะ เช่น สั่ง scramble ใหม่ระหว่างลาก)
+   *
+   * `released` = มาจากการปล่อยนิ้วจริง — นอกนั้นนิ้วยังกดค้างอยู่ ต้องรอปล่อยก่อนเปิดหมุนกล้องคืน
    */
-  #endGesture(snap: boolean): void {
+  #endGesture(snap: boolean, released = false): void {
     const gesture = this.#gesture;
     if (!gesture) return;
 
     this.#gesture = null;
-    this.#controls.enableRotate = true;
+    if (released) this.#setRotateEnabled(true);
+    else this.#reenableRotateOnRelease();
     window.removeEventListener('pointermove', this.#onPointerMove);
     window.removeEventListener('pointerup', this.#onPointerUp);
     window.removeEventListener('pointercancel', this.#onPointerUp);
@@ -835,6 +959,18 @@ export class ThreeCubeView implements CubeView {
     if (!enabled) this.#endGesture(true);
   }
 
+  setCameraMode(mode: CameraMode): void {
+    if (this.#disposed || mode === this.#cameraMode) return;
+    // ท่าลากหน้าคิวบ์ปิดหมุนกล้องของตัวเก่าไว้ — ปัดให้จบก่อนทิ้งตัวนั้น
+    this.#endGesture(true);
+    this.#detachControls();
+    this.#controls.dispose();
+    this.#controlsActive = false;
+    this.#cameraMode = mode;
+    this.#controls = this.#createControls(mode);
+    this.#invalidate();
+  }
+
   getState(): CubeState {
     return { moves: this.#moves, solved: this.#spec.isSolved(this.#pattern) };
   }
@@ -863,7 +999,8 @@ export class ThreeCubeView implements CubeView {
     this.#animationFrame = 0;
     this.#resizeObserver.disconnect();
     this.#container.removeEventListener('pointerdown', this.#onPointerDown, { capture: true });
-    this.#controls.removeEventListener('change', this.#invalidate);
+    this.#clearReleaseRotate();
+    this.#detachControls();
     this.#controls.dispose();
     for (const mesh of this.#meshes) mesh.geometry.dispose();
     this.#material.dispose();

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { AppHeader } from '@/components/AppHeader';
 import { Avatar } from '@/components/Avatar';
+import { CameraModeToggle } from '@/components/CameraModeToggle';
 import { FormAlert } from '@/components/FormAlert';
 import { PageSpinner } from '@/components/PageSpinner';
 import { formatEloChange } from '@/lib/format';
@@ -342,6 +343,9 @@ function MatchPanel({
           ออกจากห้อง
         </button>
       </div>
+
+      {/* ชั่วคราว — ก้อนที่ 6 ของเฟส 12 จะย้ายเข้าแผงตั้งค่า (ADR-061 ข้อ 7) · ผู้ชมใช้ได้ด้วย */}
+      <CameraModeToggle className="mt-5" />
 
       <dl className="mt-5 space-y-1.5 text-left text-sm">
         <Row label="ประเภทรูบิค" value={CUBE_TYPE_LABEL[snapshot.cubeType]} />

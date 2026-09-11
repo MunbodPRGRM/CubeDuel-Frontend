@@ -22,6 +22,7 @@ import { ThreeCubeView } from './three/ThreeCubeView.ts';
 import type { CubeView } from './types.ts';
 
 export type {
+  CameraMode,
   CubeMoveEvent,
   CubeMoveListener,
   CubeMoveSource,

@@ -7,6 +7,7 @@ import {
   type CubeState,
   type CubeView,
 } from '@/cube';
+import { usePlayPrefs } from '@/lib/play-prefs';
 import type { CubeType } from '@/types/cube';
 
 export interface CubeCanvasHandle {
@@ -76,6 +77,7 @@ interface CubeCanvasProps {
  *
  * สกินอ่านจากบัญชีที่ล็อกอินอยู่ตรงนี้ที่เดียว ทุกหน้าที่วางคิวบ์จึงได้สีของผู้เล่นเองฟรี
  * โดยไม่ต้องส่ง prop ต่อกันเป็นทอด ๆ (คนที่ยังไม่ล็อกอินเห็นสกินตั้งต้น — ADR-048 ข้อ 2)
+ * · โหมดหมุนกล้อง (ล็อก/อิสระ) ก็อ่านจาก `play-prefs` ตรงนี้ด้วยเหตุผลเดียวกัน (ADR-061 ข้อ 6)
  */
 export const CubeCanvas = forwardRef<CubeCanvasHandle, CubeCanvasProps>(function CubeCanvas(
   {
@@ -93,6 +95,7 @@ export const CubeCanvas = forwardRef<CubeCanvasHandle, CubeCanvasProps>(function
 ) {
   const { user } = useAuth();
   const skinId = skinOverride ?? user?.cubeSkin ?? DEFAULT_SKIN_ID;
+  const { cameraMode } = usePlayPrefs();
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<CubeView | null>(null);
   const [view, setView] = useState<CubeView | null>(null);
@@ -181,6 +184,11 @@ export const CubeCanvas = forwardRef<CubeCanvasHandle, CubeCanvasProps>(function
   useEffect(() => {
     view?.setTurnsEnabled(turnsEnabled);
   }, [view, turnsEnabled]);
+
+  // view ใหม่เริ่มที่โหมดล็อกเสมอ — ตั้งตามค่าของผู้เล่นทั้งตอนสร้างและตอนสลับสด ๆ
+  useEffect(() => {
+    view?.setCameraMode(cameraMode);
+  }, [view, cameraMode]);
 
   useImperativeHandle(
     ref,
