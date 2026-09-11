@@ -89,14 +89,10 @@ export default function LoginPage() {
             error={fieldErrors.password}
             onChange={(e) => setPassword(e.target.value)}
           />
-          {/* ลิงก์ลืมรหัสผ่านตามดีไซน์ — ยังกดไม่ได้จนกว่า endpoint /auth/forgot-password จะพร้อม */}
           <p className="mt-2 text-right">
-            <span
-              title="ยังไม่เปิดใช้งาน — รอตั้งค่าบริการส่งอีเมล"
-              className="cursor-not-allowed text-sm text-slate-600"
-            >
+            <Link to="/forgot-password" className="text-sm text-brand-400 hover:underline">
               ลืมรหัสผ่าน?
-            </span>
+            </Link>
           </p>
         </div>
 

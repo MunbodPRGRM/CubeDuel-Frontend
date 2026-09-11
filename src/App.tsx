@@ -3,6 +3,8 @@ import { AuthProvider } from '@/auth/AuthProvider';
 import HomePage from '@/pages/HomePage';
 import LoginPage from '@/pages/LoginPage';
 import RegisterPage from '@/pages/RegisterPage';
+import ForgotPasswordPage from '@/pages/ForgotPasswordPage';
+import ResetPasswordPage from '@/pages/ResetPasswordPage';
 import NotFoundPage from '@/pages/NotFoundPage';
 import PracticePage from '@/pages/PracticePage';
 import CreateRoomPage from '@/pages/CreateRoomPage';
@@ -41,6 +43,9 @@ export default function App() {
               <Route path="/" element={<HomePage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
+              {/* ลืมรหัสผ่าน — เปิดสาธารณะ · ลิงก์ในอีเมลพามาที่ /reset-password?token=… (ADR-057) */}
+              <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+              <Route path="/reset-password" element={<ResetPasswordPage />} />
               {/* กระดานอันดับกับโปรไฟล์เปิดสาธารณะ (api-contract.md ข้อ 3 และ 5) ไม่ต้องล็อกอิน */}
               <Route path="/leaderboard" element={<LeaderboardPage />} />
               {/* ข่าวสารเปิดสาธารณะเหมือนกัน (api-contract.md ข้อ 7) */}
