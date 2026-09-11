@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AppHeader } from '@/components/AppHeader';
 import { CubeCanvas, type CubeCanvasHandle } from '@/components/CubeCanvas';
-import { CubeTypePicker } from '@/components/CubeTypePicker';
+import { CubeTypeSelect } from '@/components/CubeTypeSelect';
 import type { CubeMoveEvent, CubeState } from '@/cube';
 import { apiFetch } from '@/lib/api';
 import { averageOfN, bestTime, meanTime } from '@/lib/averages';
@@ -348,8 +348,9 @@ export default function PracticePage() {
               ไม่บันทึกผลลงระบบ ไม่มีผลต่อคะแนน
             </p>
 
-            <div className="mt-4 flex justify-center">
-              <CubeTypePicker value={cubeType} onChange={setCubeType} />
+            {/* dropdown แทนแท็บ 4 ปุ่ม — แผงกว้าง 22rem แท็บตกบรรทัด (ADR-059 ข้อ 6) */}
+            <div className="mt-4">
+              <CubeTypeSelect value={cubeType} onChange={setCubeType} />
             </div>
 
             <div className="mt-5">
@@ -422,10 +423,14 @@ export default function PracticePage() {
                   disabled={busy}
                   className="col-span-2 rounded-lg bg-brand-500 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-40"
                 >
+                  {/* จบด้วย "เสร็จทันที" = คิวบ์ครบสีแล้ว ไม่มีอะไรให้ "เล่นอีกครั้ง" ·
+                      กดแล้วทำงานเหมือนกันทั้งสองป้าย คือขอ scramble ใหม่ (ADR-059 ข้อ 6) */}
                   {scrambling
                     ? 'กำลังหมุน scramble ให้ดู…'
                     : phase === 'finished'
-                      ? 'เล่นอีกครั้ง (เว้นวรรค)'
+                      ? assisted
+                        ? 'สุ่มใหม่ (เว้นวรรค)'
+                        : 'เล่นอีกครั้ง (เว้นวรรค)'
                       : scramble
                         ? 'เริ่มจับเวลา (เว้นวรรค)'
                         : 'สุ่ม scramble (เว้นวรรค)'}
