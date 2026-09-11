@@ -4,6 +4,7 @@ import { useAuth } from '@/auth/useAuth';
 import { AppHeader } from '@/components/AppHeader';
 import { Avatar } from '@/components/Avatar';
 import { CubeTypePicker } from '@/components/CubeTypePicker';
+import { ErrorNotice } from '@/components/ErrorScreen';
 import { Pagination } from '@/components/Pagination';
 import { useApiData } from '@/hooks/useApiData';
 import { useApiPage } from '@/hooks/useApiPage';
@@ -129,9 +130,7 @@ export default function LeaderboardPage() {
         )}
 
         {board.error && (
-          <p className="mt-6 rounded-xl border border-loss/40 bg-loss/10 px-4 py-3 text-sm text-loss">
-            {board.error}
-          </p>
+          <ErrorNotice message={board.error} onRetry={board.reload} className="mt-6" />
         )}
 
         {/* แท่นสามอันดับแรกมีเฉพาะหน้าแรก — หน้าถัด ๆ ไปไม่มี "อันดับ 1" ให้ยกขึ้นแท่น */}

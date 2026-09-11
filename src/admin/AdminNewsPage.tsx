@@ -2,7 +2,8 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { Pagination } from '@/components/Pagination';
 import { useApiPage } from '@/hooks/useApiPage';
-import { ApiError, apiFetch, apiUpload, fileUrl } from '@/lib/api';
+import { apiFetch, apiUpload, fileUrl } from '@/lib/api';
+import { errorMessage } from '@/lib/errors';
 import { formatNewsDate, type NewsListItem } from '@/types/news';
 import { AdminDialog } from './AdminDialog';
 import { AdminLayout, AdminNotice } from './AdminLayout';
@@ -39,7 +40,11 @@ export default function AdminNewsPage() {
         </button>
       }
     >
-      {news.error && <AdminNotice tone="error">{news.error}</AdminNotice>}
+      {news.error && (
+        <AdminNotice tone="error" onRetry={news.reload}>
+          {news.error}
+        </AdminNotice>
+      )}
       {news.data?.length === 0 && !news.loading && <AdminNotice>ยังไม่มีข่าว</AdminNotice>}
 
       <div className={`space-y-3 ${news.loading ? 'opacity-60' : ''}`}>
@@ -97,7 +102,7 @@ function NewsRow({
       await apiFetch(`/admin/news/${news.newsId}`, { method: 'DELETE' });
       onDeleted();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'ลบข่าวไม่สำเร็จ');
+      setError(errorMessage(err, 'ลบข่าวไม่สำเร็จ'));
       setWorking(false);
     }
   }
@@ -254,7 +259,7 @@ function NewsEditor({
       }
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'บันทึกข่าวไม่สำเร็จ');
+      setError(errorMessage(err, 'บันทึกข่าวไม่สำเร็จ'));
     } finally {
       setSaving(false);
     }

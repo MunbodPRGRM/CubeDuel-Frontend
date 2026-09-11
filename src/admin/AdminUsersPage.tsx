@@ -3,7 +3,8 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { Pagination } from '@/components/Pagination';
 import { useApiData } from '@/hooks/useApiData';
 import { useApiPage } from '@/hooks/useApiPage';
-import { ApiError, apiFetch } from '@/lib/api';
+import { apiFetch } from '@/lib/api';
+import { errorMessage } from '@/lib/errors';
 import { CUBE_TYPES, type CubeType } from '@/types/cube';
 import { CUBE_TYPE_LABEL, type UserRating } from '@/types/leaderboard';
 import { formatAdminDate, type AdminUser } from '@/types/admin';
@@ -104,7 +105,9 @@ export default function AdminUsersPage() {
 
       {users.error && (
         <div className="mt-4">
-          <AdminNotice tone="error">{users.error}</AdminNotice>
+          <AdminNotice tone="error" onRetry={users.reload}>
+            {users.error}
+          </AdminNotice>
         </div>
       )}
       {users.data?.length === 0 && !users.loading && (
@@ -179,7 +182,7 @@ function UserRow({
       });
       onChanged();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'เปลี่ยนสถานะไม่สำเร็จ');
+      setError(errorMessage(err, 'เปลี่ยนสถานะไม่สำเร็จ'));
     } finally {
       setWorking(false);
     }
@@ -288,7 +291,7 @@ function RatingDialog({
       });
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'แก้คะแนนไม่สำเร็จ');
+      setError(errorMessage(err, 'แก้คะแนนไม่สำเร็จ'));
     } finally {
       setSaving(false);
     }

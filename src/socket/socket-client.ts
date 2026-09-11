@@ -5,6 +5,7 @@
  * ไฟล์นี้ไม่พึ่ง React เลย จะได้เอาไปใช้ในสคริปต์ทดสอบได้ด้วย
  */
 import { io, type Socket } from 'socket.io-client';
+import { ERROR_MESSAGES, errorMessage, type AppErrorCode } from '@/lib/errors';
 import type { Ack, AckError, ClientToServerEvents, ServerToClientEvents } from './types';
 
 export type TypedClientSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
@@ -16,9 +17,13 @@ const ACK_TIMEOUT_MS = 10_000;
 
 /** error ที่มาจาก ack ของ socket — คนละคลาสกับ `ApiError` ของ REST (ADR-034 ข้อ 5) */
 export class SocketAckError extends Error {
-  readonly code: AckError['code'];
+  /**
+   * รหัสตาม `docs/socket-events.md` ข้อ 1 — กว้างเป็น `AppErrorCode` เพราะไฟล์นี้สร้าง error
+   * ของฝั่ง client เองด้วยตอนรอ ack ไม่ทัน (`E_TIMEOUT`)
+   */
+  readonly code: AppErrorCode;
 
-  constructor(error: AckError) {
+  constructor(error: { code: AppErrorCode; message: string }) {
     super(error.message);
     this.name = 'SocketAckError';
     this.code = error.code;
@@ -59,12 +64,7 @@ export function emitAck<R>(
     const timer = setTimeout(() => {
       if (settled) return;
       settled = true;
-      reject(
-        new SocketAckError({
-          code: 'E_INTERNAL',
-          message: 'เซิร์ฟเวอร์ไม่ตอบกลับ ตรวจสอบการเชื่อมต่ออินเทอร์เน็ตแล้วลองใหม่',
-        }),
-      );
+      reject(new SocketAckError({ code: 'E_TIMEOUT', message: ERROR_MESSAGES.E_TIMEOUT }));
     }, timeoutMs);
 
     const done = (response: Ack<R>) => {
@@ -83,11 +83,14 @@ export function emitAck<R>(
   });
 }
 
-/** ข้อความที่เอาไปโชว์ได้เลย ไม่ว่า error จะมาจากทางไหน */
+/**
+ * ข้อความที่เอาไปโชว์ได้เลย ไม่ว่า error จะมาจากทางไหน
+ *
+ * เหลือไว้เป็นชื่อเดิมของฝั่ง socket แต่เนื้อในเป็น `errorMessage()` ตัวเดียวกับที่ REST ใช้
+ * — ข้อความของสองช่องทางจึงออกมาจากคลังเดียวกันเสมอ (ADR-054 ข้อ 2)
+ */
 export function socketErrorMessage(error: unknown): string {
-  if (error instanceof SocketAckError) return error.message;
-  if (error instanceof Error && error.message) return error.message;
-  return 'เกิดข้อผิดพลาดที่ไม่รู้จัก กรุณาลองใหม่อีกครั้ง';
+  return errorMessage(error);
 }
 
 /** `connect_error` ของ Socket.IO แนบ `data` ที่ server ส่งมาไว้ใน error object */

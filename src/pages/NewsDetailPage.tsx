@@ -1,5 +1,6 @@
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { AppHeader } from '@/components/AppHeader';
+import { ErrorNotice } from '@/components/ErrorScreen';
 import { ShareButton } from '@/components/ShareButton';
 import { useApiData } from '@/hooks/useApiData';
 import { fileUrl } from '@/lib/api';
@@ -32,11 +33,7 @@ export default function NewsDetailPage() {
             กำลังโหลด…
           </p>
         )}
-        {news.error && (
-          <p className="mt-6 rounded-2xl border border-line bg-navy-850/80 px-6 py-12 text-center text-sm text-loss">
-            {news.error}
-          </p>
-        )}
+        {news.error && <ErrorNotice message={news.error} onRetry={news.reload} className="mt-6" />}
 
         {news.data && (
           <article className="mt-4 overflow-hidden rounded-2xl border border-line bg-navy-850/80">

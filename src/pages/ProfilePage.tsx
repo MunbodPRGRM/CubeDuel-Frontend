@@ -3,6 +3,7 @@ import { Link, Navigate, useParams } from 'react-router-dom';
 import { useAuth } from '@/auth/useAuth';
 import { AppHeader } from '@/components/AppHeader';
 import { CubeTypePicker } from '@/components/CubeTypePicker';
+import { ErrorNotice } from '@/components/ErrorScreen';
 import { MatchHistoryList } from '@/components/MatchHistoryList';
 import { PageSpinner } from '@/components/PageSpinner';
 import { ReportPlayerDialog } from '@/components/ReportPlayerDialog';
@@ -72,11 +73,13 @@ function ProfileBody({
   const rating = ratings.data?.find((r) => r.cubeType === cubeType) ?? null;
 
   if (profile.error) {
+    // โหลดไม่ได้เพราะเน็ต กับ "ไม่มีผู้ใช้คนนี้จริง ๆ" ต้องพูดคนละอย่าง — ดูที่รหัส ไม่ใช่ข้อความ
+    const gone = profile.errorCode === 'E_NOT_FOUND';
     return (
-      <div className="rounded-2xl border border-line bg-navy-850/80 px-6 py-12 text-center">
-        <p className="text-sm text-slate-300">{profile.error}</p>
-        <p className="mt-1 text-xs text-slate-600">ผู้ใช้รายนี้อาจถูกลบไปแล้ว</p>
-      </div>
+      <ErrorNotice
+        message={gone ? `${profile.error} ผู้ใช้รายนี้อาจถูกลบไปแล้ว` : profile.error}
+        onRetry={gone ? undefined : profile.reload}
+      />
     );
   }
 

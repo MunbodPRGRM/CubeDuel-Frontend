@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { ApiError, apiFetch } from '@/lib/api';
+import { apiFetch } from '@/lib/api';
+import { errorMessage } from '@/lib/errors';
 
 const MIN_REASON = 10;
 const MAX_REASON = 1000;
@@ -50,7 +51,7 @@ export function ReportPlayerDialog({
       });
       setSent(true);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'ส่งรายงานไม่สำเร็จ');
+      setError(errorMessage(err, 'ส่งรายงานไม่สำเร็จ'));
     } finally {
       setSending(false);
     }

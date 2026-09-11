@@ -68,15 +68,40 @@ export function AdminLayout({
   );
 }
 
-/** กล่องข้อความสถานะของหน้าแอดมิน (กำลังโหลด / ผิดพลาด / ไม่มีข้อมูล) — หน้าตาเหมือนกันทุกหน้า */
-export function AdminNotice({ children, tone }: { children: ReactNode; tone?: 'error' }) {
+/**
+ * กล่องข้อความสถานะของหน้าแอดมิน (กำลังโหลด / ผิดพลาด / ไม่มีข้อมูล) — หน้าตาเหมือนกันทุกหน้า
+ *
+ * ส่ง `onRetry` มาเมื่อเป็น error จากการโหลด (`reload` ของ `useApiData`/`useApiPage`)
+ * — หน้าแอดมินโหลดพลาดแล้วไม่มีปุ่มให้กด ต้องรีเฟรชทั้งหน้าเอง ซึ่งทำให้ตัวกรองที่ตั้งไว้หายหมด
+ */
+export function AdminNotice({
+  children,
+  tone,
+  onRetry,
+}: {
+  children: ReactNode;
+  tone?: 'error';
+  onRetry?: () => void;
+}) {
   return (
-    <p
+    <div
+      role={tone === 'error' ? 'alert' : undefined}
       className={`rounded-2xl border border-line bg-navy-850/80 px-6 py-12 text-center text-sm ${
         tone === 'error' ? 'text-loss' : 'text-slate-500'
       }`}
     >
       {children}
-    </p>
+      {onRetry && (
+        <div className="mt-4">
+          <button
+            type="button"
+            onClick={onRetry}
+            className="rounded-xl border border-line px-4 py-2 text-sm font-semibold text-slate-300 transition hover:border-slate-600 hover:text-white"
+          >
+            ลองใหม่
+          </button>
+        </div>
+      )}
+    </div>
   );
 }

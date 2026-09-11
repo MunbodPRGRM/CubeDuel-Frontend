@@ -24,6 +24,7 @@ import { RequireAuth } from '@/auth/RequireAuth';
 import { SocketProvider } from '@/socket/SocketProvider';
 import { QueueProvider } from '@/socket/QueueProvider';
 import { QueueBanner } from '@/queue/QueueBanner';
+import { OfflineBanner } from '@/components/OfflineBanner';
 import { TutorialProvider } from '@/tutorial/TutorialProvider';
 
 /** เส้นทางทั้งหมดของแอป — หน้าที่ต้องล็อกอินก่อนให้ห่อด้วย <RequireAuth> */
@@ -139,6 +140,8 @@ export default function App() {
               <Route path="*" element={<NotFoundPage />} />
             </Routes>
             <QueueBanner />
+            {/* เครื่องหลุดเน็ต — เตือนทับทุกหน้า เพราะทุกหน้าใช้งานต่อไม่ได้เหมือนกันหมด */}
+            <OfflineBanner />
           </TutorialProvider>
         </QueueProvider>
       </SocketProvider>
