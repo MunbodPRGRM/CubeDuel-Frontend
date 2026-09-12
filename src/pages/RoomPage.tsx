@@ -2,12 +2,15 @@ import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { AppHeader } from '@/components/AppHeader';
 import { Avatar } from '@/components/Avatar';
-import { CameraModeToggle } from '@/components/CameraModeToggle';
 import { FormAlert } from '@/components/FormAlert';
 import { PageSpinner } from '@/components/PageSpinner';
+import { PlaySettingsMenu } from '@/components/PlaySettings';
+import { useWideScreen } from '@/hooks/useWideScreen';
 import { formatEloChange } from '@/lib/format';
+import { usePlayPrefs, type ResolvedRoomLayout, type RoomLayout } from '@/lib/play-prefs';
 import { LiveTime, type LiveTimeMode } from '@/room/LiveTime';
 import { PlayerCubePanel } from '@/room/PlayerCubePanel';
+import { RoomStage } from '@/room/RoomStage';
 import { ConnectionBanner, ConnectionErrorCard } from '@/socket/SocketGate';
 import { ROOM_STATE_LABEL } from '@/socket/room-labels';
 import { useMatch, type UseMatchResult } from '@/socket/useMatch';
@@ -34,6 +37,9 @@ import { CUBE_TYPE_LABEL } from '@/types/leaderboard';
  *
  * ห้อง 3–4 คนใช้โครงเดียวกันนี้: **คิวบ์ที่ยึด 1 ตัวทางซ้าย + แถบคู่แข่ง N−1 ตัวทางขวา**
  * ห้อง 1v1 คือกรณีที่แถบมีตัวเดียว จึงได้ DOM ชุดเดิมทุกตัว (ADR-041 ข้อ 4 · ADR-044 ข้อ 3)
+ *
+ * **ตั้งแต่เฟส 12 ก้อนที่ 6** โครงสามคอลัมน์กลายเป็นหนึ่งใน 4 แบบที่ผู้เล่นเลือกได้จากปุ่มเฟือง
+ * (`RoomStage` เป็นคนวาง · ADR-063) — ของที่อยู่ในแต่ละช่องยังเป็นชิ้นเดิมทุกตัว
  */
 export default function RoomPage() {
   const { roomId: roomIdParam } = useParams<{ roomId: string }>();
@@ -61,6 +67,8 @@ function RoomView({ roomId }: { roomId: number }) {
   const match = useMatch(room.snapshot);
   const queue = useQueue();
   const { status: socketStatus } = useSocket();
+  const { roomLayout } = usePlayPrefs();
+  const wideScreen = useWideScreen();
   const { snapshot, status, goneMessage, me, others, isSpectator, isHost } = room;
   // เข้ามาหลังรอบจบ (กด F5 / ผู้ชมเพิ่งเข้า) จะไม่มี `match:finished` — ขอย้อนหลังแทน
   const result = useMatchResult(snapshot, match.result);
@@ -78,7 +86,10 @@ function RoomView({ roomId }: { roomId: number }) {
   /** ห้องที่ยังไม่ครบต้องเห็นช่องว่างด้วย ไม่งั้นล็อบบี้ 4 คนจะดูเหมือนห้องเล็กลง */
   const rivalSlots: (PlayerPublic | null)[] = [...rivals];
   while (rivalSlots.length < Math.max(1, snapshot.maxPlayers - 1)) rivalSlots.push(null);
-  const compactRivals = rivalSlots.length > 1;
+
+  const layout = resolveLayout(roomLayout, wideScreen, snapshot.maxPlayers === 2);
+  /** แผงคู่แข่งย่อเมื่อมีหลายคน **หรือ** ตอนลอยมุมจอ (เตี้ยเกินกว่าจะมีแถวตัวเลขล่าง) */
+  const compactRivals = rivalSlots.length > 1 || layout === 'focus';
 
   const leave = async () => {
     if (await room.leave()) navigate('/', { replace: true });
@@ -101,60 +112,73 @@ function RoomView({ roomId }: { roomId: number }) {
     <div className="flex flex-col gap-4 lg:h-full">
       {socketStatus !== 'connected' && <ConnectionBanner />}
 
-      {/* layout สามคอลัมน์ "แบบเดิม" — ก้อนที่ 6 ของเฟส 12 จะเป็นตัวเลือกหนึ่ง ห้ามลบ (ADR-059 ข้อ 5) */}
-      <div className="grid gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-[1fr_360px_1fr]">
-        <PlayerCubePanel
-          player={focusPlayer}
-          snapshot={snapshot}
-          isMe={!isSpectator && focusPlayer?.userId === me?.userId}
-          emptyLabel={isSpectator ? 'รอผู้เล่นเข้าห้อง' : 'ที่นั่งของคุณ'}
-          match={match}
+      {/* ปุ่มเฟือง — ที่เดียวของมุมกล้อง/ทิศคิวบ์/การจัดวาง · ผู้ชมใช้ได้ด้วย (ADR-063 ข้อ 1) */}
+      <div className="flex shrink-0 items-center justify-end">
+        <PlaySettingsMenu
+          cubeType={snapshot.cubeType}
+          layout={{ allowStacked: snapshot.maxPlayers === 2 }}
         />
-
-        {/* จอเตี้ยกว่าเนื้อหา → เลื่อนในคอลัมน์นี้เอง ปุ่มยอมแพ้/ออกจากห้องต้องกดถึงเสมอ */}
-        <div className="flex flex-col gap-4 lg:min-h-0 lg:overflow-y-auto">
-          <RoomHeaderCard snapshot={snapshot} focus={focusPlayer} rivals={rivals} />
-          <MatchPanel
-            snapshot={snapshot}
-            match={match}
-            result={result}
-            me={me}
-            focusPlayer={focusPlayer}
-            isSpectator={isSpectator}
-            isHost={isHost}
-            roomBusy={room.busy}
-            roomError={room.actionError}
-            onSetReady={room.setReady}
-            onLeave={leave}
-            onRequeue={requeue}
-            queueBusy={queue.busy}
-          />
-        </div>
-
-        {/*
-          แถบคู่แข่ง — ห้อง 1v1 มีแผงเดียว จึงได้กล่องเดิมที่ล็อกความสูงเอง (`compact = false`)
-          ห้อง 3–4 คนให้คอลัมน์นี้ล็อกความสูงแทน แล้วหารให้แผงย่อยเท่า ๆ กัน (ADR-044 ข้อ 3)
-        */}
-        <div
-          className={
-            compactRivals ? 'flex h-[30rem] flex-col gap-3 lg:h-auto lg:min-h-0' : 'lg:min-h-0'
-          }
-        >
-          {rivalSlots.map((rival, index) => (
-            <PlayerCubePanel
-              key={rival?.userId ?? `empty-${index}`}
-              player={rival}
-              snapshot={snapshot}
-              isMe={false}
-              emptyLabel="รอผู้เล่นเข้าห้อง"
-              match={match}
-              compact={compactRivals}
-            />
-          ))}
-        </div>
       </div>
+
+      <RoomStage
+        layout={layout}
+        compactRivals={compactRivals}
+        self={
+          <PlayerCubePanel
+            player={focusPlayer}
+            snapshot={snapshot}
+            isMe={!isSpectator && focusPlayer?.userId === me?.userId}
+            emptyLabel={isSpectator ? 'รอผู้เล่นเข้าห้อง' : 'ที่นั่งของคุณ'}
+            match={match}
+          />
+        }
+        rivals={rivalSlots.map((rival, index) => (
+          <PlayerCubePanel
+            key={rival?.userId ?? `empty-${index}`}
+            player={rival}
+            snapshot={snapshot}
+            isMe={false}
+            emptyLabel="รอผู้เล่นเข้าห้อง"
+            match={match}
+            compact={compactRivals}
+          />
+        ))}
+        info={
+          <>
+            <RoomHeaderCard snapshot={snapshot} focus={focusPlayer} rivals={rivals} />
+            <MatchPanel
+              snapshot={snapshot}
+              match={match}
+              result={result}
+              me={me}
+              focusPlayer={focusPlayer}
+              isSpectator={isSpectator}
+              isHost={isHost}
+              roomBusy={room.busy}
+              roomError={room.actionError}
+              onSetReady={room.setReady}
+              onLeave={leave}
+              onRequeue={requeue}
+              queueBusy={queue.busy}
+            />
+          </>
+        }
+      />
     </div>
   );
+}
+
+/**
+ * ค่าที่ผู้เล่นตั้งไว้ → layout ที่วาดได้จริง (ADR-063 ข้อ 3)
+ *
+ * `auto` = **แบบเดิมบนจอกว้าง** (เจ้าของสั่ง 2026-09-12) · จอแคบใช้เราเด่น เพราะสามคอลัมน์
+ * บนมือถือกลายเป็นสามแผงเรียงลงมา คิวบ์เราเหลือหนึ่งในสามจอ (roadmap เฟส 12 ก้อนที่ 6)
+ * · **บน-ล่างใช้ได้เฉพาะ 1v1** ห้องหลายคนตกไปใช้แบบเดิมโดยไม่แก้ค่าที่เก็บไว้
+ * (ออกจากห้องหลายคนแล้วต้องได้ของเดิมคืน)
+ */
+function resolveLayout(pref: RoomLayout, wide: boolean, duel: boolean): ResolvedRoomLayout {
+  const chosen = pref === 'auto' ? (wide ? 'classic' : 'focus') : pref;
+  return chosen === 'stacked' && !duel ? 'classic' : chosen;
 }
 
 // ---------------------------------------------------------------- คอลัมน์กลาง
@@ -224,13 +248,17 @@ function MatchPanel({
 
   const error = match.actionError ?? roomError;
 
-  return (
-    <section className="rounded-2xl border border-line bg-navy-850 px-5 py-6 text-center">
+  const statusBlock = (
+    <>
       <p className="text-xs text-slate-400">สถานะการเล่น</p>
       <p className="mt-1 text-2xl font-bold text-brand-400">{headline(snapshot, result)}</p>
 
       <MatchClockBlock snapshot={snapshot} progress={focusProgress} />
+    </>
+  );
 
+  const detailBlock = (
+    <>
       <p className="mt-5 min-h-[3.5rem] text-sm leading-6 text-slate-400">
         {hintText(snapshot, roomIsFull, isSpectator, fromQueue)}
       </p>
@@ -252,109 +280,119 @@ function MatchPanel({
           <FormAlert message={error} />
         </div>
       )}
+    </>
+  );
 
-      <div className="mt-5 flex flex-col gap-2.5">
-        {isSpectator ? (
-          <p className="rounded-xl border border-line-soft bg-navy-900/60 px-4 py-2.5 text-sm text-slate-400">
-            คุณกำลังดูอยู่ในฐานะผู้ชม
-          </p>
-        ) : (
-          <>
-            {fromQueue ? (
-              // ห้องจากคิว: มีแค่ "ยอมแพ้" ระหว่างแข่ง กับ "เข้าคิวใหม่" ตอนจบ
-              <div className="grid gap-2.5">
-                {racing ? (
-                  <SurrenderButton
-                    disabled={!canSurrender}
-                    onConfirm={() => void match.surrender()}
-                  />
-                ) : (
-                  finished && (
-                    <button
-                      type="button"
-                      disabled={roomBusy || queueBusy}
-                      onClick={() => void onRequeue()}
-                      className="rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-brand-500/40"
-                    >
-                      {snapshot.roomKind === 'multiplayer' ? 'เข้าคิวรอบใหม่' : 'หาคู่ใหม่'}
-                    </button>
-                  )
-                )}
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 gap-2.5">
-                <button
-                  type="button"
-                  disabled={roomBusy || !inLobby}
-                  onClick={() => void onSetReady(!me?.isReady)}
-                  className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                    me?.isReady
-                      ? 'border border-line bg-navy-800 text-slate-200 hover:bg-navy-700'
-                      : 'bg-win/90 text-navy-950 hover:bg-win'
-                  }`}
-                >
-                  {me?.isReady ? 'ยกเลิกพร้อม' : 'พร้อม'}
-                </button>
-
-                {racing ? (
-                  <SurrenderButton
-                    disabled={!canSurrender}
-                    onConfirm={() => void match.surrender()}
-                  />
-                ) : (
+  const actionBlock = (
+    <div className="mt-5 flex flex-col gap-2.5">
+      {isSpectator ? (
+        <p className="rounded-xl border border-line-soft bg-navy-900/60 px-4 py-2.5 text-sm text-slate-400">
+          คุณกำลังดูอยู่ในฐานะผู้ชม
+        </p>
+      ) : (
+        <>
+          {fromQueue ? (
+            // ห้องจากคิว: มีแค่ "ยอมแพ้" ระหว่างแข่ง กับ "เข้าคิวใหม่" ตอนจบ
+            <div className="grid gap-2.5">
+              {racing ? (
+                <SurrenderButton
+                  disabled={!canSurrender}
+                  onConfirm={() => void match.surrender()}
+                />
+              ) : (
+                finished && (
                   <button
                     type="button"
-                    disabled={!canStart}
-                    onClick={() => void match.start()}
-                    className="rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-navy-800 disabled:text-slate-500"
+                    disabled={roomBusy || queueBusy}
+                    onClick={() => void onRequeue()}
+                    className="rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-brand-500/40"
                   >
-                    {startButtonLabel(isHost, finished, roomIsFull, everyoneConnected)}
+                    {snapshot.roomKind === 'multiplayer' ? 'เข้าคิวรอบใหม่' : 'หาคู่ใหม่'}
                   </button>
-                )}
-              </div>
-            )}
-
-            {/* ปุ่มทดสอบ — โผล่เฉพาะเมื่อ server เปิดสวิตช์ · เวลาหยุด ณ ตอนกด (ADR-060)
-                ⚠️ ถอดออกก่อน deploy · เงื่อนไขกดได้เท่ากับปุ่มยอมแพ้ (ผู้เล่นที่ยังแก้อยู่) */}
-            {snapshot.devInstantFinish && racing && (
+                )
+              )}
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-2.5">
               <button
                 type="button"
-                disabled={!canSurrender || match.busy}
-                onClick={() => void match.devFinish()}
-                className="rounded-xl border border-dashed border-gold-400/60 px-4 py-2.5 text-sm font-semibold text-gold-400 transition hover:bg-gold-400/10 disabled:cursor-not-allowed disabled:opacity-40"
+                disabled={roomBusy || !inLobby}
+                onClick={() => void onSetReady(!me?.isReady)}
+                className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                  me?.isReady
+                    ? 'border border-line bg-navy-800 text-slate-200 hover:bg-navy-700'
+                    : 'bg-win/90 text-navy-950 hover:bg-win'
+                }`}
               >
-                เสร็จทันที (ทดสอบ)
+                {me?.isReady ? 'ยกเลิกพร้อม' : 'พร้อม'}
               </button>
-            )}
 
-            {/* ระหว่างโหลด/นับถอยหลัง/ตรวจสอบ ยังยอมแพ้ไม่ได้ (server ปฏิเสธ) — บอกไว้ให้ชัด */}
-            {(state === 'LOADING' || state === 'COUNTDOWN' || state === 'INSPECTION') && (
-              <p className="text-xs text-slate-500">ยอมแพ้ได้เมื่อเริ่มจับเวลาแล้วเท่านั้น</p>
-            )}
-          </>
-        )}
+              {racing ? (
+                <SurrenderButton
+                  disabled={!canSurrender}
+                  onConfirm={() => void match.surrender()}
+                />
+              ) : (
+                <button
+                  type="button"
+                  disabled={!canStart}
+                  onClick={() => void match.start()}
+                  className="rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-navy-800 disabled:text-slate-500"
+                >
+                  {startButtonLabel(isHost, finished, roomIsFull, everyoneConnected)}
+                </button>
+              )}
+            </div>
+          )}
 
-        <button
-          type="button"
-          disabled={roomBusy}
-          onClick={() => void onLeave()}
-          className="rounded-xl border border-line bg-navy-800 px-4 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-navy-700 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          ออกจากห้อง
-        </button>
-      </div>
+          {/* ปุ่มทดสอบ — โผล่เฉพาะเมื่อ server เปิดสวิตช์ · เวลาหยุด ณ ตอนกด (ADR-060)
+              ⚠️ ถอดออกก่อน deploy · เงื่อนไขกดได้เท่ากับปุ่มยอมแพ้ (ผู้เล่นที่ยังแก้อยู่) */}
+          {snapshot.devInstantFinish && racing && (
+            <button
+              type="button"
+              disabled={!canSurrender || match.busy}
+              onClick={() => void match.devFinish()}
+              className="rounded-xl border border-dashed border-gold-400/60 px-4 py-2.5 text-sm font-semibold text-gold-400 transition hover:bg-gold-400/10 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              เสร็จทันที (ทดสอบ)
+            </button>
+          )}
 
-      {/* ชั่วคราว — ก้อนที่ 6 ของเฟส 12 จะย้ายเข้าแผงตั้งค่า (ADR-061 ข้อ 7) · ผู้ชมใช้ได้ด้วย */}
-      <CameraModeToggle className="mt-5" />
+          {/* ระหว่างโหลด/นับถอยหลัง/ตรวจสอบ ยังยอมแพ้ไม่ได้ (server ปฏิเสธ) — บอกไว้ให้ชัด */}
+          {(state === 'LOADING' || state === 'COUNTDOWN' || state === 'INSPECTION') && (
+            <p className="text-xs text-slate-500">ยอมแพ้ได้เมื่อเริ่มจับเวลาแล้วเท่านั้น</p>
+          )}
+        </>
+      )}
 
-      <dl className="mt-5 space-y-1.5 text-left text-sm">
-        <Row label="ประเภทรูบิค" value={CUBE_TYPE_LABEL[snapshot.cubeType]} />
-        <Row label="ผู้เล่น" value={`${snapshot.players.length}/${snapshot.maxPlayers} คน`} />
-        {/* ห้องผู้เล่นหลายคนไม่รองรับผู้ชม (game-rules.md ข้อ 9) — โชว์ "0 คน" ชวนเข้าใจผิด */}
-        {snapshot.roomKind !== 'multiplayer' && (
-          <Row label="ผู้ชม" value={`${snapshot.spectatorCount} คน`} />
-        )}
-      </dl>
+      <button
+        type="button"
+        disabled={roomBusy}
+        onClick={() => void onLeave()}
+        className="rounded-xl border border-line bg-navy-800 px-4 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-navy-700 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        ออกจากห้อง
+      </button>
+    </div>
+  );
+
+  const roomFacts = (
+    <dl className="mt-5 space-y-1.5 text-left text-sm">
+      <Row label="ประเภทรูบิค" value={CUBE_TYPE_LABEL[snapshot.cubeType]} />
+      <Row label="ผู้เล่น" value={`${snapshot.players.length}/${snapshot.maxPlayers} คน`} />
+      {/* ห้องผู้เล่นหลายคนไม่รองรับผู้ชม (game-rules.md ข้อ 9) — โชว์ "0 คน" ชวนเข้าใจผิด */}
+      {snapshot.roomKind !== 'multiplayer' && (
+        <Row label="ผู้ชม" value={`${snapshot.spectatorCount} คน`} />
+      )}
+    </dl>
+  );
+
+  return (
+    <section className="rounded-2xl border border-line bg-navy-850 px-5 py-6 text-center">
+      {statusBlock}
+      {detailBlock}
+      {actionBlock}
+      {roomFacts}
     </section>
   );
 }

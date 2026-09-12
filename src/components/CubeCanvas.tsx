@@ -86,7 +86,8 @@ interface CubeCanvasProps {
  *
  * สกินอ่านจากบัญชีที่ล็อกอินอยู่ตรงนี้ที่เดียว ทุกหน้าที่วางคิวบ์จึงได้สีของผู้เล่นเองฟรี
  * โดยไม่ต้องส่ง prop ต่อกันเป็นทอด ๆ (คนที่ยังไม่ล็อกอินเห็นสกินตั้งต้น — ADR-048 ข้อ 2)
- * · โหมดหมุนกล้อง (ล็อก/อิสระ) ก็อ่านจาก `play-prefs` ตรงนี้ด้วยเหตุผลเดียวกัน (ADR-061 ข้อ 6)
+ * · โหมดหมุนกล้อง (ล็อก/อิสระ) กับทิศของภาพ (หน้า U บน/ล่าง) ก็อ่านจาก `play-prefs` ตรงนี้
+ * ด้วยเหตุผลเดียวกัน (ADR-061 ข้อ 6 · ADR-063 ข้อ 2)
  */
 export const CubeCanvas = forwardRef<CubeCanvasHandle, CubeCanvasProps>(function CubeCanvas(
   {
@@ -105,7 +106,7 @@ export const CubeCanvas = forwardRef<CubeCanvasHandle, CubeCanvasProps>(function
 ) {
   const { user } = useAuth();
   const skinId = skinOverride ?? user?.cubeSkin ?? DEFAULT_SKIN_ID;
-  const { cameraMode } = usePlayPrefs();
+  const { cameraMode, cubeOrientation } = usePlayPrefs();
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<CubeView | null>(null);
   const [view, setView] = useState<CubeView | null>(null);
@@ -202,6 +203,11 @@ export const CubeCanvas = forwardRef<CubeCanvasHandle, CubeCanvasProps>(function
   useEffect(() => {
     view?.setCameraMode(cameraMode);
   }, [view, cameraMode]);
+
+  // view ใหม่เริ่มที่ "หน้า U อยู่บน" เสมอ · พีระมิดเมินค่านี้เอง (ADR-063 ข้อ 5)
+  useEffect(() => {
+    view?.setOrientation(cubeOrientation);
+  }, [view, cubeOrientation]);
 
   useImperativeHandle(
     ref,

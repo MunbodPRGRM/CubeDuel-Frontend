@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AppHeader } from '@/components/AppHeader';
-import { CameraModeToggle } from '@/components/CameraModeToggle';
 import { CubeCanvas, type CubeCanvasHandle } from '@/components/CubeCanvas';
 import { CubeTypeSelect } from '@/components/CubeTypeSelect';
+import { PlaySettingsMenu } from '@/components/PlaySettings';
 import type { CubeMoveEvent, CubeState } from '@/cube';
 import { apiFetch } from '@/lib/api';
 import { averageOfN, bestTime, meanTime } from '@/lib/averages';
@@ -294,193 +294,199 @@ export default function PracticePage() {
     <div className="min-h-screen bg-navy-900 lg:flex lg:h-[calc(100dvh-var(--offline-banner-h,0px))] lg:min-h-0 lg:flex-col lg:overflow-hidden">
       <AppHeader />
 
-      <main className="page-wide grid gap-4 px-4 py-4 lg:min-h-0 lg:flex-1 lg:grid-cols-[1fr_22rem]">
-        {/* ---------------- ฝั่งซ้าย: คิวบ์ 3 มิติ ---------------- */}
-        <section className="relative h-[62vh] min-h-[22rem] overflow-hidden rounded-2xl border border-line bg-navy-850 lg:h-full lg:min-h-0">
-          {/* `null` จนกว่า scramble **ของประเภทนี้** จะมาถึง — ห้ามเอาของประเภทเก่ามาใส่เด็ดขาด
+      <main className="page-wide flex flex-col gap-4 px-4 py-4 lg:min-h-0 lg:flex-1">
+        {/* ปุ่มเฟือง (ADR-063 ข้อ 1) — อยู่นอกแผงควบคุมที่เลื่อนได้ ไม่งั้นแผงที่กางออกมาจะถูกตัด
+            · ห้องฝึกซ้อมไม่มีส่วน "การจัดวาง" เพราะไม่มีคู่แข่ง */}
+        <div className="flex shrink-0 items-center justify-end">
+          <PlaySettingsMenu cubeType={cubeType} />
+        </div>
+
+        <div className="grid gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-[1fr_22rem]">
+          {/* ---------------- ฝั่งซ้าย: คิวบ์ 3 มิติ ---------------- */}
+          <section className="relative h-[62vh] min-h-[22rem] overflow-hidden rounded-2xl border border-line bg-navy-850 lg:h-full lg:min-h-0">
+            {/* `null` จนกว่า scramble **ของประเภทนี้** จะมาถึง — ห้ามเอาของประเภทเก่ามาใส่เด็ดขาด
               (`null` = คิวบ์ครบทุกหน้า ซึ่งเป็นภาพที่ต้องเห็นตอนเข้าห้องพอดี) */}
-          <CubeCanvas
-            ref={cubeRef}
-            cubeType={cubeType}
-            scramble={scramble?.cubeType === cubeType ? scramble.text : null}
-            // ปิดเฉพาะช่วงที่โปรแกรมหมุนให้ดูอยู่ (scramble / "แก้ให้ดู") เท่านั้น
-            // **ช่วง inspection ของห้องฝึกซ้อมเปิดไว้** เพราะหมุนหน้าคิวบ์ = ข้ามเข้าจับเวลา
-            // (ADR-032 ข้อ 3) — ห้องแข่งในเฟส 4 ต้องปิดตอน inspection เหมือนเดิม
-            turnsEnabled={!replaying && !scrambling}
-            // ห้องฝึกซ้อมเท่านั้น — ห้องแข่งในเฟส 4 ห้ามส่ง flag นี้ (ADR-032 ข้อ 1)
-            animateScramble
-            onScrambleAnimatingChange={setScrambling}
-            onState={handleState}
-            onMove={handleMove}
-          />
+            <CubeCanvas
+              ref={cubeRef}
+              cubeType={cubeType}
+              scramble={scramble?.cubeType === cubeType ? scramble.text : null}
+              // ปิดเฉพาะช่วงที่โปรแกรมหมุนให้ดูอยู่ (scramble / "แก้ให้ดู") เท่านั้น
+              // **ช่วง inspection ของห้องฝึกซ้อมเปิดไว้** เพราะหมุนหน้าคิวบ์ = ข้ามเข้าจับเวลา
+              // (ADR-032 ข้อ 3) — ห้องแข่งในเฟส 4 ต้องปิดตอน inspection เหมือนเดิม
+              turnsEnabled={!replaying && !scrambling}
+              // ห้องฝึกซ้อมเท่านั้น — ห้องแข่งในเฟส 4 ห้ามส่ง flag นี้ (ADR-032 ข้อ 1)
+              animateScramble
+              onScrambleAnimatingChange={setScrambling}
+              onState={handleState}
+              onMove={handleMove}
+            />
 
-          <div className="pointer-events-none absolute bottom-4 left-4 flex gap-6 rounded-xl border border-line bg-navy-900/80 px-5 py-3 backdrop-blur">
-            <div>
-              <p className="text-[11px] tracking-widest text-slate-500">MOVES</p>
-              <p className="tabular text-xl font-semibold text-slate-100">{moveCount}</p>
-            </div>
-            <div>
-              <p className="text-[11px] tracking-widest text-slate-500">สถานะ</p>
-              <p className="text-sm font-medium text-brand-400">{statusText}</p>
-            </div>
-          </div>
-
-          {(phase !== 'solving' || replaying) && (
-            <p className="pointer-events-none absolute right-4 top-4 max-w-[16rem] rounded-lg border border-line bg-navy-900/80 px-3 py-1.5 text-xs text-slate-400 backdrop-blur">
-              {scrambling
-                ? 'กำลังหมุน scramble ให้ดูทีละท่า · ระหว่างนี้หมุนเองไม่ได้'
-                : replaying
-                  ? 'กำลังย้อนท่าให้ดูทีละท่า · นาฬิกาจะหยุดเมื่อหมุนครบและคิวบ์ครบทุกหน้า'
-                  : phase === 'inspection'
-                    ? 'ลากดูรอบ ๆ ได้ · หมุนหน้าคิวบ์เมื่อไหร่ = เริ่มจับเวลาทันที (ท่านั้นนับเป็นท่าแรก)'
-                    : scramble === null
-                      ? 'คิวบ์ครบทุกหน้าแล้ว · กด "สุ่ม scramble" แล้วระบบจะหมุนให้ดูทีละท่า'
-                      : 'หมุนเล่นได้ตามใจ · กดเริ่มแล้วคิวบ์จะกลับไปที่ scramble ให้เอง'}
-            </p>
-          )}
-        </section>
-
-        {/* ---------------- ฝั่งขวา: แผงควบคุม ---------------- */}
-        <aside className="flex flex-col gap-4 self-start lg:max-h-full lg:min-h-0 lg:overflow-y-auto">
-          <section className="rounded-2xl border border-line bg-navy-850/80 px-5 py-4">
-            <p className="text-center text-xs text-slate-400">สถานะการเล่น</p>
-            <h1 className="text-center text-2xl font-bold text-brand-400">ห้องฝึกซ้อม</h1>
-            <p className="mt-1 text-center text-xs text-slate-500">
-              ไม่บันทึกผลลงระบบ ไม่มีผลต่อคะแนน
-            </p>
-
-            {/* dropdown แทนแท็บ 4 ปุ่ม — แผงกว้าง 22rem แท็บตกบรรทัด (ADR-059 ข้อ 6) */}
-            <div className="mt-4">
-              <CubeTypeSelect value={cubeType} onChange={setCubeType} />
+            <div className="pointer-events-none absolute bottom-4 left-4 flex gap-6 rounded-xl border border-line bg-navy-900/80 px-5 py-3 backdrop-blur">
+              <div>
+                <p className="text-[11px] tracking-widest text-slate-500">MOVES</p>
+                <p className="tabular text-xl font-semibold text-slate-100">{moveCount}</p>
+              </div>
+              <div>
+                <p className="text-[11px] tracking-widest text-slate-500">สถานะ</p>
+                <p className="text-sm font-medium text-brand-400">{statusText}</p>
+              </div>
             </div>
 
-            <div className="mt-5">
-              <TimerDisplay
-                phase={phase}
-                startedAt={timer.startedAt}
-                resultSeconds={timer.resultSeconds}
-                inspectionLeft={timer.inspectionLeft}
-              />
-              {/* เวลาที่ได้รวมช่วงอนิเมชันไปด้วย จึงไม่ใช่ฝีมือผู้เล่น — ต้องบอกให้ชัด
-                  ว่าไม่ลงสถิติ (game-rules.md ข้อ 12.2) */}
-              {assisted && (
-                <p className="mt-2 text-center text-xs text-gold-400">
-                  รอบนี้ใช้ปุ่ม "เสร็จทันที (แก้ให้ดู)" · เวลารวมช่วงอนิเมชันด้วย{' '}
-                  <span className="font-semibold">จึงไม่บันทึกลงสถิติ</span>
-                </p>
-              )}
-              {finishNowError && (
-                <p className="mt-2 rounded-lg border border-loss/40 px-3 py-2 text-center text-xs text-loss">
-                  {finishNowError}
-                </p>
-              )}
-            </div>
-
-            <div className="mt-4 rounded-xl border border-line bg-navy-900/70 px-4 py-3">
-              <p className="text-[11px] tracking-widest text-slate-500">SCRAMBLE</p>
-              <p className="tabular mt-1 break-words text-sm leading-6 text-slate-200">
-                {scrambleError ??
-                  (loadingScramble
-                    ? 'กำลังขอ scramble…'
-                    : (scramble?.text ?? 'ยังไม่มี — กดสุ่มเพื่อให้ระบบหมุนให้ดู'))}
+            {(phase !== 'solving' || replaying) && (
+              <p className="pointer-events-none absolute right-4 top-4 max-w-[16rem] rounded-lg border border-line bg-navy-900/80 px-3 py-1.5 text-xs text-slate-400 backdrop-blur">
+                {scrambling
+                  ? 'กำลังหมุน scramble ให้ดูทีละท่า · ระหว่างนี้หมุนเองไม่ได้'
+                  : replaying
+                    ? 'กำลังย้อนท่าให้ดูทีละท่า · นาฬิกาจะหยุดเมื่อหมุนครบและคิวบ์ครบทุกหน้า'
+                    : phase === 'inspection'
+                      ? 'ลากดูรอบ ๆ ได้ · หมุนหน้าคิวบ์เมื่อไหร่ = เริ่มจับเวลาทันที (ท่านั้นนับเป็นท่าแรก)'
+                      : scramble === null
+                        ? 'คิวบ์ครบทุกหน้าแล้ว · กด "สุ่ม scramble" แล้วระบบจะหมุนให้ดูทีละท่า'
+                        : 'หมุนเล่นได้ตามใจ · กดเริ่มแล้วคิวบ์จะกลับไปที่ scramble ให้เอง'}
               </p>
-            </div>
-
-            <div className="mt-4 grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => void fetchScramble(cubeType)}
-                disabled={busy || phase === 'solving' || phase === 'inspection'}
-                className="rounded-lg bg-navy-700 px-3 py-2 text-sm font-medium text-slate-100 transition hover:bg-navy-800 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                สุ่มใหม่
-              </button>
-              <button
-                type="button"
-                onClick={handleReset}
-                disabled={!scramble || busy}
-                className="rounded-lg border border-line bg-navy-800 px-3 py-2 text-sm font-medium text-slate-200 transition hover:bg-navy-700 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                รีเซ็ตคิวบ์
-              </button>
-
-              <button
-                type="button"
-                onClick={handleFinishNow}
-                // ช่วง inspection ยังไม่มีนาฬิกาให้หยุด — ปล่อยให้กดได้จะได้คิวบ์ครบสี
-                // ตั้งแต่ยังไม่เริ่มจับเวลา ซึ่งไม่มีความหมายอะไร
-                disabled={!scramble || busy || phase === 'inspection'}
-                className="col-span-2 rounded-lg border border-line bg-navy-800 px-3 py-2 text-sm font-medium text-slate-200 transition hover:bg-navy-700 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {replaying ? 'กำลังแก้ให้ดู…' : 'เสร็จทันที (แก้ให้ดู)'}
-              </button>
-
-              {phase === 'idle' || phase === 'finished' ? (
-                <button
-                  type="button"
-                  onClick={() =>
-                    phase === 'idle' && scramble ? handleStart() : void fetchScramble(cubeType)
-                  }
-                  disabled={busy}
-                  className="col-span-2 rounded-lg bg-brand-500 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  {/* จบด้วย "เสร็จทันที" = คิวบ์ครบสีแล้ว ไม่มีอะไรให้ "เล่นอีกครั้ง" ·
-                      กดแล้วทำงานเหมือนกันทั้งสองป้าย คือขอ scramble ใหม่ (ADR-059 ข้อ 6) */}
-                  {scrambling
-                    ? 'กำลังหมุน scramble ให้ดู…'
-                    : phase === 'finished'
-                      ? assisted
-                        ? 'สุ่มใหม่ (เว้นวรรค)'
-                        : 'เล่นอีกครั้ง (เว้นวรรค)'
-                      : scramble
-                        ? 'เริ่มจับเวลา (เว้นวรรค)'
-                        : 'สุ่ม scramble (เว้นวรรค)'}
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleAbort}
-                  disabled={busy}
-                  className="col-span-2 rounded-lg border border-loss/40 px-3 py-2.5 text-sm font-semibold text-loss transition hover:bg-loss/10 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  ยกเลิกรอบนี้ (DNF)
-                </button>
-              )}
-            </div>
-
-            <label className="mt-4 flex items-center justify-between rounded-lg border border-line-soft px-3 py-2">
-              <span className="text-sm text-slate-300">
-                ช่วงตรวจสอบคิวบ์ {INSPECTION_SECONDS} วินาที
-              </span>
-              <input
-                type="checkbox"
-                checked={inspectionEnabled}
-                onChange={(e) => setInspectionEnabled(e.target.checked)}
-                disabled={busy || phase === 'solving' || phase === 'inspection'}
-                className="h-4 w-4 accent-[var(--color-brand-500)]"
-              />
-            </label>
-
-            <CameraModeToggle className="mt-2" />
-
-            <Link
-              to="/"
-              className="mt-3 block rounded-lg bg-brand-600/80 px-3 py-2 text-center text-sm font-semibold text-white transition hover:bg-brand-600"
-            >
-              ออกจากห้อง
-            </Link>
+            )}
           </section>
 
-          <PracticeStats
-            cubeType={cubeType}
-            solves={solves}
-            times={times}
-            onClear={() => {
-              clearSolves(cubeType);
-              setSolves([]);
-            }}
-          />
-        </aside>
+          {/* ---------------- ฝั่งขวา: แผงควบคุม ---------------- */}
+          <aside className="flex flex-col gap-4 self-start lg:max-h-full lg:min-h-0 lg:overflow-y-auto">
+            <section className="rounded-2xl border border-line bg-navy-850/80 px-5 py-4">
+              <p className="text-center text-xs text-slate-400">สถานะการเล่น</p>
+              <h1 className="text-center text-2xl font-bold text-brand-400">ห้องฝึกซ้อม</h1>
+              <p className="mt-1 text-center text-xs text-slate-500">
+                ไม่บันทึกผลลงระบบ ไม่มีผลต่อคะแนน
+              </p>
+
+              {/* dropdown แทนแท็บ 4 ปุ่ม — แผงกว้าง 22rem แท็บตกบรรทัด (ADR-059 ข้อ 6) */}
+              <div className="mt-4">
+                <CubeTypeSelect value={cubeType} onChange={setCubeType} />
+              </div>
+
+              <div className="mt-5">
+                <TimerDisplay
+                  phase={phase}
+                  startedAt={timer.startedAt}
+                  resultSeconds={timer.resultSeconds}
+                  inspectionLeft={timer.inspectionLeft}
+                />
+                {/* เวลาที่ได้รวมช่วงอนิเมชันไปด้วย จึงไม่ใช่ฝีมือผู้เล่น — ต้องบอกให้ชัด
+                  ว่าไม่ลงสถิติ (game-rules.md ข้อ 12.2) */}
+                {assisted && (
+                  <p className="mt-2 text-center text-xs text-gold-400">
+                    รอบนี้ใช้ปุ่ม "เสร็จทันที (แก้ให้ดู)" · เวลารวมช่วงอนิเมชันด้วย{' '}
+                    <span className="font-semibold">จึงไม่บันทึกลงสถิติ</span>
+                  </p>
+                )}
+                {finishNowError && (
+                  <p className="mt-2 rounded-lg border border-loss/40 px-3 py-2 text-center text-xs text-loss">
+                    {finishNowError}
+                  </p>
+                )}
+              </div>
+
+              <div className="mt-4 rounded-xl border border-line bg-navy-900/70 px-4 py-3">
+                <p className="text-[11px] tracking-widest text-slate-500">SCRAMBLE</p>
+                <p className="tabular mt-1 break-words text-sm leading-6 text-slate-200">
+                  {scrambleError ??
+                    (loadingScramble
+                      ? 'กำลังขอ scramble…'
+                      : (scramble?.text ?? 'ยังไม่มี — กดสุ่มเพื่อให้ระบบหมุนให้ดู'))}
+                </p>
+              </div>
+
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => void fetchScramble(cubeType)}
+                  disabled={busy || phase === 'solving' || phase === 'inspection'}
+                  className="rounded-lg bg-navy-700 px-3 py-2 text-sm font-medium text-slate-100 transition hover:bg-navy-800 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  สุ่มใหม่
+                </button>
+                <button
+                  type="button"
+                  onClick={handleReset}
+                  disabled={!scramble || busy}
+                  className="rounded-lg border border-line bg-navy-800 px-3 py-2 text-sm font-medium text-slate-200 transition hover:bg-navy-700 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  รีเซ็ตคิวบ์
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleFinishNow}
+                  // ช่วง inspection ยังไม่มีนาฬิกาให้หยุด — ปล่อยให้กดได้จะได้คิวบ์ครบสี
+                  // ตั้งแต่ยังไม่เริ่มจับเวลา ซึ่งไม่มีความหมายอะไร
+                  disabled={!scramble || busy || phase === 'inspection'}
+                  className="col-span-2 rounded-lg border border-line bg-navy-800 px-3 py-2 text-sm font-medium text-slate-200 transition hover:bg-navy-700 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {replaying ? 'กำลังแก้ให้ดู…' : 'เสร็จทันที (แก้ให้ดู)'}
+                </button>
+
+                {phase === 'idle' || phase === 'finished' ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      phase === 'idle' && scramble ? handleStart() : void fetchScramble(cubeType)
+                    }
+                    disabled={busy}
+                    className="col-span-2 rounded-lg bg-brand-500 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {/* จบด้วย "เสร็จทันที" = คิวบ์ครบสีแล้ว ไม่มีอะไรให้ "เล่นอีกครั้ง" ·
+                      กดแล้วทำงานเหมือนกันทั้งสองป้าย คือขอ scramble ใหม่ (ADR-059 ข้อ 6) */}
+                    {scrambling
+                      ? 'กำลังหมุน scramble ให้ดู…'
+                      : phase === 'finished'
+                        ? assisted
+                          ? 'สุ่มใหม่ (เว้นวรรค)'
+                          : 'เล่นอีกครั้ง (เว้นวรรค)'
+                        : scramble
+                          ? 'เริ่มจับเวลา (เว้นวรรค)'
+                          : 'สุ่ม scramble (เว้นวรรค)'}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleAbort}
+                    disabled={busy}
+                    className="col-span-2 rounded-lg border border-loss/40 px-3 py-2.5 text-sm font-semibold text-loss transition hover:bg-loss/10 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    ยกเลิกรอบนี้ (DNF)
+                  </button>
+                )}
+              </div>
+
+              <label className="mt-4 flex items-center justify-between rounded-lg border border-line-soft px-3 py-2">
+                <span className="text-sm text-slate-300">
+                  ช่วงตรวจสอบคิวบ์ {INSPECTION_SECONDS} วินาที
+                </span>
+                <input
+                  type="checkbox"
+                  checked={inspectionEnabled}
+                  onChange={(e) => setInspectionEnabled(e.target.checked)}
+                  disabled={busy || phase === 'solving' || phase === 'inspection'}
+                  className="h-4 w-4 accent-[var(--color-brand-500)]"
+                />
+              </label>
+
+              <Link
+                to="/"
+                className="mt-3 block rounded-lg bg-brand-600/80 px-3 py-2 text-center text-sm font-semibold text-white transition hover:bg-brand-600"
+              >
+                ออกจากห้อง
+              </Link>
+            </section>
+
+            <PracticeStats
+              cubeType={cubeType}
+              solves={solves}
+              times={times}
+              onClear={() => {
+                clearSolves(cubeType);
+                setSolves([]);
+              }}
+            />
+          </aside>
+        </div>
       </main>
     </div>
   );
