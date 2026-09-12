@@ -1,15 +1,14 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/auth/useAuth';
 import { AppHeader } from '@/components/AppHeader';
-import { CubeCanvas } from '@/components/CubeCanvas';
-import { CubeSkinPicker } from '@/components/CubeSkinPicker';
+import { SkinSwatches } from '@/components/CubeSkinPicker';
 import { FormAlert } from '@/components/FormAlert';
 import { PageSpinner } from '@/components/PageSpinner';
 import { TextField } from '@/components/TextField';
 import { useApiData } from '@/hooks/useApiData';
 import { ApiError, apiFetch } from '@/lib/api';
-import { DEFAULT_SKIN_ID } from '@/cube';
+import { getSkin } from '@/cube';
 import { errorMessage } from '@/lib/errors';
 import { displayName, type SelfUser } from '@/types/auth';
 import type { UserRating } from '@/types/leaderboard';
@@ -22,6 +21,7 @@ type Tab = 'profile' | 'security';
  * ต่างจากดีไซน์สามจุด เพราะดีไซน์วาดของที่ระบบไม่มีที่เก็บ/ไม่ยอมให้แก้ (ADR-048):
  *   1. `username` กับ `email` เป็นช่อง **อ่านอย่างเดียว** (ข้อ 1)
  *   2. ช่อง "รายละเอียดเพิ่มเติม" (bio) ไม่มีคอลัมน์รองรับ (ADR-047 ข้อ 5) → ใช้ที่ตรงนั้นให้ **สกินสีคิวบ์** แทน (ข้อ 2)
+ *      · ตั้งแต่เฟส 12 ก้อนที่ 7 สกินย้ายไปหน้า `/skins` ของตัวเอง ที่นี่เหลือชิปสี + ลิงก์ (ADR-064 ข้อ 5)
  *   3. แท็บความปลอดภัยเพิ่มช่อง **รหัสผ่านปัจจุบัน** ที่ดีไซน์ไม่ได้วาดไว้ — API บังคับ (ข้อ 3)
  *      · บัญชี Google ที่ยังไม่มีรหัสผ่าน (`hasPassword = false`) ไม่ถามทั้งรหัสเดิมและรหัสยืนยันตอนลบบัญชี (ADR-058 ข้อ 6)
  */
@@ -116,17 +116,15 @@ function TabButton({
 function ProfilePanel({ user }: { user: SelfUser }) {
   const { updateProfile } = useAuth();
   const [nickname, setNickname] = useState(user.nickname ?? '');
-  const [skinId, setSkinId] = useState(user.cubeSkin || DEFAULT_SKIN_ID);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldError, setFieldError] = useState<string | undefined>();
   const [saved, setSaved] = useState(false);
 
-  const dirty = nickname.trim() !== (user.nickname ?? '') || skinId !== user.cubeSkin;
+  const dirty = nickname.trim() !== (user.nickname ?? '');
 
   function reset() {
     setNickname(user.nickname ?? '');
-    setSkinId(user.cubeSkin || DEFAULT_SKIN_ID);
     setError(null);
     setFieldError(undefined);
     setSaved(false);
@@ -139,7 +137,8 @@ function ProfilePanel({ user }: { user: SelfUser }) {
     setSaving(true);
     try {
       // ช่องว่างล้วน = ล้างชื่อเล่นทิ้ง แล้วกลับไปแสดง username (api-contract.md ข้อ 3)
-      await updateProfile({ nickname: nickname.trim() || null, cubeSkin: skinId });
+      // สกินไม่ได้อยู่ในฟอร์มนี้แล้ว จึงไม่ส่งมาด้วย (`PATCH` แตะเฉพาะช่องที่ส่ง — ADR-064 ข้อ 1)
+      await updateProfile({ nickname: nickname.trim() || null });
       setSaved(true);
     } catch (err) {
       setFieldError(err instanceof ApiError ? err.fields?.nickname : undefined);
@@ -215,14 +214,24 @@ function ProfilePanel({ user }: { user: SelfUser }) {
           />
         </Row>
 
+        {/* สกินมีหน้าของตัวเองแล้ว (ADR-064) — ที่นี่เหลือไว้ให้ "หาเจอ" เพราะไม่มีเมนูหลักให้เดา */}
         <Row
           label="สกินสีคิวบ์"
           hint="เปลี่ยนสีของคิวบ์ 3 มิติทุกห้อง — เห็นเฉพาะฝั่งคุณ ไม่กระทบคู่แข่ง"
         >
-          <CubeSkinPicker value={skinId} onChange={setSkinId} />
-          <div className="mt-3 h-56 overflow-hidden rounded-xl border border-line bg-navy-950/40">
-            {/* พรีวิวสกินที่กำลังเลือกอยู่ ซึ่งอาจยังไม่ได้บันทึก → ต้องส่ง skinId ทับของบัญชี */}
-            <CubeCanvas cubeType="3x3x3" scramble={null} turnsEnabled={false} skinId={skinId} />
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-navy-900/40 px-4 py-3">
+            <div>
+              <p className="text-sm text-slate-100">{getSkin(user.cubeSkin).label}</p>
+              <div className="mt-2">
+                <SkinSwatches skin={getSkin(user.cubeSkin)} size="sm" />
+              </div>
+            </div>
+            <Link
+              to="/skins"
+              className="rounded-xl border border-line bg-navy-800 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:bg-navy-700"
+            >
+              เลือกสกิน
+            </Link>
           </div>
         </Row>
       </div>

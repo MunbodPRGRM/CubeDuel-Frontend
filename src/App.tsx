@@ -13,6 +13,7 @@ import RoomPage from '@/pages/RoomPage';
 import LeaderboardPage from '@/pages/LeaderboardPage';
 import ProfilePage from '@/pages/ProfilePage';
 import SettingsPage from '@/pages/SettingsPage';
+import SkinsPage from '@/pages/SkinsPage';
 import MatchResultPage from '@/pages/MatchResultPage';
 import NewsPage from '@/pages/NewsPage';
 import NewsDetailPage from '@/pages/NewsDetailPage';
@@ -65,6 +66,16 @@ export default function App() {
                 element={
                   <RequireAuth>
                     <SettingsPage />
+                  </RequireAuth>
+                }
+              />
+              {/* สกินสีคิวบ์ — หน้าของตัวเองตั้งแต่เฟส 12 ก้อนที่ 7 · ปลายทางคือคอลัมน์ของบัญชี
+                  จึงต้องล็อกอินก่อน ไม่ใช่ค่าในเครื่องแบบมุมกล้อง/layout (ADR-064 ข้อ 1) */}
+              <Route
+                path="/skins"
+                element={
+                  <RequireAuth>
+                    <SkinsPage />
                   </RequireAuth>
                 }
               />
