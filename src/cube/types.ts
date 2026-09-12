@@ -73,6 +73,15 @@ export interface CameraPose {
 
 export type CameraPoseListener = (pose: CameraPose) => void;
 
+/**
+ * ทิศที่วาง **ภาพ** ของคิวบ์ (ADR-063 ข้อ 5) — **2x2x2 / 3x3x3 เท่านั้น**
+ *   - `top` (ค่าเริ่มต้น) = หน้า U อยู่บนเหมือนเดิม
+ *   - `bottom` = พลิกภาพทั้งลูก `z2` ให้หน้า U ไปอยู่ล่าง (หน้า F ยังอยู่หน้าเดิม)
+ *
+ * เปลี่ยนแค่ภาพ **ไม่แตะโมเดลและไม่แตะ notation** — move ที่แจ้งออกไปเป็นของมาตรฐานเสมอ
+ */
+export type CubeOrientation = 'top' | 'bottom';
+
 export interface CubeView {
   readonly cubeType: CubeType;
 
@@ -109,7 +118,16 @@ export interface CubeView {
    */
   setCameraMode(mode: CameraMode): void;
 
-  /** ท่าของกล้องตอนนี้ */
+  /**
+   * พลิกภาพทั้งลูกให้หน้า U ไปอยู่ล่าง หรือกลับขึ้นบน (ADR-063 ข้อ 5)
+   * ประเภทที่ไม่ใช่ลูกบาศก์ (พีระมิด) **เมินค่านี้** · view ใหม่เริ่มที่ `top` เสมอ
+   */
+  setOrientation(orientation: CubeOrientation): void;
+
+  /**
+   * ท่าของกล้องตอนนี้ **ในพิกัดมาตรฐานของคิวบ์** — ถอดการพลิกภาพของ `setOrientation` ออกแล้ว
+   * (ADR-063 ข้อ 6) จึงเทียบกันข้ามเครื่องได้แม้สองฝ่ายตั้งทิศไม่เหมือนกัน
+   */
   getCameraPose(): CameraPose;
 
   /**
@@ -121,6 +139,9 @@ export interface CubeView {
   /**
    * ตามมุมกล้องของคนอื่น (คิวบ์คู่แข่ง — ADR-062) — กล้องเลื่อนเข้าหาท่านี้อย่างนุ่ม
    * เรียกซ้ำได้ทุกครั้งที่มีท่าใหม่ · ระหว่างนี้ผู้ใช้ลาก/ซูมคิวบ์ลูกนี้เองไม่ได้
+   *
+   * `pose` เป็น **พิกัดมาตรฐานของคิวบ์** แบบเดียวกับที่ `getCameraPose()` คืน — ตัววาด
+   * ใส่การพลิกภาพของตัวเองกลับเข้าไปให้ (ADR-063 ข้อ 6)
    */
   followCamera(pose: CameraPose): void;
 

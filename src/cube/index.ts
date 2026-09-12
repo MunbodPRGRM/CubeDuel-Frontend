@@ -28,6 +28,7 @@ export type {
   CubeMoveEvent,
   CubeMoveListener,
   CubeMoveSource,
+  CubeOrientation,
   CubeState,
   CubeStateListener,
   CubeView,

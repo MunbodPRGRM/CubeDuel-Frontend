@@ -27,6 +27,7 @@ import type {
   CubeMoveEvent,
   CubeMoveListener,
   CubeMoveSource,
+  CubeOrientation,
   CubeState,
   CubeStateListener,
   CubeView,
@@ -86,6 +87,13 @@ const MAX_CAMERA_DISTANCE = 12;
  * ช้ากว่าโหมดล็อกมากจนรู้สึกหนืด (ADR-061 ข้อ 4)
  */
 const FREE_ROTATE_SPEED = 3;
+/**
+ * ประเภทที่พลิกภาพ `หน้า U ลงล่าง` ได้ (ADR-063 ข้อ 5) — พีระมิดคว่ำลงไม่มีความหมาย จึงเมินค่านั้น
+ */
+const ORIENTABLE_TYPES: readonly CubeType[] = ['2x2x2', '3x3x3'];
+/** แกนของการพลิก `z2` — สลับ U↔D และ L↔R แต่หน้า F ยังอยู่หน้าเดิม (ADR-063 ข้อ 5) */
+const ORIENT_FLIP_AXIS = new THREE.Vector3(0, 0, 1);
+
 /**
  * ค่าคงที่เวลา (ms) ของการเลื่อนกล้องตามมุมของคนอื่น — ข้อมูลมาทีละ ~80 ms (ADR-062 ข้อ 4)
  * เลื่อนแบบ exponential เข้าหาท่าล่าสุดทุกเฟรม ได้ภาพนุ่มโดยไม่ต้องรู้ว่าข้อความถัดไปจะมาเมื่อไหร่
@@ -182,11 +190,24 @@ export class ThreeCubeView implements CubeView {
   #releaseRotate: (() => void) | null = null;
   /** คนที่ฟังการขยับกล้องของผู้ใช้ (ห้องแข่งส่งต่อให้คู่แข่ง — ADR-062) */
   #cameraListeners = new Set<CameraPoseListener>();
-  /** ท่ากล้องเป้าหมายตอน **ตามมุมกล้องของคนอื่น** — `null` = ผู้ใช้คุมกล้องเอง */
+  /**
+   * ท่ากล้องเป้าหมายตอน **ตามมุมกล้องของคนอื่น** — `null` = ผู้ใช้คุมกล้องเอง
+   * `quaternion` เป็น **พิกัดมาตรฐานของคิวบ์** (ADR-063 ข้อ 6) ต้องคูณการพลิกภาพก่อนใช้กับกล้อง
+   */
   #follow: { quaternion: THREE.Quaternion; distance: number } | null = null;
+  /** ที่พักคำนวณท่าเป้าหมายในพิกัดโลก — ใช้ทุกเฟรมระหว่างตาม จึงไม่สร้างตัวใหม่ทิ้งทุกครั้ง */
+  #followTarget = new THREE.Quaternion();
   /** `performance.now()` ของเฟรมที่เลื่อนกล้องตามล่าสุด — `0` = ยังไม่เริ่ม/ถึงเป้าแล้ว */
   #followAt = 0;
   #material: THREE.Material;
+  /**
+   * กลุ่มที่ครอบ **ทุกชิ้นของคิวบ์** ไว้ชั้นเดียว — ตัวที่หมุนเวลาผู้เล่นเลือก "หน้า U อยู่ล่าง"
+   *
+   * โมเดลกับ `KPattern` อยู่ในพิกัดมาตรฐานเสมอ ที่เปลี่ยนคือควอเทอร์เนียนของกลุ่มนี้
+   * → move ที่แจ้งออกไปเป็น notation มาตรฐานโดยโครงสร้าง ไม่ต้องมีตารางแปลง (ADR-063 ข้อ 5)
+   */
+  #orient: THREE.Group;
+  #orientation: CubeOrientation = 'top';
   #pivot: THREE.Group;
   #meshes: THREE.Mesh[] = [];
   #resizeObserver: ResizeObserver;
@@ -268,15 +289,20 @@ export class ThreeCubeView implements CubeView {
       metalness: 0.02,
       flatShading: true,
     });
+    // ทุกชิ้น (รวม pivot ที่ใช้เล่นอนิเมชัน) อยู่ในกลุ่มนี้ ไม่ได้อยู่ในฉากตรง ๆ — การพลิกภาพ
+    // ทั้งลูกจึงเป็นการหมุนกลุ่มเดียว และข้างในกลุ่มยังเป็นพิกัดมาตรฐานทุกอย่าง
+    this.#orient = new THREE.Group();
+    this.#scene.add(this.#orient);
+
     for (let i = 0; i < spec.geometries.length; i++) {
       const mesh = new THREE.Mesh(spec.geometries[i]!, this.#material);
       mesh.userData.pieceId = i;
-      this.#scene.add(mesh);
+      this.#orient.add(mesh);
       this.#meshes.push(mesh);
     }
 
     this.#pivot = new THREE.Group();
-    this.#scene.add(this.#pivot);
+    this.#orient.add(this.#pivot);
 
     this.#resizeObserver = new ResizeObserver(() => this.#resize());
     this.#resizeObserver.observe(container);
@@ -348,15 +374,18 @@ export class ThreeCubeView implements CubeView {
     const dt = this.#followAt === 0 ? 16 : Math.min(now - this.#followAt, 100);
     const k = 1 - Math.exp(-dt / FOLLOW_SMOOTHING_MS);
 
-    camera.quaternion.slerp(follow.quaternion, k);
+    // ท่าที่ส่งมาเป็นพิกัดมาตรฐาน — ใส่การพลิกภาพของเครื่องนี้กลับเข้าไปก่อน ไม่งั้นคนที่ตั้ง
+    // "หน้า U ล่าง" กับคนที่ตั้ง "บน" จะเห็นกันคนละด้านของลูก (ADR-063 ข้อ 6)
+    const target = this.#followTarget.copy(this.#orient.quaternion).multiply(follow.quaternion);
+
+    camera.quaternion.slerp(target, k);
     const current = camera.position.length();
     let distance = current + (follow.distance - current) * k;
 
     const arrived =
-      camera.quaternion.angleTo(follow.quaternion) < 1e-3 &&
-      Math.abs(follow.distance - distance) < 1e-3;
+      camera.quaternion.angleTo(target) < 1e-3 && Math.abs(follow.distance - distance) < 1e-3;
     if (arrived) {
-      camera.quaternion.copy(follow.quaternion);
+      camera.quaternion.copy(target);
       distance = follow.distance;
     }
     camera.position.set(0, 0, distance).applyQuaternion(camera.quaternion);
@@ -523,8 +552,10 @@ export class ThreeCubeView implements CubeView {
       const mesh = this.#meshes[i]!;
       mesh.position.set(0, 0, 0);
       mesh.setRotationFromMatrix(matrix);
-      mesh.updateMatrixWorld(true);
     }
+    // อัปเดตทีเดียวจากกลุ่มลงไปทุกชิ้น — เมทริกซ์โลกของชิ้นต้องคิดผ่านการพลิกภาพของกลุ่มด้วย
+    // (raycast ในจังหวะเดียวกันนั้นอ่าน `matrixWorld` ตรง ๆ)
+    this.#orient.updateMatrixWorld(true);
     // ทางออกร่วมของทุกคำสั่งที่ยึดสถานะทั้งก้อน — ขอเฟรมที่นี่ที่เดียวจึงครอบได้หมด
     this.#invalidate();
   }
@@ -658,7 +689,7 @@ export class ThreeCubeView implements CubeView {
   /** คืนชิ้นจาก pivot กลับเข้าฉาก แล้วบังคับให้ภาพตรงกับสถานะภายในเป๊ะ ๆ */
   #releasePivot(pieceIds: readonly number[]): void {
     this.#finishAnimation = null;
-    for (const id of pieceIds) this.#scene.attach(this.#meshes[id]!);
+    for (const id of pieceIds) this.#orient.attach(this.#meshes[id]!);
     this.#pivot.quaternion.identity();
     this.#syncMeshes();
   }
@@ -669,11 +700,23 @@ export class ThreeCubeView implements CubeView {
     gsap.killTweensOf(this.#progress);
     this.#finishAnimation?.();
     this.#pivot.quaternion.identity();
-    for (const mesh of this.#meshes) this.#scene.attach(mesh);
+    for (const mesh of this.#meshes) this.#orient.attach(mesh);
     this.#syncMeshes();
   }
 
   // ---------------------------------------------------------------- ลากเพื่อหมุน
+
+  /**
+   * แกนของโมเดล (พิกัดมาตรฐาน) → **พิกัดโลก** ตามการพลิกภาพที่ตั้งไว้ (ADR-063 ข้อ 5)
+   *
+   * ทุกอย่างที่คิดบนจอ (ฉายจุดลงจอ · เทียบกับ normal ของหน้าที่จับ) ต้องใช้ตัวนี้
+   * ส่วน `#pivot` เป็นลูกของกลุ่มอยู่แล้ว จึงรับแกนมาตรฐานตรง ๆ เหมือนเดิม
+   */
+  #worldAxis(axis: readonly number[]): THREE.Vector3 {
+    return new THREE.Vector3(axis[0]!, axis[1]!, axis[2]!)
+      .normalize()
+      .applyQuaternion(this.#orient.quaternion);
+  }
 
   #screenPoint(world: THREE.Vector3): { x: number; y: number } {
     const projected = world.clone().project(this.#camera);
@@ -813,10 +856,9 @@ export class ThreeCubeView implements CubeView {
     const normal = gesture.normal;
     if (!normal) return candidates;
 
-    const usable = candidates.filter((candidate) => {
-      const axis = new THREE.Vector3(candidate.axis[0]!, candidate.axis[1]!, candidate.axis[2]!);
-      return Math.abs(axis.normalize().dot(normal)) < FACE_AXIS_MAX_DOT;
-    });
+    const usable = candidates.filter(
+      (candidate) => Math.abs(this.#worldAxis(candidate.axis).dot(normal)) < FACE_AXIS_MAX_DOT,
+    );
     // ตัดแล้วไม่เหลืออะไรเลยก็ใช้ของเดิม ดีกว่าลากแล้วไม่มีอะไรเกิดขึ้น
     return usable.length > 0 ? usable : candidates;
   }
@@ -831,8 +873,7 @@ export class ThreeCubeView implements CubeView {
     let best: { move: string; score: number } | null = null;
 
     for (const candidate of this.#candidatesFor(gesture)) {
-      const axis = new THREE.Vector3(candidate.axis[0]!, candidate.axis[1]!, candidate.axis[2]!);
-      const screen = this.#screenPerRadian(gesture.point, axis);
+      const screen = this.#screenPerRadian(gesture.point, this.#worldAxis(candidate.axis));
       if (!screen) continue;
 
       const score = (dirX * screen.x + dirY * screen.y) / Math.hypot(screen.x, screen.y);
@@ -848,10 +889,14 @@ export class ThreeCubeView implements CubeView {
     if (unit < 1e-6) return null;
 
     // ให้ "มุมบวกรอบ axis" หมายถึง best.move เสมอ เครื่องหมายของมุมจะได้ตรงกับทิศที่ลาก
+    // `axis` เป็นพิกัดมาตรฐาน (ใช้กับ `#pivot` ที่อยู่ในกลุ่ม) · การคิดบนจอใช้ตัวที่พลิกแล้ว
     const axis = new THREE.Vector3(spec.axis[0]!, spec.axis[1]!, spec.axis[2]!)
       .normalize()
       .multiplyScalar(Math.sign(spec.angle));
-    const screen = this.#screenPerRadian(gesture.point, axis);
+    const screen = this.#screenPerRadian(
+      gesture.point,
+      axis.clone().applyQuaternion(this.#orient.quaternion),
+    );
     if (!screen) return null;
 
     return {
@@ -1041,8 +1086,29 @@ export class ThreeCubeView implements CubeView {
     this.#emitCamera();
   }
 
+  /**
+   * พลิกภาพทั้งลูก `z2` (หน้า U ลงล่าง) หรือกลับขึ้นบน — **ลูกบาศก์เท่านั้น** (ADR-063 ข้อ 5)
+   *
+   * โมเดล/`KPattern`/บัญชี move ไม่ถูกแตะเลย จึงเรียกได้ทุกจังหวะ รวมถึงกลางรอบจับเวลา
+   */
+  setOrientation(orientation: CubeOrientation): void {
+    if (this.#disposed || orientation === this.#orientation) return;
+    if (!ORIENTABLE_TYPES.includes(this.cubeType)) return;
+    this.#orientation = orientation;
+    // ท่าที่ลากค้างอยู่จดเวกเตอร์บนจอจากทิศเดิมไว้แล้ว — ปัดให้จบก่อนพลิก
+    this.#endGesture(true);
+    if (orientation === 'bottom')
+      this.#orient.quaternion.setFromAxisAngle(ORIENT_FLIP_AXIS, Math.PI);
+    else this.#orient.quaternion.identity();
+    this.#orient.updateMatrixWorld(true);
+    // กล้องไม่ได้ขยับ แต่ตอนนี้มันมองหน้าอื่นของคิวบ์แล้ว — คนที่ฟังท่ากล้องต้องรู้ด้วย
+    this.#emitCamera();
+    this.#invalidate();
+  }
+
   getCameraPose(): CameraPose {
-    const q = this.#camera.quaternion;
+    // ถอดการพลิกภาพออก → ค่าที่ได้หมายถึง "มองหน้าไหนของคิวบ์" ไม่ใช่ "มองจากทิศไหนของโลก"
+    const q = this.#orient.quaternion.clone().invert().multiply(this.#camera.quaternion);
     return { quaternion: [q.x, q.y, q.z, q.w], distance: this.#camera.position.length() };
   }
 

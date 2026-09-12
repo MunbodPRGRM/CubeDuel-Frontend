@@ -133,6 +133,13 @@ function ProfileBody({
                 >
                   ⚙ ตั้งค่า
                 </Link>
+                {/* สกินไม่มีที่ในเมนูหลัก (เต็มแล้ว) — ทางเข้าอยู่ที่โปรไฟล์ตัวเองกับหน้าตั้งค่า (ADR-064 ข้อ 6) */}
+                <Link
+                  to="/skins"
+                  className="rounded-xl border border-line bg-navy-800 px-5 py-2.5 text-center text-sm font-semibold text-slate-300 transition hover:bg-navy-700 hover:text-white"
+                >
+                  🎨 สกินคิวบ์
+                </Link>
                 <button
                   type="button"
                   onClick={() => void logout()}
