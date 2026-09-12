@@ -165,6 +165,25 @@ function ReportCard({ report, onResolve }: { report: AdminReport; onResolve: () 
         {report.reason}
       </p>
 
+      {/*
+        bio ของผู้ถูกรายงาน — รายงานเรื่อง "ข้อความแนะนำตัวไม่เหมาะสม" จะได้ตัดสินในหน้าเดียว (ADR-066 ข้อ 5)
+        ข้อความล้วน ห้าม render เป็น HTML · ลบข้อความสั่งที่หน้าบัญชีผู้ใช้ ไม่ใช่ที่นี่ (คนละคำสั่งกับการตัดสินรายงาน)
+      */}
+      {report.reported.bio && (
+        <div className="mt-2 rounded-xl border border-line bg-navy-900/40 px-4 py-3">
+          <p className="text-xs text-slate-500">ข้อความแนะนำตัวของผู้ถูกรายงาน</p>
+          <p className="mt-1 whitespace-pre-line text-sm leading-6 text-slate-400">
+            {report.reported.bio}
+          </p>
+          <Link
+            to={`/admin/users?q=${encodeURIComponent(report.reported.username)}`}
+            className="mt-2 inline-block text-xs text-brand-400 transition hover:text-brand-300"
+          >
+            ไปที่หน้าบัญชีเพื่อลบข้อความนี้ →
+          </Link>
+        </div>
+      )}
+
       <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
         <span className={report.reported.reportCount > 1 ? 'text-gold-400' : undefined}>
           ผู้ถูกรายงานถูกแจ้งมาแล้ว {report.reported.reportCount} ครั้ง

@@ -84,10 +84,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [applySession]);
 
-  /** ผลลัพธ์ของ PATCH คือโปรไฟล์ชุดเต็ม → ทับของเดิมทั้งก้อน ไม่ต้องเดาว่าช่องไหนเปลี่ยน */
+  /**
+   * ผลลัพธ์ของ PATCH คือโปรไฟล์ชุดเต็ม → ทับของเดิมทั้งก้อน ไม่ต้องเดาว่าช่องไหนเปลี่ยน
+   * · คืนค่าออกไปด้วย เพราะ server normalize `bio` แล้วค่าอาจไม่ตรงกับที่พิมพ์ ฟอร์มต้องเอาไปทับ state ของตัวเอง (ADR-066 ข้อ 4)
+   */
   const updateProfile = useCallback(async (input: UpdateProfileInput) => {
     const updated = await apiFetch<SelfUser>('/users/me', { method: 'PATCH', body: input });
     setUser(updated);
+    return updated;
   }, []);
 
   const deleteAccount = useCallback(

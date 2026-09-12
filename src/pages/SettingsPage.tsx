@@ -10,6 +10,7 @@ import { useApiData } from '@/hooks/useApiData';
 import { ApiError, apiFetch } from '@/lib/api';
 import { getSkin } from '@/cube';
 import { errorMessage } from '@/lib/errors';
+import { BIO_MAX_LENGTH, BIO_MAX_LINES } from '@/lib/validation';
 import { displayName, type SelfUser } from '@/types/auth';
 import type { UserRating } from '@/types/leaderboard';
 
@@ -20,8 +21,8 @@ type Tab = 'profile' | 'security';
  *
  * ต่างจากดีไซน์สามจุด เพราะดีไซน์วาดของที่ระบบไม่มีที่เก็บ/ไม่ยอมให้แก้ (ADR-048):
  *   1. `username` กับ `email` เป็นช่อง **อ่านอย่างเดียว** (ข้อ 1)
- *   2. ช่อง "รายละเอียดเพิ่มเติม" (bio) ไม่มีคอลัมน์รองรับ (ADR-047 ข้อ 5) → ใช้ที่ตรงนั้นให้ **สกินสีคิวบ์** แทน (ข้อ 2)
- *      · ตั้งแต่เฟส 12 ก้อนที่ 7 สกินย้ายไปหน้า `/skins` ของตัวเอง ที่นี่เหลือชิปสี + ลิงก์ (ADR-064 ข้อ 5)
+ *   2. ~~ช่อง "รายละเอียดเพิ่มเติม" (bio) ไม่มีคอลัมน์รองรับ~~ → **มีแล้วตั้งแต่เฟส 12 ก้อนที่ 9** (ADR-066)
+ *      · สกินที่เคยมายืนแทนที่ตรงนี้ย้ายไปหน้า `/skins` ของตัวเองแล้ว เหลือชิปสี + ลิงก์ (ADR-064 ข้อ 5)
  *   3. แท็บความปลอดภัยเพิ่มช่อง **รหัสผ่านปัจจุบัน** ที่ดีไซน์ไม่ได้วาดไว้ — API บังคับ (ข้อ 3)
  *      · บัญชี Google ที่ยังไม่มีรหัสผ่าน (`hasPassword = false`) ไม่ถามทั้งรหัสเดิมและรหัสยืนยันตอนลบบัญชี (ADR-058 ข้อ 6)
  */
@@ -116,17 +117,22 @@ function TabButton({
 function ProfilePanel({ user }: { user: SelfUser }) {
   const { updateProfile } = useAuth();
   const [nickname, setNickname] = useState(user.nickname ?? '');
+  const [bio, setBio] = useState(user.bio ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldError, setFieldError] = useState<string | undefined>();
+  const [bioError, setBioError] = useState<string | undefined>();
   const [saved, setSaved] = useState(false);
 
-  const dirty = nickname.trim() !== (user.nickname ?? '');
+  // ต้องนับ bio ด้วย ไม่งั้นแก้แต่ bio แล้วปุ่มบันทึกไม่ติด
+  const dirty = nickname.trim() !== (user.nickname ?? '') || bio.trim() !== (user.bio ?? '');
 
   function reset() {
     setNickname(user.nickname ?? '');
+    setBio(user.bio ?? '');
     setError(null);
     setFieldError(undefined);
+    setBioError(undefined);
     setSaved(false);
   }
 
@@ -134,14 +140,23 @@ function ProfilePanel({ user }: { user: SelfUser }) {
     e.preventDefault();
     setError(null);
     setFieldError(undefined);
+    setBioError(undefined);
     setSaving(true);
     try {
-      // ช่องว่างล้วน = ล้างชื่อเล่นทิ้ง แล้วกลับไปแสดง username (api-contract.md ข้อ 3)
+      // ช่องว่างล้วน = ล้างทิ้ง ทั้งชื่อเล่นและ bio (api-contract.md ข้อ 3)
+      // server normalize `bio` ให้อีกชั้น (ตัดบรรทัดว่างซ้อน/อักขระล่องหน) — ค่าที่ตอบกลับมาจึงไม่ตรงกับที่พิมพ์เป๊ะได้ (ADR-066 ข้อ 4)
       // สกินไม่ได้อยู่ในฟอร์มนี้แล้ว จึงไม่ส่งมาด้วย (`PATCH` แตะเฉพาะช่องที่ส่ง — ADR-064 ข้อ 1)
-      await updateProfile({ nickname: nickname.trim() || null });
+      const updated = await updateProfile({
+        nickname: nickname.trim() || null,
+        bio: bio.trim() || null,
+      });
+      // เอาค่าที่ผ่าน normalize แล้วมาทับช่องกรอก ไม่งั้นฟอร์มค้างสถานะ "ยังไม่บันทึก" ทั้งที่บันทึกไปแล้ว
+      setNickname(updated.nickname ?? '');
+      setBio(updated.bio ?? '');
       setSaved(true);
     } catch (err) {
       setFieldError(err instanceof ApiError ? err.fields?.nickname : undefined);
+      setBioError(err instanceof ApiError ? err.fields?.bio : undefined);
       setError(errorMessage(err, 'บันทึกไม่สำเร็จ'));
     } finally {
       setSaving(false);
@@ -212,6 +227,39 @@ function ProfilePanel({ user }: { user: SelfUser }) {
             placeholder={user.username}
             error={fieldError}
           />
+        </Row>
+
+        {/* bio — เก็บเป็นข้อความล้วน ไม่มี markdown ไม่มีลิงก์กดได้ (ADR-066 ข้อ 3) */}
+        <Row
+          label="รายละเอียดเพิ่มเติม"
+          hint="ข้อความแนะนำตัวที่แสดงในหน้าโปรไฟล์ของคุณ — ใครก็เห็นได้ (เว้นว่าง = ไม่แสดงอะไรเลย)"
+        >
+          <div className="flex flex-col gap-2">
+            <textarea
+              value={bio}
+              onChange={(e) => setBio(e.target.value)}
+              rows={4}
+              maxLength={BIO_MAX_LENGTH}
+              aria-label="รายละเอียดเพิ่มเติม"
+              aria-invalid={bioError ? true : undefined}
+              placeholder="เช่น เล่น 3x3 มา 2 ปี ชอบ pyraminx ที่สุด"
+              className={`w-full resize-y rounded-xl border bg-navy-950/60 px-4 py-3 text-sm leading-6 text-slate-100 outline-none transition placeholder:text-slate-600 focus:ring-2 focus:ring-brand-500/25 ${
+                bioError ? 'border-loss/70 focus:border-loss' : 'border-line focus:border-brand-500'
+              }`}
+            />
+            <div className="flex items-start justify-between gap-3 text-xs">
+              <span className={bioError ? 'text-loss' : 'text-slate-500'}>
+                {bioError ?? `ไม่เกิน ${BIO_MAX_LENGTH} ตัวอักษร และ ${BIO_MAX_LINES} บรรทัด`}
+              </span>
+              <span
+                className={`tabular shrink-0 ${
+                  bio.length > BIO_MAX_LENGTH - 20 ? 'text-gold-400' : 'text-slate-500'
+                }`}
+              >
+                {bio.length}/{BIO_MAX_LENGTH}
+              </span>
+            </div>
+          </div>
         </Row>
 
         {/* สกินมีหน้าของตัวเองแล้ว (ADR-064) — ที่นี่เหลือไว้ให้ "หาเจอ" เพราะไม่มีเมนูหลักให้เดา */}

@@ -105,6 +105,16 @@ function ProfileBody({
             {profile.data && (
               <p className="mt-1 text-sm text-slate-500">@{profile.data.username}</p>
             )}
+            {/*
+              bio เป็น **ข้อความล้วน** — แสดงด้วย `whitespace-pre-line` เท่านั้น
+              ห้าม render เป็น HTML และไม่ทำลิงก์ให้กดได้ (ADR-066 ข้อ 3)
+              ไม่มี bio = ไม่แสดงอะไรเลย ไม่มีข้อความชวนกรอก (ADR-066 ข้อ 7)
+            */}
+            {profile.data?.bio && (
+              <p className="mt-3 max-w-prose whitespace-pre-line text-sm leading-6 text-slate-300">
+                {profile.data.bio}
+              </p>
+            )}
           </div>
 
           <div className="flex shrink-0 flex-col gap-2">

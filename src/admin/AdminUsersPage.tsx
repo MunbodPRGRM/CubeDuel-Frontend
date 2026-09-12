@@ -20,7 +20,7 @@ const STATUS_TABS = [
 ] as const;
 
 /**
- * จัดการบัญชีผู้ใช้ (`GET /admin/users` + `PATCH .../status` + `PATCH .../rating`)
+ * จัดการบัญชีผู้ใช้ (`GET /admin/users` + `PATCH .../status` + `PATCH .../rating` + `DELETE .../bio`)
  *
  * คำค้นกับตัวกรองเก็บใน query string เหมือนหน้ากระดานอันดับ — แอดมินจะได้ส่งลิงก์
  * "รายชื่อคนที่ถูกระงับ" ให้กันได้ และกดย้อนกลับแล้วไม่หลุดตัวกรอง
@@ -170,6 +170,7 @@ function UserRow({
 }) {
   const [working, setWorking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmingBio, setConfirmingBio] = useState(false);
   const deleted = user.deletedAt !== null;
 
   async function toggleStatus() {
@@ -183,6 +184,21 @@ function UserRow({
       onChanged();
     } catch (err) {
       setError(errorMessage(err, 'เปลี่ยนสถานะไม่สำเร็จ'));
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  /** ลบอย่างเดียว แก้ข้อความแทนผู้ใช้ไม่ได้ (ADR-066 ข้อ 5) — ลบแล้วกู้คืนไม่ได้ จึงถามยืนยันก่อน */
+  async function clearBio() {
+    setError(null);
+    setWorking(true);
+    try {
+      await apiFetch(`/admin/users/${user.userId}/bio`, { method: 'DELETE' });
+      setConfirmingBio(false);
+      onChanged();
+    } catch (err) {
+      setError(errorMessage(err, 'ลบข้อความแนะนำตัวไม่สำเร็จ'));
     } finally {
       setWorking(false);
     }
@@ -215,10 +231,45 @@ function UserRow({
             ถูกรายงาน {user.reportCount} ครั้ง · ถูก flag {user.flagCount} ครั้ง
           </p>
         )}
+        {/* ข้อความล้วน — ห้าม render เป็น HTML (ADR-066 ข้อ 3) · แอดมินต้องเห็นของจริงก่อนตัดสินว่าจะลบ */}
+        {user.bio && (
+          <p className="mt-1.5 whitespace-pre-line rounded-lg border border-line bg-navy-900/60 px-3 py-2 text-xs leading-5 text-slate-400">
+            {user.bio}
+          </p>
+        )}
+        {confirmingBio && (
+          <p className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-slate-300">
+            ลบข้อความแนะนำตัวนี้ทิ้ง? กู้คืนไม่ได้
+            <button
+              type="button"
+              onClick={() => void clearBio()}
+              disabled={working}
+              className="rounded-lg border border-loss/40 px-2.5 py-1 text-loss transition hover:bg-loss/10 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {working ? '…' : 'ยืนยันลบ'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmingBio(false)}
+              className="text-slate-400 transition hover:text-slate-200"
+            >
+              ยกเลิก
+            </button>
+          </p>
+        )}
         {error && <p className="mt-1 text-xs text-loss">{error}</p>}
       </div>
 
       <div className="flex shrink-0 items-center gap-2">
+        {/* จางเมื่อไม่มีอะไรให้ลบ — ปุ่มยังอยู่ตรงเดิมทุกแถว แถวจะได้ไม่ขยับตอนกวาดสายตา */}
+        <button
+          type="button"
+          onClick={() => setConfirmingBio(true)}
+          disabled={deleted || !user.bio || confirmingBio}
+          className="rounded-lg border border-line px-3 py-1.5 text-xs text-slate-300 transition hover:bg-navy-800 disabled:cursor-not-allowed disabled:text-slate-600"
+        >
+          ลบ bio
+        </button>
         <button
           type="button"
           onClick={onEditRating}

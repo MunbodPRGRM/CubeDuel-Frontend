@@ -11,6 +11,13 @@ const RESERVED_USERNAME_PREFIX = /^deleted_user_/i;
 
 export const PASSWORD_MAX_BYTES = 72;
 
+/**
+ * `bio` — ต้องตรงกับ `backend/src/schemas/user.schema.ts` (ADR-066 ข้อ 1 และ 4)
+ * ฝั่งนี้แค่บอกผู้ใช้ล่วงหน้า · server normalize แล้วตรวจซ้ำเสมอ และเป็นคำตัดสินสุดท้าย
+ */
+export const BIO_MAX_LENGTH = 300;
+export const BIO_MAX_LINES = 6;
+
 export function validateUsername(value: string): string | undefined {
   const v = value.trim();
   if (!v) return 'กรุณากรอกชื่อผู้ใช้';
