@@ -27,6 +27,14 @@ export function tutorialIdentity(userId: number): string {
   return `user:${userId}`;
 }
 
+/**
+ * ของ **โหมดสอนเล่นในห้องฝึกซ้อม** (ADR-065 ข้อ 2) — คนละ identity กับคู่มือการใช้เว็บ
+ * แต่ใช้คีย์ `localStorage` กับเลขรุ่นชุดเดียวกัน (ขยับ `TUTORIAL_VERSION` ทีเดียวได้เห็นใหม่ทั้งคู่)
+ */
+export function practiceTutorialIdentity(userId: number): string {
+  return `practice:user:${userId}`;
+}
+
 function read(): StoredState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
