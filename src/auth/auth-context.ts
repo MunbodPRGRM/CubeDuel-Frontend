@@ -10,7 +10,8 @@ export interface AuthContextValue {
   logout: () => Promise<void>;
   logoutAll: () => Promise<void>;
   /** แก้ชื่อเล่น/สกินคิวบ์ของตัวเอง แล้วอัปเดตข้อมูลผู้ใช้ในแอปให้ทันที (หัวข้อบน + คิวบ์ 3 มิติ) */
-  updateProfile: (input: UpdateProfileInput) => Promise<void>;
+  /** คืนโปรไฟล์ชุดเต็มหลังบันทึก — ฟอร์มต้องใช้ค่าที่ผ่าน normalize ของ server แล้ว (ADR-066 ข้อ 4) */
+  updateProfile: (input: UpdateProfileInput) => Promise<SelfUser>;
   /** ลบบัญชีตัวเอง (soft delete ฝั่ง server — ADR-008) แล้วออกจากระบบ */
   deleteAccount: (password?: string) => Promise<void>;
 }

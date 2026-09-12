@@ -25,6 +25,8 @@ export interface AdminUser {
   userId: number;
   username: string;
   nickname: string | null;
+  /** ส่งมาเต็มเสมอแม้บัญชีถูกระงับ — แอดมินต้องเห็นของจริงก่อนตัดสินว่าจะลบ (ADR-066 ข้อ 5) */
+  bio: string | null;
   /** endpoint ของแอดมินเท่านั้นที่ได้ email มาด้วย */
   email: string;
   role: UserRole;
@@ -55,6 +57,8 @@ export interface AdminReport {
     userId: number;
     username: string;
     nickname: string | null;
+    /** ให้ตัดสินรายงานเรื่องข้อความไม่เหมาะสมได้ในหน้าเดียว (ADR-066 ข้อ 5) */
+    bio: string | null;
     status: UserStatus;
     /** เคยถูกแจ้งมาแล้วกี่ครั้ง — ดูก่อนตัดสินว่าเป็นครั้งแรกหรือครั้งที่ 12 */
     reportCount: number;

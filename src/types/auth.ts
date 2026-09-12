@@ -13,6 +13,8 @@ export interface SelfUser {
   userId: number;
   username: string;
   nickname: string | null;
+  /** ข้อความแนะนำตัว — **ข้อความล้วน** ห้าม render เป็น HTML และไม่ทำ auto-link (ADR-066 ข้อ 3) */
+  bio: string | null;
   role: UserRole;
   createdAt: string;
   email: string;
@@ -47,9 +49,10 @@ export interface RegisterInput {
   nickname?: string | null;
 }
 
-/** `PATCH /users/me` — ส่งเฉพาะช่องที่จะแก้ · `nickname: null` = ล้างชื่อเล่นทิ้ง */
+/** `PATCH /users/me` — ส่งเฉพาะช่องที่จะแก้ · `nickname: null` / `bio: null` = ล้างทิ้ง */
 export interface UpdateProfileInput {
   nickname?: string | null;
+  bio?: string | null;
   cubeSkin?: string;
 }
 

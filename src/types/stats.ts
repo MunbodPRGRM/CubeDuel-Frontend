@@ -13,6 +13,12 @@ export interface PublicUser {
   userId: number;
   username: string;
   nickname: string | null;
+  /**
+   * ข้อความแนะนำตัว — **ข้อความล้วน** แสดงด้วย `whitespace-pre-line` เท่านั้น
+   * ห้าม render เป็น HTML และไม่ทำ auto-link (ADR-066 ข้อ 3)
+   * · บัญชีที่ถูกระงับ server คืน `null` ให้เอง (ADR-066 ข้อ 6)
+   */
+  bio: string | null;
   role: UserRole;
   createdAt: string;
 }
