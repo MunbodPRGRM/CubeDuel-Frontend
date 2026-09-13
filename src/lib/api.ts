@@ -24,14 +24,17 @@ export function fileUrl(path: string): string {
   return path.startsWith('/') ? `${FILE_BASE_URL}${path}` : path;
 }
 
+/** provider ที่เข้าสู่ระบบได้ — ตรงกับ path `/auth/oauth/<slug>` และ `?provider=` ตอนพากลับพร้อม error (ADR-070) */
+export type OAuthProviderSlug = 'google' | 'facebook';
+
 /**
- * ปลายทางของปุ่ม "เข้าสู่ระบบด้วย Google" — เป็นลิงก์เปิดหน้าใหม่ ไม่ใช่ fetch (ADR-058 ข้อ 3)
+ * ปลายทางของปุ่ม "เข้าสู่ระบบด้วย Google/Facebook" — เป็นลิงก์เปิดหน้าใหม่ ไม่ใช่ fetch (ADR-058 ข้อ 3)
  * กลับมาแล้วไม่ต้องทำอะไรเพิ่ม: server ตั้ง refresh cookie ไว้ให้ `AuthProvider` กู้เซสชันเองตอนโหลดหน้า
  * `returnTo` = หน้าที่จะพากลับไปหลังล็อกอิน (server ยอมรับเฉพาะพาธในเว็บนี้)
  */
-export function googleLoginUrl(returnTo?: string): string {
+export function oauthLoginUrl(provider: OAuthProviderSlug, returnTo?: string): string {
   const query = returnTo && returnTo !== '/' ? `?returnTo=${encodeURIComponent(returnTo)}` : '';
-  return `${BASE_URL}/auth/oauth/google${query}`;
+  return `${BASE_URL}/auth/oauth/${provider}${query}`;
 }
 
 export class ApiError extends Error {

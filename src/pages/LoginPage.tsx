@@ -4,7 +4,7 @@ import { useAuth } from '@/auth/useAuth';
 import { ApiError } from '@/lib/api';
 import { AuthLayout } from '@/components/AuthLayout';
 import { FormAlert } from '@/components/FormAlert';
-import { GoogleButton, OrDivider } from '@/components/GoogleButton';
+import { FacebookButton, GoogleButton, OrDivider } from '@/components/OAuthButtons';
 import { SubmitButton } from '@/components/SubmitButton';
 import { LockIcon, TextField, UserIcon } from '@/components/TextField';
 import { errorMessage, oauthErrorMessage } from '@/lib/errors';
@@ -14,15 +14,16 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const from = (location.state as { from?: string } | null)?.from ?? '/';
-  // เข้าสู่ระบบด้วย Google ไม่ผ่าน → server พากลับมาที่นี่พร้อม `?oauth_error=` (ADR-058 ข้อ 3)
+  // เข้าสู่ระบบด้วย Google/Facebook ไม่ผ่าน → server พากลับมาที่นี่พร้อม `?oauth_error=&provider=` (ADR-058 ข้อ 3 · ADR-070 ข้อ 5)
   const [searchParams, setSearchParams] = useSearchParams();
   const oauthError = searchParams.get('oauth_error');
+  const oauthProvider = searchParams.get('provider');
 
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | undefined>(() =>
-    oauthErrorMessage(oauthError),
+    oauthErrorMessage(oauthError, oauthProvider),
   );
   const [loading, setLoading] = useState(false);
 
@@ -112,8 +113,11 @@ export default function LoginPage() {
       </form>
 
       <OrDivider />
-      {/* ส่งหน้าที่ RequireAuth เด้งมาไปด้วย — ล็อกอินด้วย Google แล้วกลับที่เดิมเหมือนล็อกอินด้วยรหัสผ่าน */}
-      <GoogleButton label="เข้าสู่ระบบด้วย Google" returnTo={from} />
+      {/* ส่งหน้าที่ RequireAuth เด้งมาไปด้วย — ล็อกอินด้วย Google/Facebook แล้วกลับที่เดิมเหมือนล็อกอินด้วยรหัสผ่าน */}
+      <div className="flex flex-col gap-3">
+        <GoogleButton label="เข้าสู่ระบบด้วย Google" returnTo={from} />
+        <FacebookButton label="เข้าสู่ระบบด้วย Facebook" returnTo={from} />
+      </div>
     </AuthLayout>
   );
 }

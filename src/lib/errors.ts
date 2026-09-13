@@ -55,25 +55,31 @@ export const ERROR_MESSAGES: Record<AppErrorCode, string> = {
   E_CLIENT: 'หน้าเว็บทำงานผิดพลาด กรุณาลองใหม่อีกครั้ง',
 };
 
+/** ชื่อที่โชว์ในข้อความ — `?provider=` ที่ไม่รู้จัก/ไม่มี (เช่น `rate_limited`) ใช้คำกลาง ๆ (ADR-070 ข้อ 5) */
+const OAUTH_PROVIDER_NAMES: Record<string, string> = { google: 'Google', facebook: 'Facebook' };
+
 /**
- * รหัส `?oauth_error=` ที่ server แนบมาตอนพากลับหน้าเข้าสู่ระบบ (api-contract.md ข้อ 2 · ADR-058)
- * ไม่ใช่รหัส error ของ API — การเข้าสู่ระบบด้วย Google เป็นการเปิดหน้าเว็บ ไม่มี envelope ให้แกะ
+ * รหัส `?oauth_error=` ที่ server แนบมาตอนพากลับหน้าเข้าสู่ระบบ (api-contract.md ข้อ 2 · ADR-058 · ADR-070)
+ * ไม่ใช่รหัส error ของ API — การเข้าสู่ระบบด้วย provider เป็นการเปิดหน้าเว็บ ไม่มี envelope ให้แกะ
  * สองตัวที่ความหมายตรงกับรหัส API ใช้ข้อความเดียวกันกับคลังข้างบน
  */
-const OAUTH_ERROR_MESSAGES: Record<string, string> = {
-  unavailable: 'ยังไม่เปิดให้เข้าสู่ระบบด้วย Google กรุณาใช้ชื่อผู้ใช้และรหัสผ่านแทน',
-  cancelled: 'ยกเลิกการเข้าสู่ระบบด้วย Google แล้ว',
-  invalid_state: 'การเข้าสู่ระบบด้วย Google หมดเวลาหรือไม่ถูกต้อง กรุณากดปุ่มอีกครั้ง',
-  email_unverified: 'อีเมลของบัญชี Google นี้ยังไม่ได้ยืนยัน กรุณายืนยันอีเมลกับ Google ก่อน',
-  suspended: ERROR_MESSAGES.E_ACCOUNT_SUSPENDED,
-  rate_limited: ERROR_MESSAGES.E_RATE_LIMITED,
-  failed: 'เข้าสู่ระบบด้วย Google ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง',
+const OAUTH_ERROR_MESSAGES: Record<string, (name: string) => string> = {
+  unavailable: (name) => `ยังไม่เปิดให้เข้าสู่ระบบด้วย ${name} กรุณาใช้ชื่อผู้ใช้และรหัสผ่านแทน`,
+  cancelled: (name) => `ยกเลิกการเข้าสู่ระบบด้วย ${name} แล้ว`,
+  invalid_state: (name) => `การเข้าสู่ระบบด้วย ${name} หมดเวลาหรือไม่ถูกต้อง กรุณากดปุ่มอีกครั้ง`,
+  email_unverified: (name) => `อีเมลของบัญชี ${name} นี้ยังไม่ได้ยืนยัน กรุณายืนยันอีเมลกับ ${name} ก่อน`,
+  email_missing: (name) =>
+    `บัญชี ${name} นี้ไม่ได้ให้อีเมลมา กรุณากดปุ่มอีกครั้งแล้วอนุญาตให้ใช้อีเมล หรือเพิ่มอีเมลในบัญชี ${name} ก่อน`,
+  suspended: () => ERROR_MESSAGES.E_ACCOUNT_SUSPENDED,
+  rate_limited: () => ERROR_MESSAGES.E_RATE_LIMITED,
+  failed: (name) => `เข้าสู่ระบบด้วย ${name} ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง`,
 };
 
 /** `null` = ไม่มีรหัสใน URL · รหัสที่ไม่รู้จักตกไปใช้ข้อความของ `failed` */
-export function oauthErrorMessage(code: string | null): string | undefined {
+export function oauthErrorMessage(code: string | null, provider?: string | null): string | undefined {
   if (!code) return undefined;
-  return OAUTH_ERROR_MESSAGES[code] ?? OAUTH_ERROR_MESSAGES.failed;
+  const name = (provider && OAUTH_PROVIDER_NAMES[provider]) || 'บัญชีภายนอก';
+  return (OAUTH_ERROR_MESSAGES[code] ?? OAUTH_ERROR_MESSAGES.failed)(name);
 }
 
 /**
