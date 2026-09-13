@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, Navigate, useParams } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '@/auth/useAuth';
 import { AppHeader } from '@/components/AppHeader';
 import { CubeTypePicker } from '@/components/CubeTypePicker';
@@ -65,7 +65,17 @@ function ProfileBody({
   onCubeTypeChange: (value: CubeType) => void;
 }) {
   const { logout, user: viewer } = useAuth();
+  const navigate = useNavigate();
   const [reporting, setReporting] = useState(false);
+
+  async function handleLogout() {
+    try {
+      await logout();
+    } finally {
+      // ยิง logout ไม่ผ่านก็ล้างเซสชันในเครื่องไปแล้ว (AuthProvider) — พากลับหน้าหลักทุกกรณี
+      navigate('/', { replace: true });
+    }
+  }
   const profile = useApiData<PublicUser>(`/users/${userId}`);
   const ratings = useApiData<UserRating[]>(`/users/${userId}/ratings`);
   const stats = useApiData<UserStats>(`/users/${userId}/stats?cubeType=${cubeType}`);
@@ -152,7 +162,7 @@ function ProfileBody({
                 </Link>
                 <button
                   type="button"
-                  onClick={() => void logout()}
+                  onClick={() => void handleLogout()}
                   className="rounded-xl border border-loss/40 px-5 py-2.5 text-sm font-semibold text-loss transition hover:bg-loss/10"
                 >
                   ออกจากระบบ
