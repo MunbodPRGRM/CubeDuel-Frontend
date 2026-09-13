@@ -1,29 +1,28 @@
 import { useState, type FormEvent } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useAuth } from '@/auth/useAuth';
 import { apiFetch, ApiError } from '@/lib/api';
 import { errorMessage } from '@/lib/errors';
-import { validatePassword } from '@/lib/validation';
+import { validateEmail, validatePassword } from '@/lib/validation';
 import { AuthLayout } from '@/components/AuthLayout';
 import { FormAlert } from '@/components/FormAlert';
 import { SubmitButton } from '@/components/SubmitButton';
-import { LockIcon, TextField } from '@/components/TextField';
+import { LockIcon, TextField, UserIcon } from '@/components/TextField';
+
+const EMPTY_FORM = { username: '', email: '', password: '', confirmPassword: '' };
 
 /**
- * ตั้งรหัสผ่านใหม่จากลิงก์ `/reset-password?token=…` ที่ผู้ดูแลระบบออกให้ (api-contract.md ข้อ 2 · ADR-057 · ADR-068)
+ * ลืมรหัสผ่าน — กรอก username + อีเมลของบัญชี แล้วตั้งรหัสใหม่ได้ทันที ไม่มีลิงก์ (api-contract.md ข้อ 2 · ADR-069)
  *
  * สำเร็จแล้ว server เพิกถอนทุกเซสชัน — ถ้าเบราว์เซอร์นี้ล็อกอินค้างอยู่ ต้องล้างเซสชันในเครื่องด้วย
  * ไม่ปล่อยให้แถบหัวยังโชว์ว่าล็อกอินอยู่จน access token หมดอายุเอง (ADR-057 ข้อ 6)
  */
 export default function ResetPasswordPage() {
-  const [params] = useSearchParams();
-  const token = params.get('token')?.trim() ?? '';
   const { user, logout } = useAuth();
 
-  const [form, setForm] = useState({ password: '', confirmPassword: '' });
+  const [form, setForm] = useState(EMPTY_FORM);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string>();
-  const [tokenRejected, setTokenRejected] = useState(false);
   const [done, setDone] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -37,6 +36,10 @@ export default function ResetPasswordPage() {
     setFormError(undefined);
 
     const errs: Record<string, string> = {};
+    // ไม่ใช้ `validateUsername` — แค่เอาไปเทียบกับบัญชีที่มีอยู่ ไม่ได้ตั้งชื่อใหม่
+    if (!form.username.trim()) errs.username = 'กรุณากรอกชื่อผู้ใช้';
+    const email = validateEmail(form.email);
+    if (email) errs.email = email;
     const password = validatePassword(form.password);
     if (password) errs.password = password;
     if (form.password !== form.confirmPassword)
@@ -48,18 +51,21 @@ export default function ResetPasswordPage() {
     try {
       await apiFetch('/auth/reset-password', {
         method: 'POST',
-        body: { token, newPassword: form.password },
+        body: {
+          username: form.username.trim(),
+          email: form.email.trim(),
+          newPassword: form.password,
+        },
         retryOnExpired: false,
       });
       if (user) await logout();
       setDone(true);
     } catch (err) {
-      if (err instanceof ApiError && err.fields?.token) {
-        // ลิงก์ใช้ไม่ได้แล้ว — กรอกใหม่กี่รอบก็ไม่ผ่าน ต้องบอกให้ไปขอลิงก์ใหม่แทน
-        setTokenRejected(true);
-      } else if (err instanceof ApiError && err.fields?.newPassword) {
-        setFieldErrors({ password: err.fields.newPassword });
+      if (err instanceof ApiError && err.fields) {
+        const { newPassword, ...rest } = err.fields;
+        setFieldErrors(newPassword ? { ...rest, password: newPassword } : rest);
       }
+      // ไม่ตรงกับบัญชีไหน = ไม่มี `fields` — server ตอบข้อความเดียวกันทุกกรณี (ADR-069 ข้อ 1)
       setFormError(errorMessage(err, 'ตั้งรหัสผ่านใหม่ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง'));
     } finally {
       setLoading(false);
@@ -85,32 +91,39 @@ export default function ResetPasswordPage() {
       );
     }
 
-    if (!token || tokenRejected) {
-      return (
-        <div className="flex flex-col gap-5">
-          <FormAlert
-            message={
-              formError ??
-              'ลิงก์นี้ไม่สมบูรณ์ — ลองคัดลอกลิงก์มาวางให้ครบทั้งบรรทัดอีกครั้ง'
-            }
-          />
-          <p className="text-sm text-slate-400">
-            ลิงก์ใช้ได้ 30 นาทีและใช้ได้ครั้งเดียว — ขอลิงก์ใหม่ได้จากผู้ดูแลระบบ
-          </p>
-        </div>
-      );
-    }
-
     return (
       <form onSubmit={handleSubmit} className="flex flex-col gap-5" noValidate>
         {formError && <FormAlert message={formError} />}
+
+        <TextField
+          label="ชื่อผู้ใช้"
+          name="username"
+          autoComplete="username"
+          autoFocus
+          required
+          icon={<UserIcon />}
+          value={form.username}
+          error={fieldErrors.username}
+          onChange={(e) => update('username', e.target.value)}
+        />
+
+        <TextField
+          label="อีเมลที่ใช้สมัคร"
+          name="email"
+          type="email"
+          autoComplete="email"
+          required
+          icon={<UserIcon />}
+          value={form.email}
+          error={fieldErrors.email}
+          onChange={(e) => update('email', e.target.value)}
+        />
 
         <TextField
           label="รหัสผ่านใหม่"
           name="password"
           type="password"
           autoComplete="new-password"
-          autoFocus
           required
           icon={<LockIcon />}
           value={form.password}
@@ -138,9 +151,9 @@ export default function ResetPasswordPage() {
 
   return (
     <AuthLayout
-      eyebrow="ตั้งรหัสผ่านใหม่"
-      title="เลือกรหัสผ่านใหม่ของคุณ"
-      subtitle="ตั้งเสร็จแล้วทุกอุปกรณ์จะออกจากระบบ แล้วเข้าสู่ระบบใหม่ด้วยรหัสผ่านนี้"
+      eyebrow="ลืมรหัสผ่าน"
+      title="ตั้งรหัสผ่านใหม่"
+      subtitle="กรอกชื่อผู้ใช้กับอีเมลที่ใช้สมัคร ตั้งเสร็จแล้วทุกอุปกรณ์จะออกจากระบบ"
       footer={
         <>
           กลับไป{' '}

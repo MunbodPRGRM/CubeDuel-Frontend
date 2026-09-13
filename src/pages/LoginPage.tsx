@@ -100,9 +100,11 @@ export default function LoginPage() {
             error={fieldErrors.password}
             onChange={(e) => setPassword(e.target.value)}
           />
-          {/* ไม่มีหน้าลืมรหัสผ่าน — ไม่มีอีเมลออกไปหาผู้ใช้ ลิงก์ต้องขอจากผู้ดูแลระบบ (ADR-068) */}
-          <p className="mt-2 text-right text-sm text-slate-400">
-            ลืมรหัสผ่าน? ติดต่อผู้ดูแลระบบ
+          {/* รีเซ็ตด้วย username + อีเมล ไม่มีลิงก์ทางอีเมล (ADR-069) */}
+          <p className="mt-2 text-right">
+            <Link to="/reset-password" className="text-sm text-brand-400 hover:underline">
+              ลืมรหัสผ่าน?
+            </Link>
           </p>
         </div>
 
