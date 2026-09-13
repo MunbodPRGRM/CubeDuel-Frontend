@@ -6,7 +6,7 @@ import { errorMessage } from '@/lib/errors';
 import { validateEmail, validatePassword, validateUsername } from '@/lib/validation';
 import { AuthLayout } from '@/components/AuthLayout';
 import { FormAlert } from '@/components/FormAlert';
-import { GoogleButton, OrDivider } from '@/components/GoogleButton';
+import { FacebookButton, GoogleButton, OrDivider } from '@/components/OAuthButtons';
 import { SubmitButton } from '@/components/SubmitButton';
 import { LockIcon, TextField, UserIcon } from '@/components/TextField';
 
@@ -145,9 +145,12 @@ export default function RegisterPage() {
         <SubmitButton loading={loading}>สร้างบัญชี</SubmitButton>
       </form>
 
-      {/* บัญชีใหม่จาก Google ได้ username จากอีเมลอัตโนมัติ (ADR-058 ข้อ 5) */}
+      {/* บัญชีใหม่จาก Google/Facebook ได้ username จากอีเมลอัตโนมัติ (ADR-058 ข้อ 5) */}
       <OrDivider />
-      <GoogleButton label="สมัครด้วย Google" />
+      <div className="flex flex-col gap-3">
+        <GoogleButton label="สมัครด้วย Google" />
+        <FacebookButton label="สมัครด้วย Facebook" />
+      </div>
     </AuthLayout>
   );
 }

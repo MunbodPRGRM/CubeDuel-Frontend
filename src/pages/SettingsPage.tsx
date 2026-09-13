@@ -24,7 +24,7 @@ type Tab = 'profile' | 'security';
  *   2. ~~ช่อง "รายละเอียดเพิ่มเติม" (bio) ไม่มีคอลัมน์รองรับ~~ → **มีแล้วตั้งแต่เฟส 12 ก้อนที่ 9** (ADR-066)
  *      · สกินที่เคยมายืนแทนที่ตรงนี้ย้ายไปหน้า `/skins` ของตัวเองแล้ว เหลือชิปสี + ลิงก์ (ADR-064 ข้อ 5)
  *   3. แท็บความปลอดภัยเพิ่มช่อง **รหัสผ่านปัจจุบัน** ที่ดีไซน์ไม่ได้วาดไว้ — API บังคับ (ข้อ 3)
- *      · บัญชี Google ที่ยังไม่มีรหัสผ่าน (`hasPassword = false`) ไม่ถามทั้งรหัสเดิมและรหัสยืนยันตอนลบบัญชี (ADR-058 ข้อ 6)
+ *      · บัญชี Google/Facebook ที่ยังไม่มีรหัสผ่าน (`hasPassword = false`) ไม่ถามทั้งรหัสเดิมและรหัสยืนยันตอนลบบัญชี (ADR-058 ข้อ 6)
  */
 export default function SettingsPage() {
   const { user, status } = useAuth();
@@ -381,10 +381,10 @@ function ChangePasswordForm({ hasPassword }: { hasPassword: boolean }) {
       ) : (
         <Row
           label="ตั้งรหัสผ่าน"
-          hint="ตั้งไว้เพื่อเข้าสู่ระบบด้วยชื่อผู้ใช้หรืออีเมลได้อีกทาง นอกจาก Google"
+          hint="ตั้งไว้เพื่อเข้าสู่ระบบด้วยชื่อผู้ใช้หรืออีเมลได้อีกทาง นอกจาก Google/Facebook"
         >
           <p className="rounded-xl border border-line bg-navy-950/40 px-4 py-3 text-sm text-slate-400">
-            บัญชีนี้เข้าสู่ระบบด้วย Google และยังไม่มีรหัสผ่าน
+            บัญชีนี้เข้าสู่ระบบด้วย Google หรือ Facebook และยังไม่มีรหัสผ่าน
           </p>
         </Row>
       )}
@@ -440,7 +440,7 @@ function DeleteAccountSection({ hasPassword }: { hasPassword: boolean }) {
     setError(null);
     setWorking(true);
     try {
-      // ไม่มีรหัสผ่าน → ไม่ส่งช่องนี้เลย (server ยกเว้นให้บัญชี Google — api-contract.md ข้อ 2)
+      // ไม่มีรหัสผ่าน → ไม่ส่งช่องนี้เลย (server ยกเว้นให้บัญชี Google/Facebook — api-contract.md ข้อ 2)
       await deleteAccount(hasPassword ? password : undefined);
       navigate('/', { replace: true });
     } catch (err) {
