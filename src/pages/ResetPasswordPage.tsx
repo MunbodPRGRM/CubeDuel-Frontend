@@ -9,14 +9,8 @@ import { FormAlert } from '@/components/FormAlert';
 import { SubmitButton } from '@/components/SubmitButton';
 import { LockIcon, TextField } from '@/components/TextField';
 
-const REQUEST_NEW_LINK = (
-  <Link to="/forgot-password" className="font-semibold text-brand-400 hover:underline">
-    ขอลิงก์ใหม่
-  </Link>
-);
-
 /**
- * ตั้งรหัสผ่านใหม่จากลิงก์ในอีเมล `/reset-password?token=…` (api-contract.md ข้อ 2 · ADR-057)
+ * ตั้งรหัสผ่านใหม่จากลิงก์ `/reset-password?token=…` ที่ผู้ดูแลระบบออกให้ (api-contract.md ข้อ 2 · ADR-057 · ADR-068)
  *
  * สำเร็จแล้ว server เพิกถอนทุกเซสชัน — ถ้าเบราว์เซอร์นี้ล็อกอินค้างอยู่ ต้องล้างเซสชันในเครื่องด้วย
  * ไม่ปล่อยให้แถบหัวยังโชว์ว่าล็อกอินอยู่จน access token หมดอายุเอง (ADR-057 ข้อ 6)
@@ -61,7 +55,7 @@ export default function ResetPasswordPage() {
       setDone(true);
     } catch (err) {
       if (err instanceof ApiError && err.fields?.token) {
-        // ลิงก์ใช้ไม่ได้แล้ว — กรอกใหม่กี่รอบก็ไม่ผ่าน ต้องพาไปขอลิงก์ใหม่แทน
+        // ลิงก์ใช้ไม่ได้แล้ว — กรอกใหม่กี่รอบก็ไม่ผ่าน ต้องบอกให้ไปขอลิงก์ใหม่แทน
         setTokenRejected(true);
       } else if (err instanceof ApiError && err.fields?.newPassword) {
         setFieldErrors({ password: err.fields.newPassword });
@@ -97,10 +91,12 @@ export default function ResetPasswordPage() {
           <FormAlert
             message={
               formError ??
-              'ลิงก์นี้ไม่สมบูรณ์ — ลองกดลิงก์จากอีเมลอีกครั้ง หรือคัดลอกลิงก์มาวางให้ครบทั้งบรรทัด'
+              'ลิงก์นี้ไม่สมบูรณ์ — ลองคัดลอกลิงก์มาวางให้ครบทั้งบรรทัดอีกครั้ง'
             }
           />
-          <p className="text-sm text-slate-400">ลิงก์ใช้ได้ 30 นาทีและใช้ได้ครั้งเดียว — {REQUEST_NEW_LINK}</p>
+          <p className="text-sm text-slate-400">
+            ลิงก์ใช้ได้ 30 นาทีและใช้ได้ครั้งเดียว — ขอลิงก์ใหม่ได้จากผู้ดูแลระบบ
+          </p>
         </div>
       );
     }
