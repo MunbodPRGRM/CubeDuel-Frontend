@@ -27,138 +27,142 @@ import { SocketProvider } from '@/socket/SocketProvider';
 import { QueueProvider } from '@/socket/QueueProvider';
 import { QueueBanner } from '@/queue/QueueBanner';
 import { OfflineBanner } from '@/components/OfflineBanner';
+import { ServerGate } from '@/components/ServerGate';
 import { TutorialProvider } from '@/tutorial/TutorialProvider';
 
 /** เส้นทางทั้งหมดของแอป — หน้าที่ต้องล็อกอินก่อนให้ห่อด้วย <RequireAuth> */
 export default function App() {
   return (
-    <AuthProvider>
-      {/* socket ต่อได้ต่อเมื่อล็อกอินแล้ว จึงต้องอยู่ใต้ AuthProvider เสมอ */}
-      <SocketProvider>
-        {/* คิวจับคู่ต้องฟังทั้งแอป เพราะ server พาเรากลับเข้าคิวเองได้ (ADR-040 ข้อ 1) */}
-        <QueueProvider>
-          {/* คู่มือการใช้งานเปิดจากหน้าไหนก็ได้ + เด้งเองครั้งแรก จึงต้องครอบทุกเส้นทาง (ADR-053) */}
-          <TutorialProvider>
-            <Routes>
-              <Route path="/" element={<HomePage />} />
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/register" element={<RegisterPage />} />
-              {/* ลืมรหัสผ่าน — เปิดสาธารณะ · กรอก username + อีเมลแล้วตั้งรหัสใหม่ ไม่มีลิงก์ (ADR-069) */}
-              <Route path="/reset-password" element={<ResetPasswordPage />} />
-              {/* กระดานอันดับกับโปรไฟล์เปิดสาธารณะ (api-contract.md ข้อ 3 และ 5) ไม่ต้องล็อกอิน */}
-              <Route path="/leaderboard" element={<LeaderboardPage />} />
-              {/* ข่าวสารเปิดสาธารณะเหมือนกัน (api-contract.md ข้อ 7) */}
-              <Route path="/news" element={<NewsPage />} />
-              <Route path="/news/:newsId" element={<NewsDetailPage />} />
-              <Route path="/users/:userId" element={<ProfilePage />} />
-              {/* ทางลัดไปโปรไฟล์ตัวเอง — เด้งไป /users/:id ให้ URL แชร์ได้เสมอ (ADR-047 ข้อ 5) */}
-              <Route path="/profile" element={<ProfilePage />} />
-              {/* ผลแมตช์แบบมี URL ของตัวเอง — ปลายทางของลิงก์ที่แชร์ออกไป (ADR-048 ข้อ 4) */}
-              <Route path="/matches/:matchId" element={<MatchResultPage kind="1v1" />} />
-              <Route
-                path="/multiplayer-matches/:multiplayerMatchId"
-                element={<MatchResultPage kind="multiplayer" />}
-              />
-              <Route
-                path="/settings"
-                element={
-                  <RequireAuth>
-                    <SettingsPage />
-                  </RequireAuth>
-                }
-              />
-              {/* สกินสีคิวบ์ — หน้าของตัวเองตั้งแต่เฟส 12 ก้อนที่ 7 · ปลายทางคือคอลัมน์ของบัญชี
+    // รอ server + DB ตื่นก่อน mount อะไรทั้งนั้น — auth ยิงใส่ server ที่ยังหลับแล้วผู้ใช้โดนเด้งออกผิด ๆ (ADR-072)
+    <ServerGate>
+      <AuthProvider>
+        {/* socket ต่อได้ต่อเมื่อล็อกอินแล้ว จึงต้องอยู่ใต้ AuthProvider เสมอ */}
+        <SocketProvider>
+          {/* คิวจับคู่ต้องฟังทั้งแอป เพราะ server พาเรากลับเข้าคิวเองได้ (ADR-040 ข้อ 1) */}
+          <QueueProvider>
+            {/* คู่มือการใช้งานเปิดจากหน้าไหนก็ได้ + เด้งเองครั้งแรก จึงต้องครอบทุกเส้นทาง (ADR-053) */}
+            <TutorialProvider>
+              <Routes>
+                <Route path="/" element={<HomePage />} />
+                <Route path="/login" element={<LoginPage />} />
+                <Route path="/register" element={<RegisterPage />} />
+                {/* ลืมรหัสผ่าน — เปิดสาธารณะ · กรอก username + อีเมลแล้วตั้งรหัสใหม่ ไม่มีลิงก์ (ADR-069) */}
+                <Route path="/reset-password" element={<ResetPasswordPage />} />
+                {/* กระดานอันดับกับโปรไฟล์เปิดสาธารณะ (api-contract.md ข้อ 3 และ 5) ไม่ต้องล็อกอิน */}
+                <Route path="/leaderboard" element={<LeaderboardPage />} />
+                {/* ข่าวสารเปิดสาธารณะเหมือนกัน (api-contract.md ข้อ 7) */}
+                <Route path="/news" element={<NewsPage />} />
+                <Route path="/news/:newsId" element={<NewsDetailPage />} />
+                <Route path="/users/:userId" element={<ProfilePage />} />
+                {/* ทางลัดไปโปรไฟล์ตัวเอง — เด้งไป /users/:id ให้ URL แชร์ได้เสมอ (ADR-047 ข้อ 5) */}
+                <Route path="/profile" element={<ProfilePage />} />
+                {/* ผลแมตช์แบบมี URL ของตัวเอง — ปลายทางของลิงก์ที่แชร์ออกไป (ADR-048 ข้อ 4) */}
+                <Route path="/matches/:matchId" element={<MatchResultPage kind="1v1" />} />
+                <Route
+                  path="/multiplayer-matches/:multiplayerMatchId"
+                  element={<MatchResultPage kind="multiplayer" />}
+                />
+                <Route
+                  path="/settings"
+                  element={
+                    <RequireAuth>
+                      <SettingsPage />
+                    </RequireAuth>
+                  }
+                />
+                {/* สกินสีคิวบ์ — หน้าของตัวเองตั้งแต่เฟส 12 ก้อนที่ 7 · ปลายทางคือคอลัมน์ของบัญชี
                   จึงต้องล็อกอินก่อน ไม่ใช่ค่าในเครื่องแบบมุมกล้อง/layout (ADR-064 ข้อ 1) */}
-              <Route
-                path="/skins"
-                element={
-                  <RequireAuth>
-                    <SkinsPage />
-                  </RequireAuth>
-                }
-              />
-              {/* ห้องฝึกซ้อมขอ scramble จาก server ซึ่งต้องมี token (api-contract.md ข้อ 6) */}
-              <Route
-                path="/practice"
-                element={
-                  <RequireAuth>
-                    <PracticePage />
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="/room/new"
-                element={
-                  <RequireAuth>
-                    <CreateRoomPage />
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="/room/join"
-                element={
-                  <RequireAuth>
-                    <JoinRoomPage />
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="/room/:roomId"
-                element={
-                  <RequireAuth>
-                    <RoomPage />
-                  </RequireAuth>
-                }
-              />
-              {/* ส่วนผู้ดูแลระบบ — `RequireAdmin` แค่ซ่อนหน้าจอ ตัวกันจริงคือ `requireAdmin` ฝั่ง server */}
-              <Route
-                path="/admin"
-                element={
-                  <RequireAdmin>
-                    <AdminDashboardPage />
-                  </RequireAdmin>
-                }
-              />
-              <Route
-                path="/admin/users"
-                element={
-                  <RequireAdmin>
-                    <AdminUsersPage />
-                  </RequireAdmin>
-                }
-              />
-              <Route
-                path="/admin/reports"
-                element={
-                  <RequireAdmin>
-                    <AdminReportsPage />
-                  </RequireAdmin>
-                }
-              />
-              <Route
-                path="/admin/flags"
-                element={
-                  <RequireAdmin>
-                    <AdminFlagsPage />
-                  </RequireAdmin>
-                }
-              />
-              <Route
-                path="/admin/news"
-                element={
-                  <RequireAdmin>
-                    <AdminNewsPage />
-                  </RequireAdmin>
-                }
-              />
-              <Route path="*" element={<NotFoundPage />} />
-            </Routes>
-            <QueueBanner />
-            {/* เครื่องหลุดเน็ต — เตือนทับทุกหน้า เพราะทุกหน้าใช้งานต่อไม่ได้เหมือนกันหมด */}
-            <OfflineBanner />
-          </TutorialProvider>
-        </QueueProvider>
-      </SocketProvider>
-    </AuthProvider>
+                <Route
+                  path="/skins"
+                  element={
+                    <RequireAuth>
+                      <SkinsPage />
+                    </RequireAuth>
+                  }
+                />
+                {/* ห้องฝึกซ้อมขอ scramble จาก server ซึ่งต้องมี token (api-contract.md ข้อ 6) */}
+                <Route
+                  path="/practice"
+                  element={
+                    <RequireAuth>
+                      <PracticePage />
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  path="/room/new"
+                  element={
+                    <RequireAuth>
+                      <CreateRoomPage />
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  path="/room/join"
+                  element={
+                    <RequireAuth>
+                      <JoinRoomPage />
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  path="/room/:roomId"
+                  element={
+                    <RequireAuth>
+                      <RoomPage />
+                    </RequireAuth>
+                  }
+                />
+                {/* ส่วนผู้ดูแลระบบ — `RequireAdmin` แค่ซ่อนหน้าจอ ตัวกันจริงคือ `requireAdmin` ฝั่ง server */}
+                <Route
+                  path="/admin"
+                  element={
+                    <RequireAdmin>
+                      <AdminDashboardPage />
+                    </RequireAdmin>
+                  }
+                />
+                <Route
+                  path="/admin/users"
+                  element={
+                    <RequireAdmin>
+                      <AdminUsersPage />
+                    </RequireAdmin>
+                  }
+                />
+                <Route
+                  path="/admin/reports"
+                  element={
+                    <RequireAdmin>
+                      <AdminReportsPage />
+                    </RequireAdmin>
+                  }
+                />
+                <Route
+                  path="/admin/flags"
+                  element={
+                    <RequireAdmin>
+                      <AdminFlagsPage />
+                    </RequireAdmin>
+                  }
+                />
+                <Route
+                  path="/admin/news"
+                  element={
+                    <RequireAdmin>
+                      <AdminNewsPage />
+                    </RequireAdmin>
+                  }
+                />
+                <Route path="*" element={<NotFoundPage />} />
+              </Routes>
+              <QueueBanner />
+              {/* เครื่องหลุดเน็ต — เตือนทับทุกหน้า เพราะทุกหน้าใช้งานต่อไม่ได้เหมือนกันหมด */}
+              <OfflineBanner />
+            </TutorialProvider>
+          </QueueProvider>
+        </SocketProvider>
+      </AuthProvider>
+    </ServerGate>
   );
 }

@@ -37,6 +37,37 @@ export function oauthLoginUrl(provider: OAuthProviderSlug, returnTo?: string): s
   return `${BASE_URL}/auth/oauth/${provider}${query}`;
 }
 
+/**
+ * ผลของ `GET /health` ในมุมของหน้ารอเซิร์ฟเวอร์ตื่น (ADR-072 ข้อ 3)
+ *   - `ok` = process ขึ้น + DB ต่อติด
+ *   - `db_down` = server ตอบเองว่าต่อ DB ไม่ได้ (503 + `db: "down"`)
+ *   - `unreachable` = ต่อไม่ติด / หมดเวลา / ได้คำตอบอื่นที่ไม่ใช่ของเรา (เช่น 502 จาก proxy ของ Render ตอนตื่น)
+ */
+export type ServerHealth = 'ok' | 'db_down' | 'unreachable';
+
+/**
+ * ถาม `/health` หนึ่งครั้ง — **ไม่ผ่าน `request()`** ตั้งใจ: ไม่แนบ token ไม่ต่ออายุ
+ * และ `/health` ไม่มี envelope `{ data }` (api-contract.md ข้อ 10) · ไม่โยน error ทุกกรณี
+ */
+export async function checkServerHealth(timeoutMs: number): Promise<ServerHealth> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${BASE_URL}/health`, { signal: controller.signal, cache: 'no-store' });
+    if (res.ok) return 'ok';
+    if (res.status === 503) {
+      // 503 จาก proxy ไม่ใช่ JSON ของเรา → ยังนับว่า server ไม่ตื่น ไม่ใช่เรื่องฐานข้อมูล
+      const body = (await res.json().catch(() => null)) as { db?: unknown } | null;
+      if (body?.db === 'down') return 'db_down';
+    }
+    return 'unreachable';
+  } catch {
+    return 'unreachable';
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export class ApiError extends Error {
   /**
    * รหัสตาม `docs/api-contract.md` ข้อ 1 — แต่ประกาศเป็น `AppErrorCode` เพราะตัวห่อนี้
