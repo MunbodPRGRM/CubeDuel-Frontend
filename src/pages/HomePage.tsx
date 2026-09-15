@@ -27,69 +27,63 @@ export default function HomePage() {
     user ? `/users/${user.userId}/stats?cubeType=${cubeType}` : null,
   );
 
+  // หน้านี้อยู่หลัง `RequireAuth` แล้ว (ADR-073 ข้อ 3) — บรรทัดนี้มีไว้ให้ TypeScript รู้ว่ามี `user` เท่านั้น
+  // ต้องอยู่หลัง hook ทุกตัว ไม่งั้นลำดับ hook เปลี่ยนตอนเซสชันหลุดกลางหน้า
+  if (!user) return null;
+
   return (
     <div className="min-h-screen bg-navy-900">
       <AppHeader />
 
       <main className="page-wide px-4 py-8">
-        <HeroCard isLoggedIn={Boolean(user)} cubeType={cubeType} onCubeTypeChange={setCubeType} />
+        <HeroCard cubeType={cubeType} onCubeTypeChange={setCubeType} />
 
-        {user && (
-          <>
-            <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
-              <h2 className="text-sm font-semibold text-slate-300">
-                สถิติของฉัน · {CUBE_TYPE_LABEL[cubeType]}
-              </h2>
-              {/* ช่องเลือกประเภทมีตัวเดียวอยู่ในการ์ดด้านบน — คุมทั้งคิวจับคู่และตัวเลขชุดนี้ */}
-              <p className="text-xs text-slate-500">เปลี่ยนประเภทได้ที่การ์ดด้านบน</p>
-            </div>
+        <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold text-slate-300">
+            สถิติของฉัน · {CUBE_TYPE_LABEL[cubeType]}
+          </h2>
+          {/* ช่องเลือกประเภทมีตัวเดียวอยู่ในการ์ดด้านบน — คุมทั้งคิวจับคู่และตัวเลขชุดนี้ */}
+          <p className="text-xs text-slate-500">เปลี่ยนประเภทได้ที่การ์ดด้านบน</p>
+        </div>
 
-            <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <StatCard
-                label="ELO"
-                value={rating ? String(rating.eloRating) : '—'}
-                accent
-                note={rating ? `อันดับที่ ${rating.rank}` : undefined}
-              />
-              <StatCard
-                label="สถิติเวลาที่ดีที่สุด"
-                value={formatSolveTime(rating?.bestTime)}
-                note={rating?.bestTime == null ? 'ยังไม่มีเวลาที่บันทึกไว้' : undefined}
-              />
-              <StatCard
-                label="เวลาเฉลี่ย 5 รอบ"
-                value={formatSolveTime(stats.data?.ao5)}
-                note={
-                  stats.data && stats.data.ao5 === null
-                    ? `ต้องแก้ครบ 5 ครั้งก่อน (ตอนนี้ ${stats.data.totalSolves})`
-                    : undefined
-                }
-              />
-              <StatCard
-                label="อัตราการชนะ"
-                value={rating && rating.matchesPlayed > 0 ? formatWinRate(rating.winRate) : '—'}
-                suffix={
-                  rating && rating.matchesPlayed > 0
-                    ? `${rating.wins}W ${rating.losses}L`
-                    : undefined
-                }
-                note={rating && rating.matchesPlayed === 0 ? 'ยังไม่เคยลงแข่ง' : undefined}
-              />
-            </div>
-          </>
-        )}
+        <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard
+            label="ELO"
+            value={rating ? String(rating.eloRating) : '—'}
+            accent
+            note={rating ? `อันดับที่ ${rating.rank}` : undefined}
+          />
+          <StatCard
+            label="สถิติเวลาที่ดีที่สุด"
+            value={formatSolveTime(rating?.bestTime)}
+            note={rating?.bestTime == null ? 'ยังไม่มีเวลาที่บันทึกไว้' : undefined}
+          />
+          <StatCard
+            label="เวลาเฉลี่ย 5 รอบ"
+            value={formatSolveTime(stats.data?.ao5)}
+            note={
+              stats.data && stats.data.ao5 === null
+                ? `ต้องแก้ครบ 5 ครั้งก่อน (ตอนนี้ ${stats.data.totalSolves})`
+                : undefined
+            }
+          />
+          <StatCard
+            label="อัตราการชนะ"
+            value={rating && rating.matchesPlayed > 0 ? formatWinRate(rating.winRate) : '—'}
+            suffix={
+              rating && rating.matchesPlayed > 0 ? `${rating.wins}W ${rating.losses}L` : undefined
+            }
+            note={rating && rating.matchesPlayed === 0 ? 'ยังไม่เคยลงแข่ง' : undefined}
+          />
+        </div>
 
         <div className="mt-8 grid gap-4 lg:grid-cols-2">
-          {user ? (
-            <MatchHistoryList
-              userId={user.userId}
-              limit={5}
-              paginated={false}
-              emptyHint="ลงแข่งสักรอบแล้วผลจะมาโผล่ที่นี่ (ห้องฝึกซ้อมไม่นับ)"
-            />
-          ) : (
-            <SignedOutHistoryCard />
-          )}
+          <MatchHistoryList
+            userId={user.userId}
+            limit={5}
+            paginated={false}
+            emptyHint="ลงแข่งสักรอบแล้วผลจะมาโผล่ที่นี่ (ห้องฝึกซ้อมไม่นับ)"
+          />
           <LeaderboardCard cubeType={cubeType} limit={5} showViewAll />
         </div>
 
@@ -100,7 +94,6 @@ export default function HomePage() {
 }
 
 interface HeroCardProps {
-  isLoggedIn: boolean;
   cubeType: CubeType;
   onCubeTypeChange: (value: CubeType) => void;
 }
@@ -112,7 +105,7 @@ interface HeroCardProps {
  * — ไม่ได้แยกเป็นหน้า `/queue` ต่างหาก เพราะดีไซน์วางไว้ในการ์ดนี้ และการเปลี่ยนหน้าไม่ได้
  * ทำให้คิวมั่นคงขึ้นเลย (คิวเป็นของ socket ไม่ใช่ของหน้า — ADR-040 ข้อ 1)
  */
-function HeroCard({ isLoggedIn, cubeType, onCubeTypeChange }: HeroCardProps) {
+function HeroCard({ cubeType, onCubeTypeChange }: HeroCardProps) {
   const queue = useQueue();
   const queuing = queue.phase === 'queued';
   /**
@@ -140,111 +133,77 @@ function HeroCard({ isLoggedIn, cubeType, onCubeTypeChange }: HeroCardProps) {
             แก้ปัญหาให้เร็วที่สุดเพื่อเก็บสะสมแต้ม และไต่ขึ้นสู่ระดับที่สูงกว่า
           </p>
 
-          {isLoggedIn ? (
-            <>
-              <div className="mt-7">
-                <p className="text-xs text-slate-500">ประเภทรูบิคที่จะแข่ง</p>
-                <div className="mt-2">
-                  {/* เปลี่ยนประเภทระหว่างอยู่ในคิวไม่ได้ — server ตอบ `E_ALREADY_IN_QUEUE`
-                      ต้อง `queue:leave` ก่อน (socket-events.md ข้อ 4) */}
-                  <CubeTypePicker
-                    value={cubeType}
-                    onChange={onCubeTypeChange}
-                    disabled={queuing}
-                    disabledHint="ออกจากคิวก่อนจึงจะเปลี่ยนประเภทได้"
-                  />
-                </div>
-              </div>
-
-              <div className="mt-5 flex flex-wrap gap-3">
-                {queuing ? (
-                  <button
-                    type="button"
-                    disabled={queue.busy}
-                    onClick={() => void queue.leave()}
-                    className="rounded-xl border border-line bg-navy-800 px-5 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-navy-700 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {queuingMulti ? '✕ ยกเลิกการรวมกลุ่ม' : '✕ ยกเลิกการจับคู่'}
-                  </button>
-                ) : (
-                  <>
-                    <button
-                      type="button"
-                      disabled={queue.busy}
-                      onClick={() => void queue.join(cubeType, 'competitive')}
-                      className="rounded-xl bg-brand-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-brand-500/40"
-                    >
-                      จับคู่
-                    </button>
-                    {/* คิวคนละช่องกับ 1v1 โดยสิ้นเชิง — ไม่ใช่ตัวเลือกของปุ่มเดิม (เฟส 6) */}
-                    <button
-                      type="button"
-                      disabled={queue.busy}
-                      onClick={() => void queue.join(cubeType, 'multiplayer')}
-                      className="rounded-xl border border-brand-500/60 bg-navy-800 px-5 py-2.5 text-sm font-semibold text-brand-300 transition hover:bg-navy-700 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      ห้องหลายคน (3–4)
-                    </button>
-                  </>
-                )}
-                <Link
-                  to="/practice"
-                  className="rounded-xl border border-line bg-navy-800 px-5 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-navy-700"
-                >
-                  ฝึกซ้อม
-                </Link>
-                <Link
-                  to="/room/new"
-                  className="rounded-xl border border-line bg-navy-800 px-5 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-navy-700"
-                >
-                  สร้างห้อง
-                </Link>
-                <Link
-                  to="/room/join"
-                  className="rounded-xl border border-line bg-navy-800 px-5 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-navy-700"
-                >
-                  ใส่เลขห้อง
-                </Link>
-              </div>
-
-              <QueuePanel />
-            </>
-          ) : (
-            <div className="mt-8 flex flex-wrap gap-3">
-              <Link
-                to="/register"
-                className="rounded-xl bg-brand-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-600"
-              >
-                สมัครสมาชิก
-              </Link>
-              <Link
-                to="/login"
-                className="rounded-xl border border-line bg-navy-800 px-5 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-navy-700"
-              >
-                เข้าสู่ระบบ
-              </Link>
+          <div className="mt-7">
+            <p className="text-xs text-slate-500">ประเภทรูบิคที่จะแข่ง</p>
+            <div className="mt-2">
+              {/* เปลี่ยนประเภทระหว่างอยู่ในคิวไม่ได้ — server ตอบ `E_ALREADY_IN_QUEUE`
+                  ต้อง `queue:leave` ก่อน (socket-events.md ข้อ 4) */}
+              <CubeTypePicker
+                value={cubeType}
+                onChange={onCubeTypeChange}
+                disabled={queuing}
+                disabledHint="ออกจากคิวก่อนจึงจะเปลี่ยนประเภทได้"
+              />
             </div>
-          )}
+          </div>
+
+          <div className="mt-5 flex flex-wrap gap-3">
+            {queuing ? (
+              <button
+                type="button"
+                disabled={queue.busy}
+                onClick={() => void queue.leave()}
+                className="rounded-xl border border-line bg-navy-800 px-5 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-navy-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {queuingMulti ? '✕ ยกเลิกการรวมกลุ่ม' : '✕ ยกเลิกการจับคู่'}
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  disabled={queue.busy}
+                  onClick={() => void queue.join(cubeType, 'competitive')}
+                  className="rounded-xl bg-brand-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-brand-500/40"
+                >
+                  จับคู่
+                </button>
+                {/* คิวคนละช่องกับ 1v1 โดยสิ้นเชิง — ไม่ใช่ตัวเลือกของปุ่มเดิม (เฟส 6) */}
+                <button
+                  type="button"
+                  disabled={queue.busy}
+                  onClick={() => void queue.join(cubeType, 'multiplayer')}
+                  className="rounded-xl border border-brand-500/60 bg-navy-800 px-5 py-2.5 text-sm font-semibold text-brand-300 transition hover:bg-navy-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  ห้องหลายคน (3–4)
+                </button>
+              </>
+            )}
+            <Link
+              to="/practice"
+              className="rounded-xl border border-line bg-navy-800 px-5 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-navy-700"
+            >
+              ฝึกซ้อม
+            </Link>
+            <Link
+              to="/room/new"
+              className="rounded-xl border border-line bg-navy-800 px-5 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-navy-700"
+            >
+              สร้างห้อง
+            </Link>
+            <Link
+              to="/room/join"
+              className="rounded-xl border border-line bg-navy-800 px-5 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-navy-700"
+            >
+              ใส่เลขห้อง
+            </Link>
+          </div>
+
+          <QueuePanel />
         </div>
 
         <div className="grid shrink-0 place-items-center lg:w-80">
           <CubeLogo size={210} />
         </div>
-      </div>
-    </section>
-  );
-}
-
-/** คนที่ยังไม่ล็อกอินไม่มีประวัติให้ดึง — ชวนเข้าสู่ระบบแทนที่จะโชว์รายการว่าง */
-function SignedOutHistoryCard() {
-  return (
-    <section className="rounded-2xl border border-line bg-navy-850/80">
-      <header className="px-5 py-4">
-        <h2 className="font-semibold text-slate-100">ประวัติการเล่น</h2>
-        <p className="mt-0.5 text-xs text-slate-500">การเล่น 5 รอบล่าสุดของคุณ</p>
-      </header>
-      <div className="border-t border-line-soft px-5 py-10 text-center">
-        <p className="text-sm text-slate-500">เข้าสู่ระบบเพื่อดูประวัติการเล่นของคุณ</p>
       </div>
     </section>
   );

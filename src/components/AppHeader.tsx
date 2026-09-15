@@ -36,40 +36,46 @@ export function AppHeader() {
           <span className="text-lg font-bold tracking-tight text-white">CubeDuel</span>
         </Link>
 
-        <nav className="hidden items-center gap-6 md:flex">
-          {/* เมนูแอดมินโผล่เฉพาะบัญชีแอดมิน — ตัวกันจริงอยู่ฝั่ง server (`requireAdmin`) */}
-          {(user?.role === 'admin'
-            ? [...NAV_ITEMS, { label: 'ผู้ดูแลระบบ', to: '/admin' } as const]
-            : NAV_ITEMS
-          ).map((item) => (
-            <NavLink
-              key={item.label}
-              to={item.to}
-              className={({ isActive }) =>
-                `text-sm transition ${isActive ? 'text-white' : 'text-slate-400 hover:text-slate-200'}`
-              }
-            >
-              {item.label}
-            </NavLink>
-          ))}
-        </nav>
+        {/* คนที่ยังไม่ล็อกอิน (และระหว่างกู้เซสชัน) ไม่เห็นเมนูเลย — ทุกหน้าในเมนูต้องล็อกอินแล้ว (ADR-073 ข้อ 2) */}
+        {user && (
+          <nav className="hidden items-center gap-6 md:flex">
+            {/* เมนูแอดมินโผล่เฉพาะบัญชีแอดมิน — ตัวกันจริงอยู่ฝั่ง server (`requireAdmin`) */}
+            {(user.role === 'admin'
+              ? [...NAV_ITEMS, { label: 'ผู้ดูแลระบบ', to: '/admin' } as const]
+              : NAV_ITEMS
+            ).map((item) => (
+              <NavLink
+                key={item.label}
+                to={item.to}
+                className={({ isActive }) =>
+                  `text-sm transition ${isActive ? 'text-white' : 'text-slate-400 hover:text-slate-200'}`
+                }
+              >
+                {item.label}
+              </NavLink>
+            ))}
+          </nav>
+        )}
 
         <div className="ml-auto flex items-center gap-3">
           {/* ทางเข้าเดียวของ "เปิดคู่มือซ้ำ" — เป็นไอคอนเพราะเมนูหลักเต็มแล้ว และมันไม่ใช่หน้าจอ
-              ที่คนเข้าบ่อยพอจะแย่งที่ของเมนู · ต้องอยู่ในแถบบนเพื่อให้กดได้จากทุกหน้า (ADR-053 ข้อ 4) */}
-          <button
-            type="button"
-            onClick={tutorial.open}
-            aria-label="เปิดคู่มือการใช้งาน"
-            title="คู่มือการใช้งาน"
-            className={`grid h-8 w-8 shrink-0 place-items-center rounded-full border text-sm font-semibold transition ${
-              tutorial.isOpen
-                ? 'border-brand-500 bg-brand-500/15 text-brand-300'
-                : 'border-line bg-navy-850 text-slate-400 hover:text-slate-100'
-            }`}
-          >
-            ?
-          </button>
+              ที่คนเข้าบ่อยพอจะแย่งที่ของเมนู · ต้องอยู่ในแถบบนเพื่อให้กดได้จากทุกหน้า (ADR-053 ข้อ 4)
+              · คนที่ยังไม่ล็อกอินไม่เห็น — คู่มือพูดถึงหน้าที่เขาเข้าไม่ได้แล้ว (ADR-073 ข้อ 2) */}
+          {user && (
+            <button
+              type="button"
+              onClick={tutorial.open}
+              aria-label="เปิดคู่มือการใช้งาน"
+              title="คู่มือการใช้งาน"
+              className={`grid h-8 w-8 shrink-0 place-items-center rounded-full border text-sm font-semibold transition ${
+                tutorial.isOpen
+                  ? 'border-brand-500 bg-brand-500/15 text-brand-300'
+                  : 'border-line bg-navy-850 text-slate-400 hover:text-slate-100'
+              }`}
+            >
+              ?
+            </button>
+          )}
           {status === 'loading' ? (
             <span className="h-5 w-5 animate-spin rounded-full border-2 border-line border-t-brand-500" />
           ) : user ? (
