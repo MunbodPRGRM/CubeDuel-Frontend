@@ -172,6 +172,11 @@ function UserRow({
   const [error, setError] = useState<string | null>(null);
   const [confirmingBio, setConfirmingBio] = useState(false);
   const deleted = user.deletedAt !== null;
+  /**
+   * ระงับบัญชีแอดมินไม่ได้ ไม่ว่าตัวเองหรือคนอื่น (ADR-075 ข้อ 1 กฎ ③) — **ปลดระงับยังได้**
+   * ตัวกันจริงคือ 403 ฝั่ง server ที่นี่แค่ไม่ยื่นปุ่มให้กดแล้วเจอ error
+   */
+  const cannotSuspend = user.role === 'admin' && user.status === 'active';
 
   async function toggleStatus() {
     setError(null);
@@ -282,7 +287,8 @@ function UserRow({
           type="button"
           onClick={() => void toggleStatus()}
           // บัญชีที่ผู้ใช้ลบเองแก้สถานะไม่ได้ (server ตอบ 400 อยู่แล้ว — ADR-050 ข้อ 8)
-          disabled={working || deleted}
+          disabled={working || deleted || cannotSuspend}
+          title={cannotSuspend ? 'ระงับบัญชีแอดมินไม่ได้' : undefined}
           className={`rounded-lg border px-3 py-1.5 text-xs transition disabled:cursor-not-allowed disabled:opacity-40 ${
             user.status === 'active'
               ? 'border-loss/40 text-loss hover:bg-loss/10'
