@@ -5,8 +5,8 @@ import { QueuePanel } from '@/queue/QueuePanel';
 import { useQueue } from '@/socket/useQueue';
 import { useApiData } from '@/hooks/useApiData';
 import { AppHeader } from '@/components/AppHeader';
-import { CubeLogo } from '@/components/CubeLogo';
-import { CubeTypePicker } from '@/components/CubeTypePicker';
+import { CubeTypeImage } from '@/components/CubeTypeImage';
+import { CubeTypeSelect } from '@/components/CubeTypeSelect';
 import { LatestNewsCard } from '@/components/LatestNewsCard';
 import { LeaderboardCard } from '@/components/LeaderboardCard';
 import { MatchHistoryList } from '@/components/MatchHistoryList';
@@ -139,10 +139,10 @@ function HeroCard({ cubeType, onCubeTypeChange }: HeroCardProps) {
 
           <div className="mt-7">
             <p className="text-xs text-slate-500">ประเภทรูบิคที่จะแข่ง</p>
-            <div className="mt-2">
+            <div className="mt-2 w-48">
               {/* เปลี่ยนประเภทระหว่างอยู่ในคิวไม่ได้ — server ตอบ `E_ALREADY_IN_QUEUE`
                   ต้อง `queue:leave` ก่อน (socket-events.md ข้อ 4) */}
-              <CubeTypePicker
+              <CubeTypeSelect
                 value={cubeType}
                 onChange={onCubeTypeChange}
                 disabled={queuing}
@@ -206,7 +206,7 @@ function HeroCard({ cubeType, onCubeTypeChange }: HeroCardProps) {
         </div>
 
         <div className="grid shrink-0 place-items-center lg:w-80">
-          <CubeLogo size={210} />
+          <CubeTypeImage cubeType={cubeType} />
         </div>
       </div>
     </section>
