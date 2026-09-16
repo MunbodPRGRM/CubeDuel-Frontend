@@ -10,6 +10,7 @@ import { CubeTypeSelect } from '@/components/CubeTypeSelect';
 import { LatestNewsCard } from '@/components/LatestNewsCard';
 import { LeaderboardCard } from '@/components/LeaderboardCard';
 import { MatchHistoryList } from '@/components/MatchHistoryList';
+import { SkinShowcaseCard } from '@/components/skins/SkinShowcaseCard';
 import { StatCard } from '@/components/StatCard';
 import { formatSolveTime, formatWinRate } from '@/lib/format';
 import type { CubeType } from '@/types/cube';
@@ -38,12 +39,15 @@ export default function HomePage() {
       <main className="page-wide px-4 py-8">
         <HeroCard cubeType={cubeType} onCubeTypeChange={setCubeType} />
 
+        {/* ทางเข้าหน้าสกิน — ใต้การ์ดหลัก เหนือสถิติของฉัน (เจ้าของสั่ง · ADR-080 ข้อ 1) */}
+        <SkinShowcaseCard skinId={user.cubeSkin} />
+
         <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-sm font-semibold text-slate-300">
             สถิติของฉัน · {CUBE_TYPE_LABEL[cubeType]}
           </h2>
-          {/* ช่องเลือกประเภทมีตัวเดียวอยู่ในการ์ดด้านบน — คุมทั้งคิวจับคู่และตัวเลขชุดนี้ */}
-          <p className="text-xs text-slate-500">เปลี่ยนประเภทได้ที่การ์ดด้านบน</p>
+          {/* ช่องเลือกประเภทมีตัวเดียวอยู่ในการ์ดหลัก (ไม่ใช่การ์ดสกินที่อยู่ติดกัน) — คุมทั้งคิวจับคู่และตัวเลขชุดนี้ */}
+          <p className="text-xs text-slate-500">เปลี่ยนประเภทได้ที่การ์ดหลักด้านบน</p>
         </div>
 
         <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
