@@ -2,7 +2,7 @@ import { useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/auth/useAuth';
 import { AppHeader } from '@/components/AppHeader';
-import { SkinSwatches } from '@/components/CubeSkinPicker';
+import { SkinSwatches } from '@/components/skins/SkinSwatches';
 import { FormAlert } from '@/components/FormAlert';
 import { PageSpinner } from '@/components/PageSpinner';
 import { TextField } from '@/components/TextField';

@@ -34,7 +34,15 @@ export type {
   CubeView,
 } from './types.ts';
 export { ALLOWED_MOVES, inverseMove, isAllowedMove, normalizeMove } from './moves.ts';
-export { CUBE_SKINS, DEFAULT_SKIN_ID, getSkin, type CubeSkin } from './three/colors.ts';
+export {
+  CUBE_SKINS,
+  DEFAULT_SKIN_ID,
+  SKIN_CATEGORIES,
+  getSkin,
+  type CubeSkin,
+  type FaceName,
+  type SkinCategory,
+} from './three/colors.ts';
 
 /**
  * สร้างคิวบ์ 3 มิติลงใน `container`
