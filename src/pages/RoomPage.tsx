@@ -221,6 +221,7 @@ function MatchPanel({
   const inLobby = state === 'WAITING';
   const finished = state === 'FINISHED';
   const racing = state === 'SOLVING' || state === 'FINAL_COUNTDOWN';
+  const inspecting = state === 'INSPECTION';
   /**
    * **ห้องที่มาจากคิว** (แข่งขัน 1v1 + หลายคนโหมด auto) เดินเองทั้งหมด — ไม่มี host
    * ไม่มีปุ่มเริ่ม ไม่มี "พร้อม" และเล่นซ้ำในห้องเดิมไม่ได้ เพราะสองห้องนี้ปรับคะแนนจริง
@@ -291,7 +292,15 @@ function MatchPanel({
         </p>
       ) : (
         <>
-          {fromQueue ? (
+          {inspecting ? (
+            // ปุ่มพร้อมช่วงตรวจสอบ — ทุกห้องเหมือนกัน ทั้งห้องจากคิวและห้องสร้างเอง (ADR-078)
+            <InspectionReadyControl
+              snapshot={snapshot}
+              me={me}
+              busy={match.busy}
+              onToggle={match.setInspectionReady}
+            />
+          ) : fromQueue ? (
             // ห้องจากคิว: มีแค่ "ยอมแพ้" ระหว่างแข่ง กับ "เข้าคิวใหม่" ตอนจบ
             <div className="grid gap-2.5">
               {racing ? (
@@ -407,6 +416,7 @@ function MatchClockBlock({
 }) {
   const { state, phaseEndsAtTs, serverStartTs } = snapshot;
   const counting = state === 'COUNTDOWN' || state === 'INSPECTION';
+  const readyToStart = state === 'INSPECTION' && isInspectionLocked(snapshot);
 
   let mode: LiveTimeMode = 'idle';
   let ts: number | null = null;
@@ -425,7 +435,7 @@ function MatchClockBlock({
   }
 
   const label = counting
-    ? state === 'COUNTDOWN'
+    ? state === 'COUNTDOWN' || readyToStart
       ? 'เริ่มใน (วินาที)'
       : 'เวลาตรวจสอบ (วินาที)'
     : 'เวลา';
@@ -539,6 +549,63 @@ function EloRows({ snapshot, result }: { snapshot: RoomSnapshot; result: MatchRe
  * ยอมแพ้ = DNF ทันทีและกู้คืนไม่ได้ (game-rules.md ข้อ 5) จึงต้องกดยืนยันอีกครั้ง
  * ในห้องแข่งขันของเฟส 5 การกดพลาดหนึ่งครั้งมีราคาเป็นคะแนน Elo จริง ๆ
  */
+/**
+ * ผู้เล่นทุกคนกดพร้อมครบ = ล็อกแล้ว กำลังนับ 3 วินาทีสุดท้าย (ADR-078 ข้อ 4)
+ * ค่าพร้อมไม่ถูกล้างหลังล็อกแม้มีคนหลุด จึงเช็กจาก snapshot ตรง ๆ ได้ ไม่ต้องมีฟิลด์ล็อกแยก
+ */
+function isInspectionLocked(snapshot: RoomSnapshot): boolean {
+  return snapshot.players.length > 0 && snapshot.players.every((player) => player.inspectionReady);
+}
+
+/**
+ * ปุ่ม "พร้อม" ช่วง inspection + ตัวนับว่าพร้อมกี่คนแล้ว (ADR-078 · game-rules.md ข้อ 2)
+ *
+ * ยกเลิกได้จนกว่าจะครบ · ครบแล้วแทนปุ่มด้วยป้าย เพราะ server ไม่รับการยกเลิกหลังล็อก
+ */
+function InspectionReadyControl({
+  snapshot,
+  me,
+  busy,
+  onToggle,
+}: {
+  snapshot: RoomSnapshot;
+  me: PlayerPublic | null;
+  busy: boolean;
+  onToggle: (ready: boolean) => Promise<void>;
+}) {
+  const total = snapshot.players.length;
+  const readyCount = snapshot.players.filter((player) => player.inspectionReady).length;
+
+  if (isInspectionLocked(snapshot)) {
+    return (
+      <p className="rounded-xl border border-win/40 bg-win/10 px-4 py-2.5 text-sm font-semibold text-win">
+        พร้อมครบทุกคน · กำลังเริ่ม
+      </p>
+    );
+  }
+
+  const mine = me?.inspectionReady ?? false;
+  return (
+    <div className="grid gap-1.5">
+      <button
+        type="button"
+        disabled={busy || !me}
+        onClick={() => void onToggle(!mine)}
+        className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+          mine
+            ? 'border border-line bg-navy-800 text-slate-200 hover:bg-navy-700'
+            : 'bg-win/90 text-navy-950 hover:bg-win'
+        }`}
+      >
+        {mine ? 'ยกเลิกพร้อม' : 'พร้อม'}
+      </button>
+      <p className="text-xs text-slate-500">
+        พร้อมแล้ว {readyCount}/{total} คน · ต้องพร้อมครบทุกคนจึงจะเริ่มก่อนเวลา
+      </p>
+    </div>
+  );
+}
+
 function SurrenderButton({ disabled, onConfirm }: { disabled: boolean; onConfirm: () => void }) {
   const [armed, setArmed] = useState(false);
 
@@ -619,7 +686,9 @@ function hintText(
     case 'COUNTDOWN':
       return 'เตรียมตัว — อีกไม่กี่วินาทีจะเข้าช่วงตรวจสอบ';
     case 'INSPECTION':
-      return 'พลิกดูคิวบ์ได้ แต่หมุนหน้าคิวบ์ไม่ได้ · ครบ 15 วินาทีแล้วเริ่มจับเวลาพร้อมกันทุกคน';
+      return isInspectionLocked(snapshot)
+        ? 'ทุกคนพร้อมแล้ว · เริ่มจับเวลาพร้อมกันเมื่อนับถอยหลังจบ'
+        : 'พลิกดูคิวบ์ได้ แต่หมุนหน้าคิวบ์ไม่ได้ · ครบ 15 วินาที หรือทุกคนกด “พร้อม” ครบ แล้วเริ่มจับเวลาพร้อมกันทุกคน';
     case 'SOLVING':
       return 'หมุนให้ครบทุกหน้า — ระบบจะหยุดเวลาให้เองทันทีที่คิวบ์ถูกแก้';
     case 'FINAL_COUNTDOWN':

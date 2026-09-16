@@ -54,6 +54,8 @@ export function PlayerCubePanel({
 }: PlayerCubePanelProps) {
   const progress = player ? snapshot.progress.find((p) => p.userId === player.userId) : undefined;
   const inLobby = snapshot.state === 'WAITING';
+  /** ช่วงตรวจสอบบอกว่าใครกด "พร้อม" แล้ว (ADR-078) — ยังไม่มีใครแก้ ป้าย "กำลังแก้" ไม่มีความหมาย */
+  const inspecting = snapshot.state === 'INSPECTION' && progress?.status === 'solving';
   /** จำนวน move ที่นับได้ทันทีฝั่งเรา — ของ server มาทุก 500 ms ซึ่งช้าเกินกว่าจะดูลื่น */
   const [liveMoveCount, setLiveMoveCount] = useState(0);
 
@@ -69,7 +71,11 @@ export function PlayerCubePanel({
       ? player.isReady
         ? 'พร้อม'
         : 'ไม่พร้อม'
-      : SOLVE_STATUS_LABEL[progress?.status ?? 'solving'];
+      : inspecting
+        ? player.inspectionReady
+          ? 'พร้อมแล้ว'
+          : 'กำลังตรวจสอบ'
+        : SOLVE_STATUS_LABEL[progress?.status ?? 'solving'];
 
   const statusClass = !player
     ? 'text-slate-600'
@@ -77,11 +83,15 @@ export function PlayerCubePanel({
       ? player.isReady
         ? 'text-win'
         : 'text-loss'
-      : progress?.status === 'solved'
-        ? 'text-win'
-        : progress?.status === 'solving'
-          ? 'text-slate-200'
-          : 'text-loss';
+      : inspecting
+        ? player.inspectionReady
+          ? 'text-win'
+          : 'text-slate-200'
+        : progress?.status === 'solved'
+          ? 'text-win'
+          : progress?.status === 'solving'
+            ? 'text-slate-200'
+            : 'text-loss';
 
   // จบรอบไปแล้วให้ค้างเลขไว้ · ยังแก้อยู่และนาฬิกาเดินแล้วให้นับขึ้น · นอกนั้นเป็น 0
   let timeMode: LiveTimeMode = 'idle';

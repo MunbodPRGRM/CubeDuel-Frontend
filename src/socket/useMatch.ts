@@ -10,6 +10,7 @@ import type {
   MatchResult,
   RoomSnapshot,
   SolveCameraPayload,
+  SolveInspectionReadyResult,
   SolveSolvedResult,
 } from './types';
 
@@ -48,6 +49,11 @@ export interface UseMatchResult {
    * ภาพคิวบ์ครบสีตามมาเองจาก `PlayerCubePanel` เมื่อ snapshot บอกว่าเรา `solved`
    */
   devFinish: () => Promise<void>;
+  /**
+   * `solve:inspection_ready` — กด/ยกเลิก "พร้อม" ช่วง inspection (ADR-078)
+   * ผลบนจอมาจาก `players[].inspectionReady` ใน snapshot ไม่ได้มาจาก ack
+   */
+  setInspectionReady: (ready: boolean) => Promise<void>;
   /** คิวบ์ของเราใส่ scramble เสร็จแล้ว → `solve:ready` (ยิงได้ครั้งเดียวต่อรอบ) */
   reportCubeReady: () => void;
   /** ผู้เล่นหมุนหนึ่งท่า → `solve:move` (fire-and-forget) */
@@ -198,6 +204,25 @@ export function useMatch(snapshot: RoomSnapshot | null): UseMatchResult {
     [],
   );
 
+  const setInspectionReady = useCallback(async (ready: boolean): Promise<void> => {
+    const s = socketRef.current;
+    if (!s) {
+      setActionError(NOT_CONNECTED_MESSAGE);
+      return;
+    }
+    setBusy(true);
+    setActionError(null);
+    try {
+      await emitAck<SolveInspectionReadyResult>(s, 'solve:inspection_ready', { ready });
+    } catch (err: unknown) {
+      // อีกฝ่ายกดครบพอดี (ล็อกแล้ว) หรือ inspection หมดเวลาพอดีตอนกด — snapshot บอกเองอยู่แล้ว
+      if (err instanceof SocketAckError && err.code === 'E_INVALID_STATE') return;
+      setActionError(socketErrorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
   const start = useCallback(() => run('room:start'), [run]);
   const surrender = useCallback(() => run('solve:surrender'), [run]);
   const devFinish = useCallback(() => run('solve:dev_finish'), [run]);
@@ -313,6 +338,7 @@ export function useMatch(snapshot: RoomSnapshot | null): UseMatchResult {
     start,
     surrender,
     devFinish,
+    setInspectionReady,
     reportCubeReady,
     sendMove,
     reportSolved,
