@@ -389,8 +389,8 @@ function MatchPanel({
     <dl className="mt-5 space-y-1.5 text-left text-sm">
       <Row label="ประเภทรูบิค" value={CUBE_TYPE_LABEL[snapshot.cubeType]} />
       <Row label="ผู้เล่น" value={`${snapshot.players.length}/${snapshot.maxPlayers} คน`} />
-      {/* ห้องผู้เล่นหลายคนไม่รองรับผู้ชม (game-rules.md ข้อ 9) — โชว์ "0 คน" ชวนเข้าใจผิด */}
-      {snapshot.roomKind !== 'multiplayer' && (
+      {/* ห้องจากคิวไม่มีรหัสให้ผู้ชมเข้า (game-rules.md ข้อ 9 · ADR-079) — โชว์ "0 คน" ชวนเข้าใจผิด */}
+      {!fromQueue && (
         <Row label="ผู้ชม" value={`${snapshot.spectatorCount} คน`} />
       )}
     </dl>

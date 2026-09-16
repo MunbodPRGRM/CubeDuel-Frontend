@@ -68,6 +68,8 @@ export interface MultiplayerMatchDetail {
   /** 3 หรือ 4 */
   playerCount: number;
   winnerId: number | null;
+  /** ผู้ชมสูงสุดระหว่างแมตช์ — โหมด auto เป็น 0 เสมอ (ADR-079) */
+  spectatorCount: number;
   startedAt: string;
   finishedAt: string | null;
   ratingApplied: boolean;
