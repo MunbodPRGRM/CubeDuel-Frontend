@@ -20,7 +20,7 @@ const PING_INTERVAL_MS = 10_000;
  * ⚠️ token หมดอายุ **ระหว่างที่ต่ออยู่ไม่ตัดสาย** (ADR-034 ข้อ 7) ที่นี่จึงต่ออายุเฉพาะจังหวะ handshake
  */
 export function SocketProvider({ children }: { children: ReactNode }) {
-  const { status: authStatus, user } = useAuth();
+  const { status: authStatus, user, endSession } = useAuth();
   const userId = user?.userId ?? null;
 
   const clockRef = useRef<ServerClock>(new ServerClock());
@@ -130,6 +130,15 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       setStatus('connecting');
     });
 
+    /**
+     * ถูกเข้าสู่ระบบจากอุปกรณ์อื่น — server เพิกถอน token ไปแล้วและกำลังจะตัดสาย (ADR-076)
+     * ล้างเซสชันทิ้งเลย `RequireAuth` จะพาไปหน้าเข้าสู่ระบบเอง พร้อมข้อความว่าเกิดอะไรขึ้น
+     */
+    s.on('session:revoked', () => {
+      if (disposed) return;
+      endSession('บัญชีนี้ถูกเข้าสู่ระบบจากอุปกรณ์อื่น — หนึ่งบัญชีใช้ได้ทีละเครื่อง');
+    });
+
     // error ที่ไม่ได้ผูกกับ ack (เช่น `solve:move` ที่ผิดกติกา) — หน้าที่ใช้จะดักเองอีกที
     s.on('error', (payload) => {
       console.warn('[socket]', payload.code, payload.message);
@@ -145,7 +154,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       s.disconnect();
       setSocket(null);
     };
-  }, [authStatus, userId, retryToken]);
+  }, [authStatus, userId, retryToken, endSession]);
 
   const value = useMemo<SocketContextValue>(
     () => ({ socket, status, error, clock: clockRef.current, rttMs, reconnect }),
