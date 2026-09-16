@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { useAuth } from '@/auth/useAuth';
 import { Pagination } from '@/components/Pagination';
 import { useApiPage } from '@/hooks/useApiPage';
 import { apiFetch } from '@/lib/api';
@@ -110,7 +111,13 @@ export default function AdminReportsPage() {
 }
 
 function ReportCard({ report, onResolve }: { report: AdminReport; onResolve: () => void }) {
+  const { user } = useAuth();
   const pending = report.reportStatus === 'pending';
+  /**
+   * รายงานที่ร้องเรียนตัวเรา — ตัดสินเองไม่ได้ทุก action (ADR-075 ข้อ 1 กฎ ①)
+   * server เป็นตัวกันจริง (403) ที่นี่แค่ไม่ยื่นปุ่มให้กด
+   */
+  const aboutMe = user?.userId === report.reported.userId;
   const matchLink = report.matchId
     ? `/matches/${report.matchId}`
     : report.multiplayerMatchId
@@ -138,6 +145,11 @@ function ReportCard({ report, onResolve }: { report: AdminReport; onResolve: () 
             >
               {report.reported.nickname || report.reported.username}
             </Link>
+            {report.reported.role === 'admin' && (
+              <span className="rounded-md border border-brand-500/40 px-1.5 py-0.5 text-[11px] text-brand-400">
+                แอดมิน
+              </span>
+            )}
             {report.reported.status === 'suspended' && (
               <span className="rounded-md border border-loss/40 px-1.5 py-0.5 text-[11px] text-loss">
                 ถูกระงับอยู่
@@ -146,7 +158,12 @@ function ReportCard({ report, onResolve }: { report: AdminReport; onResolve: () 
           </p>
         </div>
 
-        {pending ? (
+        {pending && aboutMe ? (
+          <span className="shrink-0 rounded-xl border border-gold-400/40 px-4 py-2 text-xs leading-5 text-gold-400">
+            รายงานเกี่ยวกับบัญชีคุณ
+            <span className="block text-[11px] text-slate-500">ให้แอดมินคนอื่นเป็นคนตัดสิน</span>
+          </span>
+        ) : pending ? (
           <button
             type="button"
             onClick={onResolve}
@@ -223,6 +240,8 @@ function ResolveDialog({
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** ผู้ถูกรายงานเป็นแอดมิน = ปิดเรื่องได้ แต่ลงโทษไม่ได้ (ADR-075 ข้อ 1 กฎ ②) */
+  const targetIsAdmin = report.reported.role === 'admin';
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -249,27 +268,37 @@ function ResolveDialog({
     >
       <form onSubmit={(e) => void submit(e)} className="space-y-4">
         <div className="space-y-2">
-          {ACTIONS.map((value) => (
-            <label
-              key={value}
-              className={`flex cursor-pointer items-start gap-3 rounded-xl border px-4 py-2.5 transition ${
-                action === value ? 'border-brand-500/60 bg-brand-500/10' : 'border-line'
-              }`}
-            >
-              <input
-                type="radio"
-                name="action"
-                value={value}
-                checked={action === value}
-                onChange={() => setAction(value)}
-                className="mt-1"
-              />
-              <span>
-                <span className="block text-sm text-slate-100">{REPORT_ACTION_LABEL[value]}</span>
-                <span className="block text-xs text-slate-500">{ACTION_HINT[value]}</span>
-              </span>
-            </label>
-          ))}
+          {ACTIONS.map((value) => {
+            const blocked = targetIsAdmin && PUNISHMENTS.includes(value);
+            return (
+              <label
+                key={value}
+                className={`flex items-start gap-3 rounded-xl border px-4 py-2.5 transition ${
+                  blocked
+                    ? 'cursor-not-allowed border-line opacity-40'
+                    : action === value
+                      ? 'cursor-pointer border-brand-500/60 bg-brand-500/10'
+                      : 'cursor-pointer border-line'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="action"
+                  value={value}
+                  checked={action === value}
+                  disabled={blocked}
+                  onChange={() => setAction(value)}
+                  className="mt-1"
+                />
+                <span>
+                  <span className="block text-sm text-slate-100">{REPORT_ACTION_LABEL[value]}</span>
+                  <span className="block text-xs text-slate-500">
+                    {blocked ? 'ใช้กับบัญชีแอดมินไม่ได้' : ACTION_HINT[value]}
+                  </span>
+                </span>
+              </label>
+            );
+          })}
         </div>
 
         <label className="block">
@@ -311,6 +340,9 @@ function ResolveDialog({
     </AdminDialog>
   );
 }
+
+/** บทลงโทษที่ย้อนคืนยาก — ใช้กับบัญชีแอดมินไม่ได้ (ADR-075 ข้อ 1 กฎ ②) */
+const PUNISHMENTS: ReportAction[] = ['suspend', 'reset_rating'];
 
 const ACTION_HINT: Record<ReportAction, string> = {
   none: 'ปิดเรื่องโดยไม่ทำอะไรกับบัญชี',
