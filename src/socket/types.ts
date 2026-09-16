@@ -48,7 +48,13 @@ export interface PlayerPublic {
   /** Elo ของ cube_type ที่กำลังแข่ง (ไม่ใช่ค่ารวม — Rating แยก 4 แถวต่อคน) */
   eloRating: number;
   isHost: boolean;
+  /** ป้ายพร้อมในล็อบบี้ห้องสร้างเอง (`room:ready`) — ใช้ตอน `WAITING` เท่านั้น */
   isReady: boolean;
+  /**
+   * กด "พร้อม" ช่วง `INSPECTION` แล้ว — **คนละช่องกับ `isReady`** · ล้างทุกรอบ
+   * ผู้เล่นทุกคนเป็น `true` = ห้องล็อกแล้ว กำลังจะเริ่ม (ADR-078 ข้อ 4)
+   */
+  inspectionReady: boolean;
   connected: boolean;
 }
 
@@ -275,6 +281,12 @@ export interface SolveSolvedPayload {
   clientTs: number;
 }
 
+/** ack ของ `solve:inspection_ready` — ความจริงยังเป็น `room:state` ที่ตามมา (ADR-078) */
+export interface SolveInspectionReadyResult {
+  readyCount: number;
+  playerCount: number;
+}
+
 export interface SolveSolvedResult {
   solveTimeMs: number;
   rankNo: number;
@@ -341,6 +353,11 @@ export interface ClientToServerEvents {
   'room:ready': (payload: RoomReadyPayload, ack?: AckFn<null>) => void;
   'room:start': (payload: Record<string, never>, ack?: AckFn<null>) => void;
   'solve:ready': (payload: Record<string, never>, ack?: AckFn<null>) => void;
+  /** กด/ยกเลิก "พร้อม" ช่วง inspection — ห้ามสับสนกับ `solve:ready` ของช่วง LOADING (ADR-078) */
+  'solve:inspection_ready': (
+    payload: { ready: boolean },
+    ack?: AckFn<SolveInspectionReadyResult>,
+  ) => void;
   /** ไม่มี ack เพื่อความลื่น — server เงียบถ้าผ่าน ผิดเมื่อไรส่ง event `error` */
   'solve:move': (payload: SolveMovePayload) => void;
   'solve:solved': (payload: SolveSolvedPayload, ack?: AckFn<SolveSolvedResult>) => void;
@@ -369,6 +386,8 @@ export interface ServerToClientEvents {
   'match:loading': (payload: { scramble: string; cubeType: CubeType; deadlineTs: number }) => void;
   'match:countdown': (payload: { startsAtTs: number; durationMs: number }) => void;
   'match:inspection_started': (payload: { endsAtTs: number; durationMs: number }) => void;
+  /** พร้อมครบทุกคน → inspection จบที่เวลาใหม่ (+3 วินาที) — ค่าเดียวกับ `phaseEndsAtTs` ใน snapshot (ADR-078) */
+  'match:inspection_shortened': (payload: { endsAtTs: number }) => void;
   'match:started': (payload: { serverStartTs: number }) => void;
   'match:final_countdown': (payload: {
     firstSolverUserId: number;
@@ -392,6 +411,7 @@ export interface ServerToClientEvents {
     rankNo: number;
   }) => void;
   'player:dnf': (payload: { userId: number; reason: DnfReason }) => void;
+  'player:inspection_ready': (payload: { userId: number; ready: boolean }) => void;
   'player:disconnected': (payload: { userId: number; graceEndsAtTs: number }) => void;
   'player:reconnected': (payload: { userId: number }) => void;
 
