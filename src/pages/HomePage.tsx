@@ -107,7 +107,11 @@ interface HeroCardProps {
  */
 function HeroCard({ cubeType, onCubeTypeChange }: HeroCardProps) {
   const queue = useQueue();
-  const queuing = queue.phase === 'queued';
+  /**
+   * `ready_check` ยังนับว่าอยู่ในคิว (ADR-077 ข้อ 4) — ถ้าไม่รวมเข้ามาด้วย ปุ่ม "จับคู่"
+   * จะโผล่กลับมาอยู่หลัง modal ยืนยัน แล้วกลับมาเห็นอีกทีตอน modal ปิด
+   */
+  const queuing = queue.phase === 'queued' || queue.phase === 'ready_check';
   /**
    * อยู่ได้ช่องคิวเดียวเท่านั้น (`E_ALREADY_IN_QUEUE`) — ระหว่างรอจึงเหลือปุ่มเดียวคือ
    * "ยกเลิก" ของช่องที่รออยู่จริง ไม่ใช่ปุ่มที่กดค้างไว้ (server เป็นคนบอกว่าช่องไหน)

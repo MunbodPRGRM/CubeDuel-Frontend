@@ -1,5 +1,5 @@
 import { createContext } from 'react';
-import type { QueueKind } from './types';
+import type { QueueKind, QueueRival, QueueTimeoutReason } from './types';
 import type { CubeType } from '@/types/cube';
 
 /**
@@ -16,8 +16,30 @@ export type QueuePhase =
   | 'idle'
   /** กำลังรอคู่ */
   | 'queued'
-  /** รอครบ 180 วิแล้วไม่เจอใคร — server เอาออกจากคิวให้แล้ว */
+  /**
+   * เจอกลุ่มแล้ว **แต่ยังไม่มีห้อง** — ต้องกด "เล่นเลย / ยกเลิก" ภายใน 12 วินาที (ADR-077)
+   * ยังนับว่าอยู่ในคิวอยู่ ถ้ากลุ่มถูกยกเลิกจะกลับมาเป็น `queued` เอง
+   */
+  | 'ready_check'
+  /**
+   * หมดเวลาแล้วและ **server เอาออกจากคิวให้แล้ว** — ดู `timedOutReason` ว่าหมดเวลาตัวไหน
+   * (รอครบ 180 วิไม่เจอใคร หรือเจอคู่แล้วไม่กดยืนยันทัน)
+   */
   | 'timeout';
+
+/** กลุ่มที่กำลังรอยืนยัน — มีค่าเฉพาะตอน `phase === 'ready_check'` */
+export interface QueueReadyCheck {
+  /** คนอื่นในกลุ่ม ไม่รวมตัวเอง */
+  rivals: QueueRival[];
+  /** จำนวนคนทั้งกลุ่มรวมตัวเอง */
+  groupSize: number;
+  /** กดยอมรับไปแล้วกี่คน — โชว์ "2/4" ในห้องหลายคน */
+  acceptedCount: number;
+  /** เรากดยอมรับไปแล้วหรือยัง — ใช้ล็อกปุ่ม ค่านี้มาจาก server ไม่ใช่จำเอง */
+  youAccepted: boolean;
+  /** เวลาของ **นาฬิกา server** ที่หมดเวลายืนยัน — ใช้คู่กับ `ServerClock` เท่านั้น */
+  expiresAtTs: number;
+}
 
 export interface QueueState {
   phase: QueuePhase;
@@ -37,6 +59,15 @@ export interface QueueState {
   playersInQueue: number;
   /** รอไปทั้งหมดกี่ ms ก่อนหมดเวลา — มีค่าเฉพาะตอน `phase === 'timeout'` */
   timedOutAfterMs: number | null;
+  /** หมดเวลาเพราะอะไร — มีค่าเฉพาะตอน `phase === 'timeout'` (ADR-077 ข้อ 6) */
+  timedOutReason: QueueTimeoutReason | null;
+  /** กลุ่มที่รอยืนยันอยู่ — `null` ทุก phase ยกเว้น `ready_check` */
+  readyCheck: QueueReadyCheck | null;
+  /**
+   * ข้อความอธิบายสิ่งที่ server เพิ่งทำให้เอง (เช่นกลุ่มถูกยกเลิกแล้วพากลับเข้าคิว)
+   * แยกจาก `error` เพราะไม่ใช่ความผิดพลาด — จอควรแสดงคนละโทนสี
+   */
+  notice: string | null;
 }
 
 export interface QueueContextValue extends QueueState {
@@ -46,6 +77,10 @@ export interface QueueContextValue extends QueueState {
   /** คืน `true` เมื่อเข้าคิวสำเร็จ — `kind` เลือกช่องคิว (1v1 หรือ 3–4 คน) */
   join: (cubeType: CubeType, kind: QueueKind) => Promise<boolean>;
   leave: () => Promise<void>;
+  /** กด "เล่นเลย" ในหน้ายืนยัน — ครบทุกคนแล้ว server ถึงจะสร้างห้อง (ADR-077) */
+  accept: () => Promise<void>;
+  /** กด "ยกเลิก" ในหน้ายืนยัน — ออกจากคิวไปเลย */
+  decline: () => Promise<void>;
   /** ปิดข้อความหมดเวลา/ข้อผิดพลาดทิ้ง */
   dismiss: () => void;
 }
