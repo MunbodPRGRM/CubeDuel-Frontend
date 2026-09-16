@@ -26,6 +26,7 @@ import { RequireAuth } from '@/auth/RequireAuth';
 import { SocketProvider } from '@/socket/SocketProvider';
 import { QueueProvider } from '@/socket/QueueProvider';
 import { QueueBanner } from '@/queue/QueueBanner';
+import { ReadyCheckModal } from '@/queue/ReadyCheckModal';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { ServerGate } from '@/components/ServerGate';
 import { TutorialProvider } from '@/tutorial/TutorialProvider';
@@ -120,6 +121,8 @@ export default function App() {
                 </Route>
               </Routes>
               <QueueBanner />
+              {/* เจอคู่แล้วต้องกดยืนยันก่อน — เด้งทับทุกหน้า ไม่ใช่แค่หน้าแรก (ADR-077) */}
+              <ReadyCheckModal />
               {/* เครื่องหลุดเน็ต — เตือนทับทุกหน้า เพราะทุกหน้าใช้งานต่อไม่ได้เหมือนกันหมด */}
               <OfflineBanner />
             </TutorialProvider>
