@@ -8,6 +8,7 @@ import type {
   UpdateProfileInput,
 } from '@/types/auth';
 import { AuthContext, type AuthContextValue } from './auth-context';
+import { setSessionNotice } from './session-notice';
 
 /**
  * เก็บสถานะ "ตอนนี้ใครล็อกอินอยู่" ไว้ที่เดียวของทั้งแอป
@@ -85,6 +86,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [applySession]);
 
   /**
+   * เซสชันถูกเพิกถอนจากฝั่ง server ไปแล้ว (ถูกเข้าสู่ระบบจากอุปกรณ์อื่น — ADR-076)
+   * ยิง `/auth/logout` ซ้ำไม่มีประโยชน์ เพราะ token ที่จะใช้ยิงก็ถูกเพิกถอนไปด้วย
+   */
+  const endSession = useCallback(
+    (message: string) => {
+      setSessionNotice(message);
+      applySession(null);
+    },
+    [applySession],
+  );
+
+  /**
    * ผลลัพธ์ของ PATCH คือโปรไฟล์ชุดเต็ม → ทับของเดิมทั้งก้อน ไม่ต้องเดาว่าช่องไหนเปลี่ยน
    * · คืนค่าออกไปด้วย เพราะ server normalize `bio` แล้วค่าอาจไม่ตรงกับที่พิมพ์ ฟอร์มต้องเอาไปทับ state ของตัวเอง (ADR-066 ข้อ 4)
    */
@@ -104,8 +117,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo<AuthContextValue>(
-    () => ({ status, user, login, register, logout, logoutAll, updateProfile, deleteAccount }),
-    [status, user, login, register, logout, logoutAll, updateProfile, deleteAccount],
+    () => ({
+      status,
+      user,
+      login,
+      register,
+      logout,
+      logoutAll,
+      endSession,
+      updateProfile,
+      deleteAccount,
+    }),
+    [status, user, login, register, logout, logoutAll, endSession, updateProfile, deleteAccount],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -348,6 +348,12 @@ export interface ServerToClientEvents {
   'player:disconnected': (payload: { userId: number; graceEndsAtTs: number }) => void;
   'player:reconnected': (payload: { userId: number }) => void;
 
+  /**
+   * บัญชีนี้ถูกเข้าสู่ระบบจากอุปกรณ์อื่น — สายนี้กำลังจะถูกตัด (ADR-076 · socket-events.md ข้อ 2)
+   * ต้องล้างเซสชันในเครื่องทันที ไม่ต้องยิง `/auth/logout` เพราะ token ถูกเพิกถอนไปแล้ว
+   */
+  'session:revoked': (payload: { reason: 'signed_in_elsewhere' }) => void;
+
   error: (payload: AckError) => void;
 }
 

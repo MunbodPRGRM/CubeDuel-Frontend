@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/auth/useAuth';
+import { takeSessionNotice } from '@/auth/session-notice';
 import { ApiError } from '@/lib/api';
 import { AuthLayout } from '@/components/AuthLayout';
 import { FormAlert } from '@/components/FormAlert';
@@ -22,8 +23,9 @@ export default function LoginPage() {
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [formError, setFormError] = useState<string | undefined>(() =>
-    oauthErrorMessage(oauthError, oauthProvider),
+  /** ถูกเตะออกมา (เช่นมีคนเข้าสู่ระบบบัญชีเดียวกันที่เครื่องอื่น — ADR-076) มาก่อน error ของ OAuth */
+  const [formError, setFormError] = useState<string | undefined>(
+    () => takeSessionNotice() ?? oauthErrorMessage(oauthError, oauthProvider),
   );
   const [loading, setLoading] = useState(false);
 
@@ -111,6 +113,11 @@ export default function LoginPage() {
 
         <SubmitButton loading={loading}>เข้าสู่ระบบ</SubmitButton>
       </form>
+
+      {/* หนึ่งบัญชีใช้ได้ทีละเครื่อง — บอกไว้ก่อนกด ไม่มี dialog ยืนยัน (ADR-076 ข้อ 6) */}
+      <p className="mt-3 text-center text-xs text-slate-500">
+        หนึ่งบัญชีใช้ได้ทีละเครื่อง — เข้าสู่ระบบที่นี่แล้วอุปกรณ์อื่นจะถูกให้ออกจากระบบ
+      </p>
 
       <OrDivider />
       {/* ส่งหน้าที่ RequireAuth เด้งมาไปด้วย — ล็อกอินด้วย Google/Facebook แล้วกลับที่เดิมเหมือนล็อกอินด้วยรหัสผ่าน */}
