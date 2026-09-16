@@ -7,7 +7,8 @@ import { ErrorNotice } from '@/components/ErrorScreen';
 import { MatchHistoryList } from '@/components/MatchHistoryList';
 import { PageSpinner } from '@/components/PageSpinner';
 import { ReportPlayerDialog } from '@/components/ReportPlayerDialog';
-import { ShareButton } from '@/components/ShareButton';
+import { ShareCardDialog } from '@/components/share/ShareCardDialog';
+import { buildProfileCard } from '@/components/share/share-card-data';
 import { StatCard } from '@/components/StatCard';
 import { useApiData } from '@/hooks/useApiData';
 import { formatSolveTime, formatWinRate } from '@/lib/format';
@@ -67,6 +68,7 @@ function ProfileBody({
   const { logout, user: viewer } = useAuth();
   const navigate = useNavigate();
   const [reporting, setReporting] = useState(false);
+  const [sharing, setSharing] = useState(false);
 
   async function handleLogout() {
     try {
@@ -128,13 +130,14 @@ function ProfileBody({
           </div>
 
           <div className="flex shrink-0 flex-col gap-2">
-            {/* แชร์ได้ทั้งโปรไฟล์ตัวเองและของคนอื่น — เส้นทาง /users/:id เปิดสาธารณะอยู่แล้ว */}
-            <ShareButton
-              path={`/users/${userId}`}
-              title={`โปรไฟล์ ${name} บน CubeDuel`}
-              label="แชร์โปรไฟล์"
+            {/* แชร์ได้ทั้งโปรไฟล์ตัวเองและของคนอื่น — ออกมาเป็นการ์ดรูปภาพ ไม่ใช่ลิงก์เปล่า (ADR-074) */}
+            <button
+              type="button"
+              onClick={() => setSharing(true)}
               className="rounded-xl border border-line bg-navy-800 px-5 py-2.5 text-sm font-semibold text-slate-300 transition hover:bg-navy-700 hover:text-white"
-            />
+            >
+              🖼 แชร์โปรไฟล์
+            </button>
             {/* รายงานได้เฉพาะโปรไฟล์คนอื่น และต้องล็อกอินก่อน — ไม่แนบแมตช์ (ADR-051 ข้อ 4) */}
             {!isOwner && viewer && (
               <button
@@ -172,6 +175,21 @@ function ProfileBody({
           </div>
         </div>
       </section>
+
+      {/* การ์ดใช้ตัวเลขของประเภทที่เลือกอยู่ตอนกด — โปรไฟล์หนึ่งหน้ามี 4 ชุดตัวเลข */}
+      {sharing && (
+        <ShareCardDialog
+          data={buildProfileCard({
+            userId,
+            profile: profile.data,
+            rating,
+            stats: stats.data,
+            cubeType,
+          })}
+          title={`โปรไฟล์ ${name} บน CubeDuel`}
+          onClose={() => setSharing(false)}
+        />
+      )}
 
       {reporting && profile.data && (
         <ReportPlayerDialog

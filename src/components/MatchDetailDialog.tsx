@@ -1,8 +1,9 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useApiData } from '@/hooks/useApiData';
 import type { MatchDetail, MultiplayerMatchDetail } from '@/types/match';
 import { MatchDetailBody } from './MatchDetailBody';
-import { ShareButton } from './ShareButton';
+import { ShareCardDialog } from './share/ShareCardDialog';
+import { buildMatchCard } from './share/share-card-data';
 
 interface MatchDetailDialogProps {
   /** ตัวเลือก endpoint — เลข id ของสองตารางชนกันได้ ห้ามเดาเอง (ADR-044 ข้อ 1) */
@@ -28,6 +29,8 @@ export function MatchDetailDialog({ kind, id, highlightUserId, onClose }: MatchD
   const sharePath = kind === '1v1' ? `/matches/${id}` : `/multiplayer-matches/${id}`;
   const loading = duel.loading || multi.loading;
   const error = duel.error ?? multi.error;
+  const detail = duel.data ?? multi.data ?? null;
+  const [sharing, setSharing] = useState(false);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -57,11 +60,14 @@ export function MatchDetailDialog({ kind, id, highlightUserId, onClose }: MatchD
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            <ShareButton
-              path={sharePath}
-              title="ผลการแข่งขัน CubeDuel"
-              className="rounded-lg border border-line px-2.5 py-1 text-sm text-slate-400 transition hover:bg-navy-800 hover:text-slate-200"
-            />
+            <button
+              type="button"
+              disabled={!detail}
+              onClick={() => setSharing(true)}
+              className="rounded-lg border border-line px-2.5 py-1 text-sm text-slate-400 transition hover:bg-navy-800 hover:text-slate-200 disabled:opacity-50"
+            >
+              🖼 แชร์
+            </button>
             <a
               href={sharePath}
               className="rounded-lg border border-line px-2.5 py-1 text-sm text-slate-400 transition hover:bg-navy-800 hover:text-slate-200"
@@ -83,6 +89,15 @@ export function MatchDetailDialog({ kind, id, highlightUserId, onClose }: MatchD
 
         {duel.data && <MatchDetailBody detail={duel.data} highlightUserId={highlightUserId} />}
         {multi.data && <MatchDetailBody detail={multi.data} highlightUserId={highlightUserId} />}
+
+        {/* การ์ดมองจากเจ้าของประวัติที่หน้านั้นไฮไลต์อยู่ (ADR-074 ข้อ 6) */}
+        {sharing && detail && (
+          <ShareCardDialog
+            data={buildMatchCard(detail, highlightUserId)}
+            title="ผลการแข่งขัน CubeDuel"
+            onClose={() => setSharing(false)}
+          />
+        )}
       </div>
     </div>
   );
