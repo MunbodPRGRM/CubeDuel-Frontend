@@ -271,6 +271,12 @@ export default function PracticePage() {
   /** กำลังรอ scramble หรือกำลังหมุนให้ดูอยู่ (scramble / "แก้ให้ดู") = ห้ามกดอะไรทั้งแผง */
   const busy = loadingScramble || scrambling || replaying;
 
+  /**
+   * ข้าม inspection ด้วยปุ่ม/Space Bar — เริ่มจับเวลาทันที **ไม่มี move ถูกนับ**
+   * (ต่างจากการหมุนหน้าที่ move นั้นเป็น move แรก · ห้องฝึกซ้อมเท่านั้น — ADR-032 ข้อ 3)
+   */
+  const handleSkipInspection = useCallback(() => timerRef.current.skipInspection(), []);
+
   // เว้นวรรค = เริ่มจับเวลา ตามธรรมเนียมโปรแกรมจับเวลาของ speedcuber
   // (ยังไม่มี scramble ก็ให้เว้นวรรคสั่งสุ่มได้ ไม่งั้นเข้าห้องมาแล้วปุ่มเดียวที่กดได้อยู่ห่างจากมือ)
   useEffect(() => {
@@ -279,13 +285,15 @@ export default function PracticePage() {
       const target = event.target as HTMLElement | null;
       if (target && ['INPUT', 'TEXTAREA', 'BUTTON'].includes(target.tagName)) return;
       event.preventDefault();
-      if (busy) return;
-      if (phase === 'idle' && scramble) handleStart();
+      // กดค้างไว้ = keydown ซ้ำรัว ๆ — ไม่งั้นกดเริ่มแล้วค้างนิ้วครู่เดียวจะข้าม inspection ทันที
+      if (event.repeat || busy) return;
+      if (phase === 'inspection') handleSkipInspection();
+      else if (phase === 'idle' && scramble) handleStart();
       else if (phase === 'idle' || phase === 'finished') void fetchScramble(cubeType);
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [phase, scramble, handleStart, fetchScramble, cubeType, busy]);
+  }, [phase, scramble, handleStart, handleSkipInspection, fetchScramble, cubeType, busy]);
 
   const times = useMemo(() => solves.map((s) => s.seconds), [solves]);
   const statusText = scrambling
@@ -363,7 +371,7 @@ export default function PracticePage() {
                   : replaying
                     ? 'กำลังย้อนท่าให้ดูทีละท่า · นาฬิกาจะหยุดเมื่อหมุนครบและคิวบ์ครบทุกหน้า'
                     : phase === 'inspection'
-                      ? 'ลากดูรอบ ๆ ได้ · หมุนหน้าคิวบ์เมื่อไหร่ = เริ่มจับเวลาทันที (ท่านั้นนับเป็นท่าแรก)'
+                      ? 'ลากดูรอบ ๆ ได้ · พร้อมแล้วกด Space Bar หรือหมุนหน้าคิวบ์ = เริ่มจับเวลาทันที (ท่าที่หมุนนับเป็นท่าแรก)'
                       : scramble === null
                         ? 'คิวบ์ครบทุกหน้าแล้ว · กด "สุ่ม scramble" แล้วระบบจะหมุนให้ดูทีละท่า'
                         : 'หมุนเล่นได้ตามใจ · กดเริ่มแล้วคิวบ์จะกลับไปที่ scramble ให้เอง'}
@@ -446,8 +454,11 @@ export default function PracticePage() {
                   {replaying ? 'กำลังแก้ให้ดู…' : 'เสร็จทันที (แก้ให้ดู)'}
                 </button>
 
+                {/* ปุ่มในช่องนี้ต้องเป็น <button> คนละตัวเมื่อเปลี่ยนหน้าที่ (`key` ต่างกัน) — ถ้า React ใช้ตัวเดิมต่อ
+                    โฟกัสจากการคลิกจะค้างอยู่ แล้ว Space Bar กลายเป็นการคลิกปุ่มใหม่ในช่องเดียวกัน (เช่น "ยกเลิกรอบนี้") */}
                 {phase === 'idle' || phase === 'finished' ? (
                   <button
+                    key="primary"
                     type="button"
                     onClick={() =>
                       phase === 'idle' && scramble ? handleStart() : void fetchScramble(cubeType)
@@ -461,21 +472,35 @@ export default function PracticePage() {
                       ? 'กำลังหมุน scramble ให้ดู…'
                       : phase === 'finished'
                         ? assisted
-                          ? 'สุ่มใหม่ (เว้นวรรค)'
-                          : 'เล่นอีกครั้ง (เว้นวรรค)'
+                          ? 'สุ่มใหม่ (Space Bar)'
+                          : 'เล่นอีกครั้ง (Space Bar)'
                         : scramble
-                          ? 'เริ่มจับเวลา (เว้นวรรค)'
-                          : 'สุ่ม scramble (เว้นวรรค)'}
+                          ? 'เริ่มจับเวลา (Space Bar)'
+                          : 'สุ่ม scramble (Space Bar)'}
                   </button>
                 ) : (
-                  <button
-                    type="button"
-                    onClick={handleAbort}
-                    disabled={busy}
-                    className="col-span-2 rounded-lg border border-loss/40 px-3 py-2.5 text-sm font-semibold text-loss transition hover:bg-loss/10 disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    ยกเลิกรอบนี้ (DNF)
-                  </button>
+                  <>
+                    {phase === 'inspection' && (
+                      <button
+                        key="skip-inspection"
+                        type="button"
+                        onClick={handleSkipInspection}
+                        disabled={busy}
+                        className="col-span-2 rounded-lg bg-brand-500 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        เริ่มจับเวลาเลย (Space Bar)
+                      </button>
+                    )}
+                    <button
+                      key="abort"
+                      type="button"
+                      onClick={handleAbort}
+                      disabled={busy}
+                      className="col-span-2 rounded-lg border border-loss/40 px-3 py-2.5 text-sm font-semibold text-loss transition hover:bg-loss/10 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      ยกเลิกรอบนี้ (DNF)
+                    </button>
+                  </>
                 )}
               </div>
 
