@@ -3,7 +3,7 @@ import { AppHeader } from '@/components/AppHeader';
 
 export default function NotFoundPage() {
   return (
-    <div className="min-h-screen bg-navy-900">
+    <div className="min-h-app bg-navy-900">
       <AppHeader />
       <main className="page-wide px-4 py-24 text-center">
         <p className="tabular text-6xl font-bold text-navy-700">404</p>

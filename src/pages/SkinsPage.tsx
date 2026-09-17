@@ -59,7 +59,7 @@ export default function SkinsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-navy-900">
+    <div className="min-h-app bg-navy-900">
       <AppHeader />
       <main className="page-wide px-4 py-8">
         <header className="mb-6">

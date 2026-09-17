@@ -36,7 +36,7 @@ export default function MatchResultPage({ kind }: { kind: '1v1' | 'multiplayer' 
   const detail = duel.data ?? multi.data ?? null;
 
   return (
-    <div className="min-h-screen bg-navy-900">
+    <div className="min-h-app bg-navy-900">
       <AppHeader />
       <main className="mx-auto max-w-2xl px-4 py-8">
         <div className="flex flex-wrap items-center justify-between gap-3">

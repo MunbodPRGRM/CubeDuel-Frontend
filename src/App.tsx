@@ -28,6 +28,7 @@ import { QueueProvider } from '@/socket/QueueProvider';
 import { QueueBanner } from '@/queue/QueueBanner';
 import { ReadyCheckModal } from '@/queue/ReadyCheckModal';
 import { OfflineBanner } from '@/components/OfflineBanner';
+import { MobileTabBar } from '@/components/MobileTabBar';
 import { ServerGate } from '@/components/ServerGate';
 import { TutorialProvider } from '@/tutorial/TutorialProvider';
 
@@ -121,6 +122,8 @@ export default function App() {
                 </Route>
               </Routes>
               <QueueBanner />
+              {/* จอแคบซ่อนเมนูบน — แถบล่างเป็นทางไปหน้าหลัก วางครั้งเดียวที่นี่ (ADR-083 ข้อ 3) */}
+              <MobileTabBar />
               {/* เจอคู่แล้วต้องกดยืนยันก่อน — เด้งทับทุกหน้า ไม่ใช่แค่หน้าแรก (ADR-077) */}
               <ReadyCheckModal />
               {/* เครื่องหลุดเน็ต — เตือนทับทุกหน้า เพราะทุกหน้าใช้งานต่อไม่ได้เหมือนกันหมด */}

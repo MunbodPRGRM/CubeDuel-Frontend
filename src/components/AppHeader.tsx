@@ -80,7 +80,7 @@ export function AppHeader() {
             <span className="h-5 w-5 animate-spin rounded-full border-2 border-line border-t-brand-500" />
           ) : user ? (
             <>
-              <Link to="/profile" className="hidden text-right leading-tight sm:block">
+              <Link to="/profile" className="hidden text-right leading-tight md:block">
                 <p className="text-sm font-medium text-slate-100">{displayName(user)}</p>
                 <p className="tabular text-xs text-brand-400">
                   {elo === undefined ? '— ELO' : `${elo} ELO`}

@@ -25,7 +25,10 @@ export function QueueBanner() {
 
   if (queue.phase === 'timeout') {
     return (
-      <div role="status" className="fixed inset-x-0 bottom-4 z-40 flex justify-center px-4">
+      <div
+        role="status"
+        className="fixed inset-x-0 bottom-[calc(var(--tabbar-space,0px)+1rem)] z-40 flex justify-center px-4"
+      >
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-gold-400/40 bg-navy-850/95 px-4 py-2.5 text-sm shadow-lg shadow-navy-950/40 backdrop-blur">
           <span className="text-gold-400">
             {queue.timedOutReason === 'ready_check'
@@ -57,7 +60,7 @@ export function QueueBanner() {
   return (
     <div
       role="status"
-      className="fixed inset-x-0 bottom-4 z-40 flex justify-center px-4"
+      className="fixed inset-x-0 bottom-[calc(var(--tabbar-space,0px)+1rem)] z-40 flex justify-center px-4"
       // ให้คลิกทะลุไปโดนของข้างหลังได้ ยกเว้นตัวการ์ดเอง
       style={{ pointerEvents: 'none' }}
     >
