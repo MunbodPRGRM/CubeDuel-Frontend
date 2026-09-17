@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { CameraMode, CubeOrientation } from '@/cube';
+import { useWideScreen } from '@/hooks/useWideScreen';
 import { setPlayPref, usePlayPrefs, type RoomLayout } from '@/lib/play-prefs';
 import type { CubeType } from '@/types/cube';
+import { LayoutThumb } from './LayoutThumb';
 
 /** ประเภทที่พลิก "หน้า U ลงล่าง" ได้ — ต้องตรงกับ `ORIENTABLE_TYPES` ใน `ThreeCubeView` */
 const ORIENTABLE: readonly CubeType[] = ['2x2x2', '3x3x3'];
@@ -43,8 +45,9 @@ interface PlaySettingsMenuProps {
   /**
    * เปิดส่วน "การจัดวาง" — **ห้องฝึกซ้อมไม่ส่ง** เพราะไม่มีคู่แข่งให้จัดวาง
    * `allowStacked = false` (ห้อง 3–4 คน) ทำให้ตัวเลือกบน-ล่างกดไม่ได้ (ADR-063 ข้อ 3)
+   * · `rivalCount` = จำนวนคู่แข่งของห้อง ใช้วาดรูปตัวอย่าง (ADR-081 ข้อ 3)
    */
-  layout?: { allowStacked: boolean };
+  layout?: { allowStacked: boolean; rivalCount: number };
   className?: string;
 }
 
@@ -80,6 +83,7 @@ export function PlaySettingsMenu({ cubeType, layout, className = '' }: PlaySetti
   }, [open]);
 
   const orientable = ORIENTABLE.includes(cubeType);
+  const wide = useWideScreen();
 
   return (
     <div ref={rootRef} className={`relative ${className}`}>
@@ -132,36 +136,112 @@ export function PlaySettingsMenu({ cubeType, layout, className = '' }: PlaySetti
 
           {layout && (
             <Section title="การจัดวาง" note="จำไว้ในเครื่องนี้ ใช้กับทุกห้องที่เข้าต่อจากนี้">
-              <div role="radiogroup" aria-label="การจัดวางหน้าห้อง" className="grid gap-1.5">
-                {LAYOUT_OPTIONS.map((option) => {
-                  const blocked = option.duelOnly === true && !layout.allowStacked;
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      role="radio"
-                      aria-checked={prefs.roomLayout === option.value}
-                      disabled={blocked}
-                      onClick={() => setPlayPref('roomLayout', option.value)}
-                      className={`rounded-xl border px-3 py-2 text-left transition disabled:cursor-not-allowed disabled:opacity-40 ${
-                        prefs.roomLayout === option.value
-                          ? 'border-brand-500 bg-brand-500/10'
-                          : 'border-line-soft hover:border-line hover:bg-navy-800/60'
-                      }`}
-                    >
-                      <span className="block text-sm text-slate-100">{option.label}</span>
-                      <span className="mt-0.5 block text-[11px] leading-4 text-slate-500">
-                        {blocked ? 'ใช้ได้กับห้อง 1 ต่อ 1 เท่านั้น' : option.hint}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
+              <LayoutPicker
+                allowStacked={layout.allowStacked}
+                rivalCount={layout.rivalCount}
+                value={prefs.roomLayout}
+                wide={wide}
+              />
             </Section>
           )}
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * ตัวเลือกการจัดวางแบบการ์ดมีรูป (ADR-081 ข้อ 3) — `auto` เต็มแถวบนพร้อมรูปจอกว้าง/มือถือ
+ * อีก 4 แบบเป็นตาราง 2×2 · คำอธิบายของตัวที่เลือกอยู่ขึ้นบรรทัดเดียวใต้ตาราง
+ * (การ์ดกว้าง ~130 px ใส่คำอธิบายเต็มไม่พอ และมือถือไม่มี hover ให้ดู `title`)
+ */
+function LayoutPicker({
+  allowStacked,
+  rivalCount,
+  value,
+  wide,
+}: {
+  allowStacked: boolean;
+  rivalCount: number;
+  value: RoomLayout;
+  wide: boolean;
+}) {
+  const selected = LAYOUT_OPTIONS.find((option) => option.value === value) ?? LAYOUT_OPTIONS[0];
+  const selectedBlocked = selected.duelOnly === true && !allowStacked;
+
+  const cardClass = (option: RoomLayout) =>
+    `rounded-xl border p-2 text-left transition disabled:cursor-not-allowed disabled:opacity-40 ${
+      value === option
+        ? 'border-brand-500 bg-brand-500/10'
+        : 'border-line-soft hover:border-line hover:bg-navy-800/60'
+    }`;
+
+  return (
+    <>
+      <div role="radiogroup" aria-label="การจัดวางหน้าห้อง" className="grid grid-cols-2 gap-1.5">
+        {LAYOUT_OPTIONS.map((option) => {
+          const blocked = option.duelOnly === true && !allowStacked;
+          const hint = blocked ? 'ใช้ได้กับห้อง 1 ต่อ 1 เท่านั้น' : option.hint;
+
+          if (option.value === 'auto') {
+            return (
+              <button
+                key={option.value}
+                type="button"
+                role="radio"
+                aria-checked={value === option.value}
+                title={hint}
+                onClick={() => setPlayPref('roomLayout', option.value)}
+                className={`col-span-2 flex items-end gap-3 ${cardClass(option.value)}`}
+              >
+                <span className="flex items-end gap-2">
+                  <span className="flex flex-col items-center gap-0.5">
+                    <LayoutThumb layout="classic" rivalCount={rivalCount} className="w-20" />
+                    <span className="text-[10px] text-slate-500">จอกว้าง</span>
+                  </span>
+                  <span className="flex flex-col items-center gap-0.5">
+                    <LayoutThumb layout="focus" rivalCount={rivalCount} mobile className="w-8" />
+                    <span className="text-[10px] text-slate-500">มือถือ</span>
+                  </span>
+                </span>
+                <span className="mb-3.5 text-sm text-slate-100">{option.label}</span>
+              </button>
+            );
+          }
+
+          return (
+            <button
+              key={option.value}
+              type="button"
+              role="radio"
+              aria-checked={value === option.value}
+              title={hint}
+              disabled={blocked}
+              onClick={() => setPlayPref('roomLayout', option.value)}
+              className={cardClass(option.value)}
+            >
+              <LayoutThumb layout={option.value} rivalCount={rivalCount} className="w-full" />
+              <span className="mt-1 block text-xs text-slate-100">{option.label}</span>
+              {blocked && (
+                <span className="block text-[10px] leading-3 text-slate-500">เฉพาะ 1 ต่อ 1</span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      <p className="mt-2 text-[11px] leading-4 text-slate-400">
+        <span className="text-slate-200">{selected.label}:</span>{' '}
+        {selectedBlocked
+          ? 'ใช้ได้กับห้อง 1 ต่อ 1 เท่านั้น — ห้องนี้จึงใช้แบบเดิมแทน'
+          : selected.hint}
+      </p>
+      {!wide && (
+        <p className="mt-1 text-[11px] leading-4 text-slate-500">
+          จอแคบ: แบบอื่นนอกจาก "อัตโนมัติ" กับ "เราเด่น" จะเรียงลงมาเป็นแนวตั้ง
+        </p>
+      )}
+    </>
   );
 }
 

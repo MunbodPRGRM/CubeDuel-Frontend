@@ -9,6 +9,11 @@ interface RoomStageProps {
   rivals: ReactNode[];
   /** แผงคู่แข่งถูกย่อแล้วหรือยัง — ตัวเดียวกับที่ส่งให้ `PlayerCubePanel` */
   compactRivals: boolean;
+  /**
+   * คู่แข่งเป็น PiP อยู่ในแผงเราแล้ว (`focus` บนจอแคบเท่านั้น · ADR-081 ข้อ 2) — `RoomStage` ไม่ต้องวาง `rivals`
+   * ตัดสินที่ `RoomPage` ด้วย `useWideScreen` เพราะโครง DOM ต่างกัน CSS อย่างเดียวสลับไม่ได้
+   */
+  pipRivals: boolean;
   /** การ์ดหัวห้อง + แผงข้อมูลตรงกลาง */
   info: ReactNode;
 }
@@ -22,11 +27,19 @@ interface RoomStageProps {
  *
  * จอแคบกว่า `lg` ทุกแบบซ้อนเป็นแนวตั้ง เรา → ข้อมูล → คู่แข่ง (ลำดับใน DOM เป็นแบบนั้นอยู่แล้ว)
  * ยกเว้น `focus` ที่คงคู่แข่งลอยมุมไว้ เพราะนั่นคือสาระของมัน (= PiP บนมือถือ, CLAUDE.md ข้อ 9)
+ * · จอแคบคู่แข่งเป็น `PipDock` ในกรอบคิวบ์เรา ลากย้ายมุม/ย่อได้ (ADR-081) · จอ `lg` เป็นแผง `compact` ลอยมุมแบบเดิม
  *
  * ⚠️ กล่องที่ครอบ `PlayerCubePanel` ต้องเป็น **grid item โดยตรง** หรือมีความสูงของตัวเอง
  * ไม่งั้น `lg:h-full` ของแผงจะตกกลับไปเป็น `auto` แล้วคิวบ์จะสูงเป็นศูนย์
  */
-export function RoomStage({ layout, self, rivals, compactRivals, info }: RoomStageProps) {
+export function RoomStage({
+  layout,
+  self,
+  rivals,
+  compactRivals,
+  pipRivals,
+  info,
+}: RoomStageProps) {
   /**
    * คอลัมน์คู่แข่ง — ห้อง 1v1 คือกล่องเดิมที่แผงล็อกความสูงเอง
    * ห้อง 3–4 คนให้คอลัมน์ล็อกความสูงแทน แล้วหารให้แผงย่อยเท่า ๆ กัน (ADR-044 ข้อ 3)
@@ -72,14 +85,20 @@ export function RoomStage({ layout, self, rivals, compactRivals, info }: RoomSta
       <div className="grid gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="relative lg:min-h-0">
           {self}
-          {/* แผงคู่แข่งลอยทับมุมขวาบนของกล่องคิวบ์เรา — กล่องนอกไม่รับนิ้ว ไม่งั้นจะไปบังการลากคิวบ์ */}
-          <div className="pointer-events-none absolute right-3 top-3 z-10 flex w-32 flex-col gap-2 sm:w-40 lg:w-56">
-            {rivals.map((rival, index) => (
-              <div key={index} className="pointer-events-auto flex h-24 sm:h-28 lg:h-40">
-                {rival}
-              </div>
-            ))}
-          </div>
+          {/*
+            จอแคบ = PiP ที่ลากย้ายมุม/ย่อได้ ซึ่งอยู่ **ข้างในกรอบคิวบ์ของแผงเรา** แล้ว (`PipDock` ผ่าน prop
+            `overlay` ของ `PlayerCubePanel` · ADR-081 ข้อ 2) — ที่นี่ไม่ต้องวางอะไร
+            จอ `lg`: แผงคู่แข่งลอยทับมุมขวาบนแบบเดิม — กล่องนอกไม่รับนิ้ว ไม่งั้นจะไปบังการลากคิวบ์
+          */}
+          {!pipRivals && (
+            <div className="pointer-events-none absolute right-3 top-3 z-10 flex w-32 flex-col gap-2 sm:w-40 lg:w-56">
+              {rivals.map((rival, index) => (
+                <div key={index} className="pointer-events-auto flex h-24 sm:h-28 lg:h-40">
+                  {rival}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
         {infoColumn('')}
       </div>
