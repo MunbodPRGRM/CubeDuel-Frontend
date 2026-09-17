@@ -14,6 +14,8 @@ interface SkinGalleryProps {
   /** สกินที่บันทึกไว้ในบัญชี — ได้ป้าย "ใช้อยู่" */
   savedId: string;
   onChange: (skinId: string) => void;
+  /** จอแคบ: ตัวกรองแถวเดียวเลื่อนแนวนอน · การ์ดเตี้ยสองคอลัมน์ (ADR-083 ข้อ 7) */
+  compact?: boolean;
 }
 
 /**
@@ -22,7 +24,7 @@ interface SkinGalleryProps {
  * รูปบนการ์ดเป็น SVG จากจานสี **ไม่มี WebGL** (ข้อ 3) — หน้าตาจริงดูที่พรีวิวตัวเดียวของหน้า
  * ตัวกรองไม่จำข้ามการเปิดหน้า เพราะไม่ใช่ค่าตั้ง
  */
-export function SkinGallery({ value, savedId, onChange }: SkinGalleryProps) {
+export function SkinGallery({ value, savedId, onChange, compact = false }: SkinGalleryProps) {
   const [category, setCategory] = useState<SkinCategory | 'all'>('all');
   const skins =
     category === 'all' ? CUBE_SKINS : CUBE_SKINS.filter((skin) => skin.category === category);
@@ -37,7 +39,12 @@ export function SkinGallery({ value, savedId, onChange }: SkinGalleryProps) {
 
   return (
     <div>
-      <div role="group" aria-label="กรองตามหมวด" className="flex flex-wrap gap-2">
+      <div
+        role="group"
+        aria-label="กรองตามหมวด"
+        // จอแคบ: แถวเดียวเลื่อนแนวนอน ไม่ตัดบรรทัดกินความสูง (ADR-083 ข้อ 7)
+        className={`flex gap-2 ${compact ? 'overflow-x-auto [scrollbar-width:none]' : 'flex-wrap'}`}
+      >
         {filters.map((filter) => {
           const active = filter.id === category;
           return (
@@ -46,7 +53,7 @@ export function SkinGallery({ value, savedId, onChange }: SkinGalleryProps) {
               type="button"
               aria-pressed={active}
               onClick={() => setCategory(filter.id)}
-              className={`rounded-full border px-3.5 py-1.5 text-sm transition ${
+              className={`shrink-0 rounded-full border px-3.5 py-1.5 text-sm transition ${
                 active
                   ? 'border-brand-500 bg-brand-500/15 font-semibold text-brand-300'
                   : 'border-line bg-navy-850/80 text-slate-400 hover:border-slate-600 hover:text-slate-200'
@@ -59,7 +66,11 @@ export function SkinGallery({ value, savedId, onChange }: SkinGalleryProps) {
         })}
       </div>
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      <div
+        className={
+          compact ? 'mt-3 grid grid-cols-2 gap-2' : 'mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3'
+        }
+      >
         {skins.map((skin) => (
           <SkinCard
             key={skin.id}
@@ -67,6 +78,7 @@ export function SkinGallery({ value, savedId, onChange }: SkinGalleryProps) {
             selected={skin.id === value}
             saved={skin.id === savedId}
             onSelect={() => onChange(skin.id)}
+            compact={compact}
           />
         ))}
       </div>
@@ -79,11 +91,14 @@ function SkinCard({
   selected,
   saved,
   onSelect,
+  compact,
 }: {
   skin: CubeSkin;
   selected: boolean;
   saved: boolean;
   onSelect: () => void;
+  /** การ์ดเตี้ย ไม่มีคำอธิบาย/ชิปสี — ตารางสองคอลัมน์ของจอแคบ (รายละเอียดดูที่พรีวิวด้านบน) */
+  compact: boolean;
 }) {
   const { faceColors, bodyColor } = skin;
   return (
@@ -99,7 +114,7 @@ function SkinCard({
     >
       {/* พื้นหลังย้อมด้วยสีของสกินเอง — การ์ดแต่ละใบมีบรรยากาศของตัวเองโดยไม่ต้องมีรูปแยก */}
       <div
-        className="relative grid h-40 place-items-center"
+        className={`relative grid place-items-center ${compact ? 'h-24' : 'h-40'}`}
         style={{
           background: [
             `radial-gradient(circle at 25% 20%, ${skinCss(faceColors.U, 0.16)}, transparent 55%)`,
@@ -111,7 +126,7 @@ function SkinCard({
       >
         <SkinCubeIcon
           skin={skin}
-          size={120}
+          size={compact ? 72 : 120}
           className="drop-shadow-[0_8px_16px_rgba(0,0,0,0.45)] transition group-hover:scale-105"
         />
         {saved && (
@@ -129,12 +144,20 @@ function SkinCard({
         </span>
       </div>
 
-      <div className="flex flex-1 flex-col border-t border-line bg-navy-850 px-4 py-3">
-        <p className="font-semibold text-slate-100">{skin.label}</p>
-        <p className="mt-0.5 min-h-[2.5rem] text-xs leading-5 text-slate-500">{skin.hint}</p>
-        <div className="mt-2">
-          <SkinSwatches skin={skin} size="sm" />
-        </div>
+      <div
+        className={`flex flex-1 flex-col border-t border-line bg-navy-850 ${compact ? 'px-3 py-2' : 'px-4 py-3'}`}
+      >
+        <p className={`font-semibold text-slate-100 ${compact ? 'truncate text-sm' : ''}`}>
+          {skin.label}
+        </p>
+        {!compact && (
+          <>
+            <p className="mt-0.5 min-h-[2.5rem] text-xs leading-5 text-slate-500">{skin.hint}</p>
+            <div className="mt-2">
+              <SkinSwatches skin={skin} size="sm" />
+            </div>
+          </>
+        )}
       </div>
     </button>
   );

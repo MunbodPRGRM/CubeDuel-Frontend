@@ -3,11 +3,13 @@ import { useAuth } from '@/auth/useAuth';
 import { AppHeader } from '@/components/AppHeader';
 import { CubeCanvas } from '@/components/CubeCanvas';
 import { CubeTypePicker } from '@/components/CubeTypePicker';
+import { CubeTypeSelect } from '@/components/CubeTypeSelect';
 import { FormAlert } from '@/components/FormAlert';
 import { PageSpinner } from '@/components/PageSpinner';
 import { SkinGallery } from '@/components/skins/SkinGallery';
 import { SkinSwatches } from '@/components/skins/SkinSwatches';
 import { CUBE_SKINS, SKIN_CATEGORIES, getSkin } from '@/cube';
+import { useNarrowScreen } from '@/hooks/useNarrowScreen';
 import { errorMessage } from '@/lib/errors';
 import type { CubeType } from '@/types/cube';
 
@@ -27,6 +29,7 @@ export default function SkinsPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const narrow = useNarrowScreen();
 
   if (status === 'loading' || !user) return <PageSpinner />;
 
@@ -56,6 +59,86 @@ export default function SkinsPage() {
     } finally {
       setSaving(false);
     }
+  }
+
+  const statusNote = (
+    <>
+      {error && <FormAlert message={error} />}
+
+      {dirty ? (
+        <p className="rounded-xl border border-gold-400/40 bg-gold-400/10 px-3 py-2 text-xs leading-5 text-gold-400">
+          กำลังลองสกิน “{preview.label}” อยู่ · ยังไม่ได้บันทึก ห้องอื่นยังเห็นสกิน “
+          {getSkin(savedSkin).label}” เหมือนเดิม
+        </p>
+      ) : (
+        saved && <p className="text-sm text-win">บันทึกแล้ว · ใช้กับคิวบ์ทุกลูกทันที</p>
+      )}
+    </>
+  );
+
+  const actions = (
+    <div className="grid grid-cols-2 gap-2.5 pt-1">
+      <button
+        type="button"
+        onClick={() => {
+          setSkinId(null);
+          setError(null);
+          setSaved(false);
+        }}
+        disabled={!dirty || saving}
+        className="rounded-xl border border-line bg-navy-800 px-4 py-2.5 text-sm font-semibold text-slate-300 transition hover:bg-navy-700 disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        ยกเลิก
+      </button>
+      <button
+        type="button"
+        onClick={() => void save()}
+        disabled={!dirty || saving}
+        className="rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-brand-500/40"
+      >
+        {saving ? 'กำลังบันทึก…' : 'ใช้สกินนี้'}
+      </button>
+    </div>
+  );
+
+  if (narrow) {
+    return (
+      // จอแคบ: พรีวิวเล็กด้านบน · แกลเลอรีเลื่อนในกรอบ · ปุ่มบันทึกติดล่าง (ADR-083 ข้อ 7)
+      <div className="flex h-app flex-col bg-navy-900">
+        <AppHeader />
+        <main className="flex min-h-0 flex-1 flex-col gap-3 px-4 pt-3 pb-3">
+          <header className="shrink-0">
+            <h1 className="text-xl font-extrabold text-white">สกินคิวบ์</h1>
+            <p className="text-[11px] text-slate-500">
+              {CUBE_SKINS.length} แบบ ฟรีทั้งหมด · เห็นเฉพาะฝั่งคุณ ไม่กระทบคู่แข่ง
+            </p>
+          </header>
+
+          <section className="flex shrink-0 gap-3 rounded-2xl border border-line bg-navy-850/80 p-3">
+            {/* พรีวิว 3 มิติตัวเดียวเหมือนจอกว้าง (ADR-044 ข้อ 4) — คิวบ์ครบสี บิดเองได้ (ADR-064 ข้อ 4) */}
+            <div className="relative h-32 w-32 shrink-0 overflow-hidden rounded-xl bg-navy-950/40">
+              <CubeCanvas cubeType={cubeType} scramble={null} turnsEnabled skinId={previewSkin} />
+            </div>
+            <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+              <CubeTypeSelect value={cubeType} onChange={setCubeType} />
+              <p className="truncate font-semibold text-slate-100">{preview.label}</p>
+              <p className="line-clamp-2 text-[11px] leading-4 text-slate-500">{preview.hint}</p>
+              <SkinSwatches skin={preview} />
+            </div>
+          </section>
+
+          <section
+            aria-label="รายการสกิน"
+            className="min-h-40 flex-1 overflow-y-auto overscroll-contain"
+          >
+            <SkinGallery value={previewSkin} savedId={savedSkin} onChange={choose} compact />
+          </section>
+
+          <div className="shrink-0 space-y-2">{statusNote}</div>
+          <div className="shrink-0">{actions}</div>
+        </main>
+      </div>
+    );
   }
 
   return (
@@ -109,39 +192,9 @@ export default function SkinsPage() {
               <span className="text-[11px] text-slate-600">U · D · F · B · R · L</span>
             </div>
 
-            {error && <FormAlert message={error} />}
+            {statusNote}
 
-            {dirty ? (
-              <p className="rounded-xl border border-gold-400/40 bg-gold-400/10 px-3 py-2 text-xs leading-5 text-gold-400">
-                กำลังลองสกิน “{preview.label}” อยู่ · ยังไม่ได้บันทึก ห้องอื่นยังเห็นสกิน “
-                {getSkin(savedSkin).label}” เหมือนเดิม
-              </p>
-            ) : (
-              saved && <p className="text-sm text-win">บันทึกแล้ว · ใช้กับคิวบ์ทุกลูกทันที</p>
-            )}
-
-            <div className="grid grid-cols-2 gap-2.5 pt-1">
-              <button
-                type="button"
-                onClick={() => {
-                  setSkinId(null);
-                  setError(null);
-                  setSaved(false);
-                }}
-                disabled={!dirty || saving}
-                className="rounded-xl border border-line bg-navy-800 px-4 py-2.5 text-sm font-semibold text-slate-300 transition hover:bg-navy-700 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                ยกเลิก
-              </button>
-              <button
-                type="button"
-                onClick={() => void save()}
-                disabled={!dirty || saving}
-                className="rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-brand-500/40"
-              >
-                {saving ? 'กำลังบันทึก…' : 'ใช้สกินนี้'}
-              </button>
-            </div>
+            {actions}
           </aside>
         </div>
       </main>

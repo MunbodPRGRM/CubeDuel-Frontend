@@ -35,13 +35,43 @@ export default function SettingsPage() {
   return (
     <div className="min-h-app bg-navy-900">
       <AppHeader />
-      <main className="page-wide grid gap-6 px-4 py-8 lg:grid-cols-[280px_minmax(0,1fr)]">
-        <SettingsSidebar user={user} tab={tab} onTabChange={setTab} />
+      <main className="page-wide grid gap-6 px-4 py-4 md:py-8 lg:grid-cols-[280px_minmax(0,1fr)]">
+        {/* จอแคบซ่อนการ์ดผู้ใช้ + เมนูข้าง — เหลือแถบแท็บด้านบนแทน (ADR-083 ข้อ 7) */}
+        <div className="hidden md:block">
+          <SettingsSidebar user={user} tab={tab} onTabChange={setTab} />
+        </div>
         <section>
           <header className="mb-4">
             <p className="text-sm text-brand-400">การตั้งค่า</p>
-            <h1 className="text-3xl font-bold text-white">บัญชี และ โปรไฟล์</h1>
+            <h1 className="text-2xl font-bold text-white md:text-3xl">บัญชี และ โปรไฟล์</h1>
           </header>
+          <div
+            role="tablist"
+            aria-label="หมวดการตั้งค่า"
+            className="mb-4 grid grid-cols-2 gap-1 rounded-xl border border-line bg-navy-850/80 p-1 md:hidden"
+          >
+            {(
+              [
+                ['profile', 'โปรไฟล์'],
+                ['security', 'ความปลอดภัย'],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                role="tab"
+                aria-selected={tab === value}
+                onClick={() => setTab(value)}
+                className={`rounded-lg py-2 text-sm transition ${
+                  tab === value
+                    ? 'bg-brand-500 font-semibold text-white'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           {tab === 'profile' ? <ProfilePanel user={user} /> : <SecurityPanel user={user} />}
         </section>
       </main>
@@ -184,7 +214,7 @@ function ProfilePanel({ user }: { user: SelfUser }) {
         </button>
       </div>
 
-      <div className="space-y-6 rounded-2xl border border-line bg-navy-850/80 px-6 py-6 sm:px-8">
+      <div className="space-y-6 rounded-2xl border border-line bg-navy-850/80 px-4 py-5 sm:px-8 sm:py-6">
         <div>
           <h2 className="text-xl font-semibold text-white">โปรไฟล์</h2>
           <p className="text-sm text-slate-500">ตั้งค่าข้อมูลส่วนตัวของคุณ</p>
@@ -304,7 +334,7 @@ function Row({ label, hint, children }: { label: string; hint: string; children:
 
 function SecurityPanel({ user }: { user: SelfUser }) {
   return (
-    <div className="space-y-6 rounded-2xl border border-line bg-navy-850/80 px-6 py-6 sm:px-8">
+    <div className="space-y-6 rounded-2xl border border-line bg-navy-850/80 px-4 py-5 sm:px-8 sm:py-6">
       <div>
         <h2 className="text-xl font-semibold text-white">ความปลอดภัย</h2>
         <p className="text-sm text-slate-500">ตั้งค่าบัญชีเพื่อความปลอดภัย</p>
