@@ -4,11 +4,17 @@
  * 📕 นี่คือ **onboarding การใช้งานเว็บ/แอป ไม่ใช่การสอนวิธีแก้รูบิค** (CLAUDE.md ข้อ 5.2)
  * ทุกอย่างที่พูดถึงในนี้ต้องเป็นสิ่งที่ระบบทำได้จริงตอนนี้ — ห้ามโฆษณาของที่ยังไม่มี
  * ตัวเลขเวลาทั้งหมดอ้างจาก `docs/game-rules.md` (ข้อ 1–4) ถ้ากติกาเปลี่ยน ต้องมาแก้ไฟล์นี้ด้วย
+ *
+ * **ภาพหน้าจอจริง** อยู่ที่ `src/assets/tutorial/` (ADR-085 ข้อ 2) — แก้หน้าตาคอมโพเนนต์ที่อยู่ในภาพแล้วต้องถ่ายใหม่
+ * (ขั้นตอนถ่ายอยู่ใน roadmap เฟส 13 ก้อนที่ 23) · ข้อความห้ามอ้างตำแหน่งบนจอ — จอกว้างกับจอแคบวางต่างกัน ให้อ้างชื่อปุ่ม
  */
 import type { ReactNode } from 'react';
+import shotControls from '@/assets/tutorial/controls.webp';
+import shotCubeType from '@/assets/tutorial/cube-type.webp';
+import shotModes from '@/assets/tutorial/modes.webp';
+import shotScore from '@/assets/tutorial/score.webp';
+import shotTimeline from '@/assets/tutorial/timeline.webp';
 import { CubeLogo } from '@/components/CubeLogo';
-import { CUBE_TYPES } from '@/types/cube';
-import { CUBE_TYPE_LABEL } from '@/types/leaderboard';
 
 export interface TutorialStep {
   /** ใช้เป็น React key และเป็นชื่อในการอ้างถึงเวลาคุยกัน */
@@ -16,8 +22,10 @@ export interface TutorialStep {
   title: string;
   /** ย่อหน้าสั้น ๆ ใต้หัวข้อ */
   lead: string;
-  /** ภาพประกอบ — วาดด้วย HTML/SVG ล้วน ไม่พึ่งไฟล์ภาพ (โหลดไว ไม่ต้องดูแล asset) */
-  visual: ReactNode;
+  /** ภาพหน้าจอจริง 960×600 — แสดงก่อน `visual` (ADR-085 ข้อ 2) · `alt` บอกว่าในภาพมีอะไร */
+  image?: { src: string; alt: string };
+  /** ภาพประกอบที่วาดด้วย HTML/SVG — ขั้นที่มีภาพหน้าจอใช้เสริมเฉพาะที่ภาพบอกไม่ได้ */
+  visual?: ReactNode;
   /** ประเด็นย่อย บรรทัดละข้อ */
   points: string[];
 }
@@ -33,7 +41,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
       </div>
     ),
     points: [
-      'ข้ามได้ทุกเมื่อ แล้วกลับมาเปิดใหม่ได้จากปุ่ม ? บนแถบด้านบน',
+      'ข้ามได้ทุกเมื่อ แล้วกลับมาเปิดใหม่ได้จากปุ่ม ?',
       'ทุกอย่างในคู่มือนี้กดลองเองได้จากหน้าแรก',
     ],
   },
@@ -41,24 +49,12 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     id: 'cube-type',
     title: 'เลือกประเภทรูบิคก่อนเล่นเสมอ',
     lead: 'มีให้เลือก 4 ประเภท และคะแนนแยกกันคนละชุด — เก่ง 3x3x3 ไม่ได้แปลว่าอันดับ Pyraminx สูงตาม',
-    visual: (
-      <div className="flex flex-wrap justify-center gap-2 py-4">
-        {CUBE_TYPES.map((type, i) => (
-          <span
-            key={type}
-            className={`rounded-lg border px-3 py-1.5 text-sm ${
-              i === 1
-                ? 'border-brand-500 bg-brand-500/15 font-medium text-brand-300'
-                : 'border-line bg-navy-800 text-slate-400'
-            }`}
-          >
-            {CUBE_TYPE_LABEL[type]}
-          </span>
-        ))}
-      </div>
-    ),
+    image: {
+      src: shotCubeType,
+      alt: 'ช่องเลือกประเภทรูบิคบนหน้าแรก กับการ์ดคะแนน ELO และอันดับของประเภทที่เลือก',
+    },
     points: [
-      'ช่องเลือกอยู่บนการ์ดใหญ่ของหน้าแรก — คุมทั้งการจับคู่และตัวเลขสถิติที่โชว์อยู่',
+      'ช่องเลือกประเภทบนหน้าแรกคุมทั้งการจับคู่และตัวเลขสถิติที่หน้าแรกโชว์',
       'สถิติ กระดานอันดับ และคะแนน ELO ทุกที่ในเว็บเป็นของประเภทที่เลือกไว้เท่านั้น',
       'เปลี่ยนประเภทระหว่างรอคิวไม่ได้ ต้องกดยกเลิกคิวก่อน',
     ],
@@ -66,17 +62,14 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   {
     id: 'modes',
     title: 'ห้องมี 4 แบบ เลือกตามที่อยากได้',
-    lead: 'ปุ่มทั้งหมดอยู่บนการ์ดใหญ่ของหน้าแรก',
-    visual: (
-      <div className="grid gap-2 py-2 sm:grid-cols-2">
-        <ModeCard name="แข่งขัน" desc="จับคู่อัตโนมัติ 1v1 · มีผลต่อคะแนน ELO" highlight />
-        <ModeCard name="ห้องหลายคน" desc="3–4 คน · จับคู่อัตโนมัติแล้วมีผลต่อคะแนน" />
-        <ModeCard name="ฝึกซ้อม" desc="เล่นคนเดียว · ไม่บันทึกอะไรลงระบบ" />
-        <ModeCard name="สร้างห้อง" desc="แชร์รหัสห้องให้เพื่อน · มีคนดูได้ · ไม่มีผลต่อคะแนน" />
-      </div>
-    ),
+    lead: 'กดเลือกได้จากหน้าแรก — จับคู่ · ห้องหลายคน · ฝึกซ้อม · สร้างห้อง',
+    image: {
+      src: shotModes,
+      alt: 'ปุ่มจับคู่ ห้องหลายคน ฝึกซ้อม สร้างห้อง และใส่เลขห้อง พร้อมคำอธิบายสั้นใต้แต่ละปุ่ม',
+    },
     points: [
       'อยากลองระบบโดยไม่เสียคะแนน เริ่มที่ “ฝึกซ้อม” — ไม่ถูกบันทึกลงประวัติเลย',
+      '“จับคู่” กับ “ห้องหลายคน” มีผลต่อคะแนน · “สร้างห้อง” แชร์รหัสให้เพื่อนและมีคนดูได้ แต่ไม่มีผลต่อคะแนน',
       'มีรหัสห้องจากเพื่อนแล้ว กด “ใส่เลขห้อง” ได้เลย',
     ],
   },
@@ -84,6 +77,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     id: 'controls',
     title: 'บังคับคิวบ์ยังไง',
     lead: 'คิวบ์เป็นของ 3 มิติจริง ๆ ลากได้ทั้งตัวลูกและมุมกล้อง',
+    image: { src: shotControls, alt: 'คิวบ์ 3x3x3 สามมิติที่ถูกสับแล้วในห้องฝึกซ้อม' },
     visual: (
       <div className="space-y-2 py-2">
         <ControlRow
@@ -102,12 +96,17 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     points: [
       'Pyramorphix จะ “เปลี่ยนรูปทรง” หลังสับ — เป็นพฤติกรรมที่ถูกต้องของลูกนี้ ไม่ใช่ภาพเสีย',
       'ทุกครั้งที่บิด คู่แข่งจะเห็นแบบเรียลไทม์ และเซิร์ฟเวอร์เป็นคนตรวจว่าแก้เสร็จจริงไหม',
+      'ลองมือได้ก่อนที่ห้อง “ฝึกซ้อม” — ไม่มีผลต่อคะแนน',
     ],
   },
   {
     id: 'timeline',
     title: 'ลำดับเวลาในห้องแข่ง',
     lead: 'ทุกคนในห้องเริ่มพร้อมกันเสมอ และเวลาที่ใช้ตัดสินเป็นของเซิร์ฟเวอร์',
+    image: {
+      src: shotTimeline,
+      alt: 'scramble ของรอบ และตัวเลขนับถอยหลังช่วงตรวจสอบคิวบ์',
+    },
     visual: (
       <div className="flex flex-wrap items-center justify-center gap-1.5 py-4 text-center text-xs">
         <Beat top="เตรียม" bottom="3 วิ" />
@@ -129,16 +128,13 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     id: 'score',
     title: 'คะแนน อันดับ และสถิติ',
     lead: 'ผลการแข่งในห้องที่มีผลคะแนนจะถูกบันทึกให้เองทุกนัด',
-    visual: (
-      <div className="grid gap-2 py-2 sm:grid-cols-3">
-        <MiniStat label="ELO" value="1000" note="คะแนนเริ่มต้นทุกประเภท" />
-        <MiniStat label="กระดานอันดับ" value="Top 100" note="มีแบบรายสัปดาห์ด้วย" />
-        <MiniStat label="สถิติ" value="Ao5 / Ao12" note="ดูได้ในหน้าโปรไฟล์" />
-      </div>
-    ),
+    image: {
+      src: shotScore,
+      alt: 'กระดานอันดับ แสดงอันดับ ชื่อผู้เล่น ผลแพ้ชนะ เวลาที่ดีที่สุด และคะแนน ELO โดยแถวของเราถูกไฮไลต์',
+    },
     points: [
-      'ชนะได้คะแนน แพ้เสียคะแนน — ปรับเฉพาะประเภทที่เพิ่งแข่ง',
-      'กระดานรายสัปดาห์เริ่มนับใหม่ทุกวันจันทร์',
+      'ทุกคนเริ่มที่ ELO 1000 ทุกประเภท · ชนะได้คะแนน แพ้เสียคะแนน — ปรับเฉพาะประเภทที่เพิ่งแข่ง',
+      'กระดานอันดับมีแบบรายสัปดาห์ เริ่มนับใหม่ทุกวันจันทร์ · สถิติ Ao5 / Ao12 ดูได้ในหน้าโปรไฟล์',
       'ห้องฝึกซ้อมและห้องที่สร้างเองไม่มีผลต่อคะแนน',
     ],
   },
@@ -154,29 +150,14 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
       </div>
     ),
     points: [
-      'แก้ชื่อเล่นและสกินสีคิวบ์ได้ที่หน้าตั้งค่า',
+      'แก้ชื่อเล่นได้ที่หน้าตั้งค่า · เลือกสกินสีคิวบ์ได้จากการ์ด “สกินคิวบ์” บนหน้าแรก',
       'เจอคนเล่นไม่ตรงไปตรงมา กดรายงานได้จากหน้าผลการแข่งขัน',
-      'อยากอ่านคู่มือนี้ใหม่ กดปุ่ม ? บนแถบด้านบนได้ตลอด',
+      'อยากอ่านคู่มือนี้ใหม่ กดปุ่ม ? ได้ตลอด',
     ],
   },
 ];
 
 // ------------------------------------------------------------ ชิ้นส่วนภาพประกอบ
-
-function ModeCard({ name, desc, highlight }: { name: string; desc: string; highlight?: boolean }) {
-  return (
-    <div
-      className={`rounded-xl border px-3 py-2.5 ${
-        highlight ? 'border-brand-500/60 bg-brand-500/10' : 'border-line bg-navy-800/70'
-      }`}
-    >
-      <p className={`text-sm font-semibold ${highlight ? 'text-brand-300' : 'text-slate-200'}`}>
-        {name}
-      </p>
-      <p className="mt-0.5 text-xs leading-5 text-slate-400">{desc}</p>
-    </div>
-  );
-}
 
 function ControlRow({ icon, label, desc }: { icon: string; label: string; desc: string }) {
   return (
@@ -212,15 +193,5 @@ function Arrow() {
     <span aria-hidden className="text-slate-600">
       →
     </span>
-  );
-}
-
-function MiniStat({ label, value, note }: { label: string; value: string; note: string }) {
-  return (
-    <div className="rounded-xl border border-line bg-navy-800/70 px-3 py-2.5 text-center">
-      <p className="text-xs text-slate-500">{label}</p>
-      <p className="tabular mt-0.5 text-lg font-semibold text-slate-100">{value}</p>
-      <p className="mt-0.5 text-[11px] leading-4 text-slate-500">{note}</p>
-    </div>
   );
 }

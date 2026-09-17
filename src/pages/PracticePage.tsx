@@ -19,8 +19,6 @@ import {
 } from '@/practice/practice-storage';
 import { TimerDisplay } from '@/practice/TimerDisplay';
 import { INSPECTION_SECONDS, useSolveTimer } from '@/practice/useSolveTimer';
-import { PracticeCoachCard } from '@/tutorial/PracticeCoachCard';
-import { usePracticeCoach } from '@/tutorial/usePracticeCoach';
 import { useTutorial } from '@/tutorial/useTutorial';
 import type { CubeType } from '@/types/cube';
 import { CUBE_TYPE_LABEL } from '@/types/leaderboard';
@@ -100,18 +98,11 @@ export default function PracticePage() {
   const scrambleRequestRef = useRef(0);
   const timer = useSolveTimer(inspectionEnabled);
   const { phase, reset: resetTimer } = timer;
-  /** โหมดสอนเล่น (ADR-065) — เด้งเองครั้งแรกที่เข้าห้อง แล้วรอจนทำแต่ละท่าได้จริง */
-  const coach = usePracticeCoach();
   /** นาฬิกาตัวล่าสุดแบบอ่านได้ทันที — callback ที่ค้างข้ามอนิเมชันต้องไม่ถือของเก่า */
   const timerRef = useRef(timer);
   timerRef.current = timer;
 
   useEffect(() => setSolves(loadSolves(cubeType)), [cubeType]);
-
-  // ขั้นสุดท้ายของโหมดสอนจบตอน **เริ่มจับเวลา** ไม่ใช่ตอนแก้เสร็จ (ADR-065 ข้อ 5)
-  useEffect(() => {
-    if (phase === 'solving') coach.report('timer');
-  }, [phase, coach]);
 
   /** ตั้งตัวนับ move (เก็บลง ref ด้วย เพราะตอนบันทึกผลต้องอ่านค่าล่าสุดให้ทัน) */
   const setMoves = useCallback((count: number) => {
@@ -193,9 +184,8 @@ export default function PracticePage() {
       // จึงไม่ถือว่าข้าม · นอกช่วง inspection ตัวนี้ไม่ทำอะไรเลย
       timerRef.current.skipInspection();
       setMoves(moveCountRef.current + 1);
-      coach.report('turn');
     },
-    [setMoves, coach],
+    [setMoves],
   );
 
   /** แก้ครบทุกหน้าระหว่างจับเวลา = หยุดนาฬิกาทันที ไม่ต้องกดอะไรเลย */
@@ -316,7 +306,7 @@ export default function PracticePage() {
         }[phase];
 
   /** คำแนะนำตามจังหวะ — จอกว้างลอยมุมขวาบนของคิวบ์ · จอแคบอยู่ใต้นาฬิกา */
-  const showHint = !coach.active && (phase !== 'solving' || replaying);
+  const showHint = phase !== 'solving' || replaying;
   const hintText = scrambling
     ? 'กำลังหมุน scramble ให้ดูทีละท่า · ระหว่างนี้หมุนเองไม่ได้'
     : replaying
@@ -350,8 +340,6 @@ export default function PracticePage() {
       onScrambleAnimatingChange={setScrambling}
       onState={handleState}
       onMove={handleMove}
-      // ใช้เฉพาะโหมดสอน (แยกเองว่าหมุนหรือซูม) — ห้องฝึกซ้อมไม่ได้ส่งมุมกล้องให้ใคร
-      onCameraChange={coach.reportCamera}
     />
   );
 
@@ -524,15 +512,6 @@ export default function PracticePage() {
                 ไม่บันทึกผลลงระบบ ไม่มีผลต่อคะแนน
               </p>
             </div>
-            {/* โหมดสอนของห้องนี้ (ADR-065) คนละตัวกับปุ่ม `?` คู่มือทั้งเว็บ */}
-            <button
-              type="button"
-              onClick={coach.start}
-              disabled={coach.active}
-              className="shrink-0 rounded-lg border border-line bg-navy-850 px-2.5 py-1.5 text-xs text-slate-300 transition hover:bg-navy-800 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Tutorial
-            </button>
             {/* แถบหัวของเว็บถูกซ่อน — คู่มือทั้งเว็บต้องกดได้จากทุกหน้า (ADR-053 ข้อ 4) */}
             <button
               type="button"
@@ -590,7 +569,6 @@ export default function PracticePage() {
 
           <section className="relative min-h-0 flex-1 overflow-hidden rounded-2xl border border-line bg-navy-850">
             {cubeCanvas}
-            <PracticeCoachCard coach={coach} />
             {movesAndStatus(true)}
           </section>
 
@@ -621,15 +599,6 @@ export default function PracticePage() {
         {/* ปุ่มเฟือง (ADR-063 ข้อ 1) — อยู่นอกแผงควบคุมที่เลื่อนได้ ไม่งั้นแผงที่กางออกมาจะถูกตัด
             · ห้องฝึกซ้อมไม่มีส่วน "การจัดวาง" เพราะไม่มีคู่แข่ง */}
         <div className="flex shrink-0 items-center justify-end gap-2">
-          {/* เปิดโหมดสอนซ้ำได้ทุกเมื่อ — ปุ่ม `?` บนแถบหัวเป็นคู่มือ *ทั้งเว็บ* คนละตัวกัน (ADR-065 ข้อ 1) */}
-          <button
-            type="button"
-            onClick={coach.start}
-            disabled={coach.active}
-            className="rounded-xl border border-line bg-navy-850 px-3 py-2 text-sm text-slate-300 transition hover:bg-navy-800 hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            Tutorial
-          </button>
           <PlaySettingsMenu cubeType={cubeType} />
         </div>
 
@@ -638,11 +607,8 @@ export default function PracticePage() {
           <section className="relative h-[62vh] min-h-[22rem] overflow-hidden rounded-2xl border border-line bg-navy-850 lg:h-full lg:min-h-0">
             {cubeCanvas}
 
-            <PracticeCoachCard coach={coach} />
-
             {movesAndStatus(false)}
 
-            {/* ระหว่างสอนซ่อนกล่องคำใบ้ ไม่ให้มีข้อความสองชุดแย่งกันพูด (ADR-065 ข้อ 6) */}
             {showHint && (
               <p className="pointer-events-none absolute right-4 top-4 max-w-[16rem] rounded-lg border border-line bg-navy-900/80 px-3 py-1.5 text-xs text-slate-400 backdrop-blur">
                 {hintText}
