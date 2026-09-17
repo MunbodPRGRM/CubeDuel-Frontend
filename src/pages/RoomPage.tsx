@@ -9,7 +9,8 @@ import { useWideScreen } from '@/hooks/useWideScreen';
 import { formatEloChange } from '@/lib/format';
 import { usePlayPrefs, type ResolvedRoomLayout, type RoomLayout } from '@/lib/play-prefs';
 import { LiveTime, type LiveTimeMode } from '@/room/LiveTime';
-import { PlayerCubePanel } from '@/room/PlayerCubePanel';
+import { PlayerCubePanel, type PlayerPanelVariant } from '@/room/PlayerCubePanel';
+import { PipDock } from '@/room/PipDock';
 import { RoomStage } from '@/room/RoomStage';
 import { ConnectionBanner, ConnectionErrorCard } from '@/socket/SocketGate';
 import { ROOM_STATE_LABEL } from '@/socket/room-labels';
@@ -67,7 +68,7 @@ function RoomView({ roomId }: { roomId: number }) {
   const match = useMatch(room.snapshot);
   const queue = useQueue();
   const { status: socketStatus } = useSocket();
-  const { roomLayout } = usePlayPrefs();
+  const { roomLayout, pipCorner, pipCollapsed } = usePlayPrefs();
   const wideScreen = useWideScreen();
   const { snapshot, status, goneMessage, me, others, isSpectator, isHost } = room;
   // เข้ามาหลังรอบจบ (กด F5 / ผู้ชมเพิ่งเข้า) จะไม่มี `match:finished` — ขอย้อนหลังแทน
@@ -90,6 +91,22 @@ function RoomView({ roomId }: { roomId: number }) {
   const layout = resolveLayout(roomLayout, wideScreen, snapshot.maxPlayers === 2);
   /** แผงคู่แข่งย่อเมื่อมีหลายคน **หรือ** ตอนลอยมุมจอ (เตี้ยเกินกว่าจะมีแถวตัวเลขล่าง) */
   const compactRivals = rivalSlots.length > 1 || layout === 'focus';
+  /** ลอยมุมจอบนจอแคบ = PiP คิวบ์เต็มกล่อง — `compact` ในกล่องเล็กขนาดนั้นเหลือที่ให้คิวบ์ ~20 px (ADR-081) */
+  const pipRivals = layout === 'focus' && !wideScreen;
+  const rivalVariant: PlayerPanelVariant = pipRivals ? 'pip' : compactRivals ? 'compact' : 'full';
+
+  const rivalPanels = rivalSlots.map((rival, index) => (
+    <PlayerCubePanel
+      key={rival?.userId ?? `empty-${index}`}
+      player={rival}
+      snapshot={snapshot}
+      isMe={false}
+      emptyLabel="รอผู้เล่นเข้าห้อง"
+      match={match}
+      variant={rivalVariant}
+      collapsed={pipRivals && pipCollapsed}
+    />
+  ));
 
   const leave = async () => {
     if (await room.leave()) navigate('/', { replace: true });
@@ -116,13 +133,17 @@ function RoomView({ roomId }: { roomId: number }) {
       <div className="flex shrink-0 items-center justify-end">
         <PlaySettingsMenu
           cubeType={snapshot.cubeType}
-          layout={{ allowStacked: snapshot.maxPlayers === 2 }}
+          layout={{
+            allowStacked: snapshot.maxPlayers === 2,
+            rivalCount: Math.max(1, snapshot.maxPlayers - 1),
+          }}
         />
       </div>
 
       <RoomStage
         layout={layout}
         compactRivals={compactRivals}
+        pipRivals={pipRivals}
         self={
           <PlayerCubePanel
             player={focusPlayer}
@@ -130,19 +151,15 @@ function RoomView({ roomId }: { roomId: number }) {
             isMe={!isSpectator && focusPlayer?.userId === me?.userId}
             emptyLabel={isSpectator ? 'รอผู้เล่นเข้าห้อง' : 'ที่นั่งของคุณ'}
             match={match}
+            // จอแคบ: คู่แข่งอยู่ในกรอบคิวบ์เรา ลากย้ายมุม/ย่อได้ (ADR-081 ข้อ 2)
+            overlay={
+              pipRivals ? (
+                <PipDock corner={pipCorner} collapsed={pipCollapsed} panels={rivalPanels} />
+              ) : undefined
+            }
           />
         }
-        rivals={rivalSlots.map((rival, index) => (
-          <PlayerCubePanel
-            key={rival?.userId ?? `empty-${index}`}
-            player={rival}
-            snapshot={snapshot}
-            isMe={false}
-            emptyLabel="รอผู้เล่นเข้าห้อง"
-            match={match}
-            compact={compactRivals}
-          />
-        ))}
+        rivals={pipRivals ? [] : rivalPanels}
         info={
           <>
             <RoomHeaderCard snapshot={snapshot} focus={focusPlayer} rivals={rivals} />
@@ -390,9 +407,7 @@ function MatchPanel({
       <Row label="ประเภทรูบิค" value={CUBE_TYPE_LABEL[snapshot.cubeType]} />
       <Row label="ผู้เล่น" value={`${snapshot.players.length}/${snapshot.maxPlayers} คน`} />
       {/* ห้องจากคิวไม่มีรหัสให้ผู้ชมเข้า (game-rules.md ข้อ 9 · ADR-079) — โชว์ "0 คน" ชวนเข้าใจผิด */}
-      {!fromQueue && (
-        <Row label="ผู้ชม" value={`${snapshot.spectatorCount} คน`} />
-      )}
+      {!fromQueue && <Row label="ผู้ชม" value={`${snapshot.spectatorCount} คน`} />}
     </dl>
   );
 
