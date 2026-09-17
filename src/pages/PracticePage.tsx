@@ -3,7 +3,9 @@ import { Link } from 'react-router-dom';
 import { AppHeader } from '@/components/AppHeader';
 import { CubeCanvas, type CubeCanvasHandle } from '@/components/CubeCanvas';
 import { CubeTypeSelect } from '@/components/CubeTypeSelect';
+import { BottomSheet } from '@/components/BottomSheet';
 import { PlaySettingsMenu } from '@/components/PlaySettings';
+import { useWideScreen } from '@/hooks/useWideScreen';
 import type { CubeMoveEvent, CubeState } from '@/cube';
 import { apiFetch } from '@/lib/api';
 import { averageOfN, bestTime, meanTime } from '@/lib/averages';
@@ -19,6 +21,7 @@ import { TimerDisplay } from '@/practice/TimerDisplay';
 import { INSPECTION_SECONDS, useSolveTimer } from '@/practice/useSolveTimer';
 import { PracticeCoachCard } from '@/tutorial/PracticeCoachCard';
 import { usePracticeCoach } from '@/tutorial/usePracticeCoach';
+import { useTutorial } from '@/tutorial/useTutorial';
 import type { CubeType } from '@/types/cube';
 import { CUBE_TYPE_LABEL } from '@/types/leaderboard';
 
@@ -64,6 +67,11 @@ export default function PracticePage() {
   const [assisted, setAssisted] = useState(false);
   /** อนิเมชัน "แก้ให้ดู" จบแล้วแต่คิวบ์ยังไม่ผ่านกติกาข้อ 11 — เป็นบั๊ก ห้ามกลืนเงียบ */
   const [finishNowError, setFinishNowError] = useState<string | null>(null);
+  /** จอแคบ: กาง scramble เต็ม · แผ่นสถิติ (ADR-083 ข้อ 5) */
+  const [scrambleOpen, setScrambleOpen] = useState(false);
+  const [statsOpen, setStatsOpen] = useState(false);
+  const wideScreen = useWideScreen();
+  const tutorial = useTutorial();
 
   const cubeRef = useRef<CubeCanvasHandle>(null);
   /** จำนวน move ล่าสุดแบบอ่านได้ทันที — state ของ React ตามไม่ทันตอนบันทึกผล */
@@ -307,6 +315,303 @@ export default function PracticePage() {
           finished: timer.resultSeconds === null ? 'ยกเลิก (DNF)' : 'แก้เสร็จแล้ว',
         }[phase];
 
+  /** คำแนะนำตามจังหวะ — จอกว้างลอยมุมขวาบนของคิวบ์ · จอแคบอยู่ใต้นาฬิกา */
+  const showHint = !coach.active && (phase !== 'solving' || replaying);
+  const hintText = scrambling
+    ? 'กำลังหมุน scramble ให้ดูทีละท่า · ระหว่างนี้หมุนเองไม่ได้'
+    : replaying
+      ? 'กำลังย้อนท่าให้ดูทีละท่า · นาฬิกาจะหยุดเมื่อหมุนครบและคิวบ์ครบทุกหน้า'
+      : phase === 'inspection'
+        ? 'ลากดูรอบ ๆ ได้ · พร้อมแล้วกด Space Bar หรือหมุนหน้าคิวบ์ = เริ่มจับเวลาทันที (ท่าที่หมุนนับเป็นท่าแรก)'
+        : scramble === null
+          ? 'คิวบ์ครบทุกหน้าแล้ว · กด "สุ่ม scramble" แล้วระบบจะหมุนให้ดูทีละท่า'
+          : 'หมุนเล่นได้ตามใจ · กดเริ่มแล้วคิวบ์จะกลับไปที่ scramble ให้เอง';
+
+  const scrambleText =
+    scrambleError ??
+    (loadingScramble
+      ? 'กำลังขอ scramble…'
+      : (scramble?.text ?? 'ยังไม่มี — กดสุ่มเพื่อให้ระบบหมุนให้ดู'));
+
+  // ตัวเดียวกันทั้งสองโครง — เรนเดอร์ทีละแบบ (`useWideScreen`) จึงไม่มีคิวบ์สองลูก
+  const cubeCanvas = (
+    // `null` จนกว่า scramble **ของประเภทนี้** จะมาถึง — ห้ามเอาของประเภทเก่ามาใส่เด็ดขาด
+    // (`null` = คิวบ์ครบทุกหน้า ซึ่งเป็นภาพที่ต้องเห็นตอนเข้าห้องพอดี)
+    <CubeCanvas
+      ref={cubeRef}
+      cubeType={cubeType}
+      scramble={scramble?.cubeType === cubeType ? scramble.text : null}
+      // ปิดเฉพาะช่วงที่โปรแกรมหมุนให้ดูอยู่ (scramble / "แก้ให้ดู") เท่านั้น
+      // **ช่วง inspection ของห้องฝึกซ้อมเปิดไว้** เพราะหมุนหน้าคิวบ์ = ข้ามเข้าจับเวลา
+      // (ADR-032 ข้อ 3) — ห้องแข่งในเฟส 4 ต้องปิดตอน inspection เหมือนเดิม
+      turnsEnabled={!replaying && !scrambling}
+      // ห้องฝึกซ้อมเท่านั้น — ห้องแข่งในเฟส 4 ห้ามส่ง flag นี้ (ADR-032 ข้อ 1)
+      animateScramble
+      onScrambleAnimatingChange={setScrambling}
+      onState={handleState}
+      onMove={handleMove}
+      // ใช้เฉพาะโหมดสอน (แยกเองว่าหมุนหรือซูม) — ห้องฝึกซ้อมไม่ได้ส่งมุมกล้องให้ใคร
+      onCameraChange={coach.reportCamera}
+    />
+  );
+
+  const movesAndStatus = (mobile: boolean) => (
+    <div
+      className={`pointer-events-none absolute flex rounded-xl border border-line bg-navy-900/80 backdrop-blur ${
+        mobile ? 'bottom-2 left-2 gap-4 px-3 py-1.5' : 'bottom-4 left-4 gap-6 px-5 py-3'
+      }`}
+    >
+      <div>
+        <p className="text-[11px] tracking-widest text-slate-500">MOVES</p>
+        <p className={`tabular font-semibold text-slate-100 ${mobile ? 'text-base' : 'text-xl'}`}>
+          {moveCount}
+        </p>
+      </div>
+      <div>
+        <p className="text-[11px] tracking-widest text-slate-500">สถานะ</p>
+        <p className="text-sm font-medium text-brand-400">{statusText}</p>
+      </div>
+    </div>
+  );
+
+  const timerNotes = (
+    <>
+      {/* เวลาที่ได้รวมช่วงอนิเมชันไปด้วย จึงไม่ใช่ฝีมือผู้เล่น — ต้องบอกให้ชัด
+        ว่าไม่ลงสถิติ (game-rules.md ข้อ 12.2) */}
+      {assisted && (
+        <p className="mt-2 text-center text-xs text-gold-400">
+          รอบนี้ใช้ปุ่ม "เสร็จทันที (แก้ให้ดู)" · เวลารวมช่วงอนิเมชันด้วย{' '}
+          <span className="font-semibold">จึงไม่บันทึกลงสถิติ</span>
+        </p>
+      )}
+      {finishNowError && (
+        <p className="mt-2 rounded-lg border border-loss/40 px-3 py-2 text-center text-xs text-loss">
+          {finishNowError}
+        </p>
+      )}
+    </>
+  );
+
+  /**
+   * ปุ่มควบคุม — จอกว้างตาราง 2 คอลัมน์ในแผงขวา · จอแคบตาราง 3 คอลัมน์ในแผงล่าง (ADR-083 ข้อ 5)
+   * ลำดับ เงื่อนไขกดได้ และ `key` ของปุ่มหลักเหมือนกันทั้งสองแบบ
+   */
+  const controls = (mobile: boolean) => {
+    const wide = mobile ? 'col-span-3' : 'col-span-2';
+    const small = mobile ? 'rounded-lg px-1.5 py-2 text-xs' : 'rounded-lg px-3 py-2 text-sm';
+    return (
+      <>
+        <button
+          type="button"
+          onClick={() => void fetchScramble(cubeType)}
+          disabled={busy || phase === 'solving' || phase === 'inspection'}
+          className={`${small} bg-navy-700 font-medium text-slate-100 transition hover:bg-navy-800 disabled:cursor-not-allowed disabled:opacity-40`}
+        >
+          สุ่มใหม่
+        </button>
+        <button
+          type="button"
+          onClick={handleReset}
+          disabled={!scramble || busy}
+          className={`${small} border border-line bg-navy-800 font-medium text-slate-200 transition hover:bg-navy-700 disabled:cursor-not-allowed disabled:opacity-40`}
+        >
+          รีเซ็ตคิวบ์
+        </button>
+
+        <button
+          type="button"
+          onClick={handleFinishNow}
+          // ช่วง inspection ยังไม่มีนาฬิกาให้หยุด — ปล่อยให้กดได้จะได้คิวบ์ครบสี
+          // ตั้งแต่ยังไม่เริ่มจับเวลา ซึ่งไม่มีความหมายอะไร
+          disabled={!scramble || busy || phase === 'inspection'}
+          className={`${small} ${mobile ? '' : 'col-span-2'} border border-line bg-navy-800 font-medium text-slate-200 transition hover:bg-navy-700 disabled:cursor-not-allowed disabled:opacity-40`}
+        >
+          {replaying ? 'กำลังแก้ให้ดู…' : mobile ? 'แก้ให้ดู' : 'เสร็จทันที (แก้ให้ดู)'}
+        </button>
+
+        {/* ปุ่มในช่องนี้ต้องเป็น <button> คนละตัวเมื่อเปลี่ยนหน้าที่ (`key` ต่างกัน) — ถ้า React ใช้ตัวเดิมต่อ
+            โฟกัสจากการคลิกจะค้างอยู่ แล้ว Space Bar กลายเป็นการคลิกปุ่มใหม่ในช่องเดียวกัน (เช่น "ยกเลิกรอบนี้") */}
+        {phase === 'idle' || phase === 'finished' ? (
+          <button
+            key="primary"
+            type="button"
+            onClick={() =>
+              phase === 'idle' && scramble ? handleStart() : void fetchScramble(cubeType)
+            }
+            disabled={busy}
+            className={`${wide} rounded-lg bg-brand-500 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-40`}
+          >
+            {/* จบด้วย "เสร็จทันที" = คิวบ์ครบสีแล้ว ไม่มีอะไรให้ "เล่นอีกครั้ง" ·
+              กดแล้วทำงานเหมือนกันทั้งสองป้าย คือขอ scramble ใหม่ (ADR-059 ข้อ 6) */}
+            {scrambling
+              ? 'กำลังหมุน scramble ให้ดู…'
+              : phase === 'finished'
+                ? assisted
+                  ? 'สุ่มใหม่ (Space Bar)'
+                  : 'เล่นอีกครั้ง (Space Bar)'
+                : scramble
+                  ? 'เริ่มจับเวลา (Space Bar)'
+                  : 'สุ่ม scramble (Space Bar)'}
+          </button>
+        ) : (
+          <>
+            {phase === 'inspection' && (
+              <button
+                key="skip-inspection"
+                type="button"
+                onClick={handleSkipInspection}
+                disabled={busy}
+                className={`${wide} rounded-lg bg-brand-500 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-40`}
+              >
+                เริ่มจับเวลาเลย (Space Bar)
+              </button>
+            )}
+            <button
+              key="abort"
+              type="button"
+              onClick={handleAbort}
+              disabled={busy}
+              className={`${wide} rounded-lg border border-loss/40 px-3 py-2.5 text-sm font-semibold text-loss transition hover:bg-loss/10 disabled:cursor-not-allowed disabled:opacity-40`}
+            >
+              ยกเลิกรอบนี้ (DNF)
+            </button>
+          </>
+        )}
+      </>
+    );
+  };
+
+  const inspectionToggle = (
+    <label className="flex items-center justify-between rounded-lg border border-line-soft px-3 py-2">
+      <span className="text-sm text-slate-300">ช่วงตรวจสอบคิวบ์ {INSPECTION_SECONDS} วินาที</span>
+      <input
+        type="checkbox"
+        checked={inspectionEnabled}
+        onChange={(e) => setInspectionEnabled(e.target.checked)}
+        disabled={busy || phase === 'solving' || phase === 'inspection'}
+        className="h-4 w-4 accent-[var(--color-brand-500)]"
+      />
+    </label>
+  );
+
+  const stats = (
+    <PracticeStats
+      cubeType={cubeType}
+      solves={solves}
+      times={times}
+      onClear={() => {
+        clearSolves(cubeType);
+        setSolves([]);
+      }}
+    />
+  );
+
+  if (!wideScreen) {
+    return (
+      // จอแคบ: แนวตั้งหนึ่งจอ ไม่มีแถบหัวของเว็บ (ADR-083 ข้อ 5) · สถิติ + สวิตช์ inspection อยู่ในแผ่นล่าง
+      <div className="flex h-app flex-col overflow-hidden bg-navy-900">
+        <main className="flex min-h-0 flex-1 flex-col gap-2 px-3 pt-2 pb-3">
+          <header className="flex shrink-0 items-center gap-2">
+            <Link
+              to="/"
+              className="shrink-0 rounded-lg border border-line bg-navy-850 px-2.5 py-1.5 text-xs font-semibold text-slate-300 transition hover:bg-navy-800"
+            >
+              ออก
+            </Link>
+            <div className="min-w-0 flex-1">
+              <h1 className="truncate text-sm font-semibold text-slate-100">ห้องฝึกซ้อม</h1>
+              <p className="truncate text-[11px] text-slate-400">
+                ไม่บันทึกผลลงระบบ ไม่มีผลต่อคะแนน
+              </p>
+            </div>
+            {/* โหมดสอนของห้องนี้ (ADR-065) คนละตัวกับปุ่ม `?` คู่มือทั้งเว็บ */}
+            <button
+              type="button"
+              onClick={coach.start}
+              disabled={coach.active}
+              className="shrink-0 rounded-lg border border-line bg-navy-850 px-2.5 py-1.5 text-xs text-slate-300 transition hover:bg-navy-800 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Tutorial
+            </button>
+            {/* แถบหัวของเว็บถูกซ่อน — คู่มือทั้งเว็บต้องกดได้จากทุกหน้า (ADR-053 ข้อ 4) */}
+            <button
+              type="button"
+              onClick={tutorial.open}
+              aria-label="เปิดคู่มือการใช้งาน"
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-line bg-navy-850 text-sm font-semibold text-slate-400 transition hover:text-slate-100"
+            >
+              ?
+            </button>
+            <PlaySettingsMenu cubeType={cubeType} iconOnly />
+          </header>
+
+          <div className="flex shrink-0 gap-2">
+            <div className="min-w-0 flex-1">
+              <CubeTypeSelect value={cubeType} onChange={setCubeType} />
+            </div>
+            <button
+              type="button"
+              onClick={() => setStatsOpen(true)}
+              className="shrink-0 rounded-lg border border-line bg-navy-850 px-3 text-sm text-slate-300 transition hover:bg-navy-800"
+            >
+              สถิติ ({solves.length})
+            </button>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setScrambleOpen((open) => !open)}
+            aria-expanded={scrambleOpen}
+            className="flex shrink-0 items-center gap-2.5 rounded-xl border border-line-soft bg-navy-950/60 px-3 py-2 text-left"
+          >
+            <span className="shrink-0 text-[10px] tracking-[0.2em] text-slate-500">SCRAMBLE</span>
+            <span
+              className={`tabular min-w-0 flex-1 text-sm text-slate-200 ${
+                scrambleOpen ? 'break-words' : 'truncate'
+              }`}
+            >
+              {scrambleText}
+            </span>
+          </button>
+
+          <div className="shrink-0">
+            <TimerDisplay
+              phase={phase}
+              startedAt={timer.startedAt}
+              resultSeconds={timer.resultSeconds}
+              inspectionLeft={timer.inspectionLeft}
+              compact
+            />
+            {timerNotes}
+            <p className="mx-auto line-clamp-2 min-h-8 max-w-sm text-center text-[11px] leading-4 text-slate-500">
+              {showHint ? hintText : ''}
+            </p>
+          </div>
+
+          <section className="relative min-h-0 flex-1 overflow-hidden rounded-2xl border border-line bg-navy-850">
+            {cubeCanvas}
+            <PracticeCoachCard coach={coach} />
+            {movesAndStatus(true)}
+          </section>
+
+          <div className="grid shrink-0 grid-cols-3 gap-2 rounded-2xl border border-line bg-navy-850 p-2.5">
+            {controls(true)}
+          </div>
+        </main>
+
+        <BottomSheet
+          open={statsOpen}
+          onClose={() => setStatsOpen(false)}
+          title="สถิติและตัวเลือก"
+          hideTitle
+        >
+          {inspectionToggle}
+          {stats}
+        </BottomSheet>
+      </div>
+    );
+  }
+
   return (
     // จอ `lg` ขึ้นไปล็อกความสูงเท่าจอ หน้าไม่เลื่อน — แผงควบคุมเลื่อนในตัวเองแทน (ADR-059 ข้อ 3)
     <div className="min-h-screen bg-navy-900 lg:flex lg:h-[calc(100dvh-var(--offline-banner-h,0px))] lg:min-h-0 lg:flex-col lg:overflow-hidden">
@@ -331,50 +636,16 @@ export default function PracticePage() {
         <div className="grid gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-[1fr_22rem]">
           {/* ---------------- ฝั่งซ้าย: คิวบ์ 3 มิติ ---------------- */}
           <section className="relative h-[62vh] min-h-[22rem] overflow-hidden rounded-2xl border border-line bg-navy-850 lg:h-full lg:min-h-0">
-            {/* `null` จนกว่า scramble **ของประเภทนี้** จะมาถึง — ห้ามเอาของประเภทเก่ามาใส่เด็ดขาด
-              (`null` = คิวบ์ครบทุกหน้า ซึ่งเป็นภาพที่ต้องเห็นตอนเข้าห้องพอดี) */}
-            <CubeCanvas
-              ref={cubeRef}
-              cubeType={cubeType}
-              scramble={scramble?.cubeType === cubeType ? scramble.text : null}
-              // ปิดเฉพาะช่วงที่โปรแกรมหมุนให้ดูอยู่ (scramble / "แก้ให้ดู") เท่านั้น
-              // **ช่วง inspection ของห้องฝึกซ้อมเปิดไว้** เพราะหมุนหน้าคิวบ์ = ข้ามเข้าจับเวลา
-              // (ADR-032 ข้อ 3) — ห้องแข่งในเฟส 4 ต้องปิดตอน inspection เหมือนเดิม
-              turnsEnabled={!replaying && !scrambling}
-              // ห้องฝึกซ้อมเท่านั้น — ห้องแข่งในเฟส 4 ห้ามส่ง flag นี้ (ADR-032 ข้อ 1)
-              animateScramble
-              onScrambleAnimatingChange={setScrambling}
-              onState={handleState}
-              onMove={handleMove}
-              // ใช้เฉพาะโหมดสอน (แยกเองว่าหมุนหรือซูม) — ห้องฝึกซ้อมไม่ได้ส่งมุมกล้องให้ใคร
-              onCameraChange={coach.reportCamera}
-            />
+            {cubeCanvas}
 
             <PracticeCoachCard coach={coach} />
 
-            <div className="pointer-events-none absolute bottom-4 left-4 flex gap-6 rounded-xl border border-line bg-navy-900/80 px-5 py-3 backdrop-blur">
-              <div>
-                <p className="text-[11px] tracking-widest text-slate-500">MOVES</p>
-                <p className="tabular text-xl font-semibold text-slate-100">{moveCount}</p>
-              </div>
-              <div>
-                <p className="text-[11px] tracking-widest text-slate-500">สถานะ</p>
-                <p className="text-sm font-medium text-brand-400">{statusText}</p>
-              </div>
-            </div>
+            {movesAndStatus(false)}
 
             {/* ระหว่างสอนซ่อนกล่องคำใบ้ ไม่ให้มีข้อความสองชุดแย่งกันพูด (ADR-065 ข้อ 6) */}
-            {!coach.active && (phase !== 'solving' || replaying) && (
+            {showHint && (
               <p className="pointer-events-none absolute right-4 top-4 max-w-[16rem] rounded-lg border border-line bg-navy-900/80 px-3 py-1.5 text-xs text-slate-400 backdrop-blur">
-                {scrambling
-                  ? 'กำลังหมุน scramble ให้ดูทีละท่า · ระหว่างนี้หมุนเองไม่ได้'
-                  : replaying
-                    ? 'กำลังย้อนท่าให้ดูทีละท่า · นาฬิกาจะหยุดเมื่อหมุนครบและคิวบ์ครบทุกหน้า'
-                    : phase === 'inspection'
-                      ? 'ลากดูรอบ ๆ ได้ · พร้อมแล้วกด Space Bar หรือหมุนหน้าคิวบ์ = เริ่มจับเวลาทันที (ท่าที่หมุนนับเป็นท่าแรก)'
-                      : scramble === null
-                        ? 'คิวบ์ครบทุกหน้าแล้ว · กด "สุ่ม scramble" แล้วระบบจะหมุนให้ดูทีละท่า'
-                        : 'หมุนเล่นได้ตามใจ · กดเริ่มแล้วคิวบ์จะกลับไปที่ scramble ให้เอง'}
+                {hintText}
               </p>
             )}
           </section>
@@ -400,122 +671,19 @@ export default function PracticePage() {
                   resultSeconds={timer.resultSeconds}
                   inspectionLeft={timer.inspectionLeft}
                 />
-                {/* เวลาที่ได้รวมช่วงอนิเมชันไปด้วย จึงไม่ใช่ฝีมือผู้เล่น — ต้องบอกให้ชัด
-                  ว่าไม่ลงสถิติ (game-rules.md ข้อ 12.2) */}
-                {assisted && (
-                  <p className="mt-2 text-center text-xs text-gold-400">
-                    รอบนี้ใช้ปุ่ม "เสร็จทันที (แก้ให้ดู)" · เวลารวมช่วงอนิเมชันด้วย{' '}
-                    <span className="font-semibold">จึงไม่บันทึกลงสถิติ</span>
-                  </p>
-                )}
-                {finishNowError && (
-                  <p className="mt-2 rounded-lg border border-loss/40 px-3 py-2 text-center text-xs text-loss">
-                    {finishNowError}
-                  </p>
-                )}
+                {timerNotes}
               </div>
 
               <div className="mt-4 rounded-xl border border-line bg-navy-900/70 px-4 py-3">
                 <p className="text-[11px] tracking-widest text-slate-500">SCRAMBLE</p>
                 <p className="tabular mt-1 break-words text-sm leading-6 text-slate-200">
-                  {scrambleError ??
-                    (loadingScramble
-                      ? 'กำลังขอ scramble…'
-                      : (scramble?.text ?? 'ยังไม่มี — กดสุ่มเพื่อให้ระบบหมุนให้ดู'))}
+                  {scrambleText}
                 </p>
               </div>
 
-              <div className="mt-4 grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => void fetchScramble(cubeType)}
-                  disabled={busy || phase === 'solving' || phase === 'inspection'}
-                  className="rounded-lg bg-navy-700 px-3 py-2 text-sm font-medium text-slate-100 transition hover:bg-navy-800 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  สุ่มใหม่
-                </button>
-                <button
-                  type="button"
-                  onClick={handleReset}
-                  disabled={!scramble || busy}
-                  className="rounded-lg border border-line bg-navy-800 px-3 py-2 text-sm font-medium text-slate-200 transition hover:bg-navy-700 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  รีเซ็ตคิวบ์
-                </button>
+              <div className="mt-4 grid grid-cols-2 gap-2">{controls(false)}</div>
 
-                <button
-                  type="button"
-                  onClick={handleFinishNow}
-                  // ช่วง inspection ยังไม่มีนาฬิกาให้หยุด — ปล่อยให้กดได้จะได้คิวบ์ครบสี
-                  // ตั้งแต่ยังไม่เริ่มจับเวลา ซึ่งไม่มีความหมายอะไร
-                  disabled={!scramble || busy || phase === 'inspection'}
-                  className="col-span-2 rounded-lg border border-line bg-navy-800 px-3 py-2 text-sm font-medium text-slate-200 transition hover:bg-navy-700 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  {replaying ? 'กำลังแก้ให้ดู…' : 'เสร็จทันที (แก้ให้ดู)'}
-                </button>
-
-                {/* ปุ่มในช่องนี้ต้องเป็น <button> คนละตัวเมื่อเปลี่ยนหน้าที่ (`key` ต่างกัน) — ถ้า React ใช้ตัวเดิมต่อ
-                    โฟกัสจากการคลิกจะค้างอยู่ แล้ว Space Bar กลายเป็นการคลิกปุ่มใหม่ในช่องเดียวกัน (เช่น "ยกเลิกรอบนี้") */}
-                {phase === 'idle' || phase === 'finished' ? (
-                  <button
-                    key="primary"
-                    type="button"
-                    onClick={() =>
-                      phase === 'idle' && scramble ? handleStart() : void fetchScramble(cubeType)
-                    }
-                    disabled={busy}
-                    className="col-span-2 rounded-lg bg-brand-500 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    {/* จบด้วย "เสร็จทันที" = คิวบ์ครบสีแล้ว ไม่มีอะไรให้ "เล่นอีกครั้ง" ·
-                      กดแล้วทำงานเหมือนกันทั้งสองป้าย คือขอ scramble ใหม่ (ADR-059 ข้อ 6) */}
-                    {scrambling
-                      ? 'กำลังหมุน scramble ให้ดู…'
-                      : phase === 'finished'
-                        ? assisted
-                          ? 'สุ่มใหม่ (Space Bar)'
-                          : 'เล่นอีกครั้ง (Space Bar)'
-                        : scramble
-                          ? 'เริ่มจับเวลา (Space Bar)'
-                          : 'สุ่ม scramble (Space Bar)'}
-                  </button>
-                ) : (
-                  <>
-                    {phase === 'inspection' && (
-                      <button
-                        key="skip-inspection"
-                        type="button"
-                        onClick={handleSkipInspection}
-                        disabled={busy}
-                        className="col-span-2 rounded-lg bg-brand-500 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-40"
-                      >
-                        เริ่มจับเวลาเลย (Space Bar)
-                      </button>
-                    )}
-                    <button
-                      key="abort"
-                      type="button"
-                      onClick={handleAbort}
-                      disabled={busy}
-                      className="col-span-2 rounded-lg border border-loss/40 px-3 py-2.5 text-sm font-semibold text-loss transition hover:bg-loss/10 disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      ยกเลิกรอบนี้ (DNF)
-                    </button>
-                  </>
-                )}
-              </div>
-
-              <label className="mt-4 flex items-center justify-between rounded-lg border border-line-soft px-3 py-2">
-                <span className="text-sm text-slate-300">
-                  ช่วงตรวจสอบคิวบ์ {INSPECTION_SECONDS} วินาที
-                </span>
-                <input
-                  type="checkbox"
-                  checked={inspectionEnabled}
-                  onChange={(e) => setInspectionEnabled(e.target.checked)}
-                  disabled={busy || phase === 'solving' || phase === 'inspection'}
-                  className="h-4 w-4 accent-[var(--color-brand-500)]"
-                />
-              </label>
+              <div className="mt-4">{inspectionToggle}</div>
 
               <Link
                 to="/"
@@ -525,15 +693,7 @@ export default function PracticePage() {
               </Link>
             </section>
 
-            <PracticeStats
-              cubeType={cubeType}
-              solves={solves}
-              times={times}
-              onClear={() => {
-                clearSolves(cubeType);
-                setSolves([]);
-              }}
-            />
+            {stats}
           </aside>
         </div>
       </main>

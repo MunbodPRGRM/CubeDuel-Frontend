@@ -49,6 +49,8 @@ interface PlaySettingsMenuProps {
    */
   layout?: { allowStacked: boolean; rivalCount: number };
   className?: string;
+  /** ปุ่มเหลือแค่ไอคอนเฟือง (ชื่อยังอยู่ใน `aria-label`) — แถบหัวห้องของจอแคบ (ADR-083 ข้อ 5) */
+  iconOnly?: boolean;
 }
 
 /**
@@ -58,7 +60,12 @@ interface PlaySettingsMenuProps {
  * เป็น popover ไม่ใช่ modal เพราะทุกตัวเลือกเห็นผลกับสิ่งที่อยู่ข้างหลังทันที
  * ฉากดำคลุมจอจะทำให้ตัดสินใจไม่ได้ว่าที่เลือกไปแล้วดีขึ้นหรือแย่ลง
  */
-export function PlaySettingsMenu({ cubeType, layout, className = '' }: PlaySettingsMenuProps) {
+export function PlaySettingsMenu({
+  cubeType,
+  layout,
+  className = '',
+  iconOnly = false,
+}: PlaySettingsMenuProps) {
   const prefs = usePlayPrefs();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -91,15 +98,16 @@ export function PlaySettingsMenu({ cubeType, layout, className = '' }: PlaySetti
         type="button"
         aria-expanded={open}
         aria-haspopup="dialog"
+        aria-label={iconOnly ? 'ตั้งค่าการเล่น' : undefined}
         onClick={() => setOpen((value) => !value)}
-        className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm transition ${
+        className={`flex items-center gap-2 rounded-xl border text-sm transition ${iconOnly ? 'p-2' : 'px-3 py-2'} ${
           open
             ? 'border-brand-500 bg-navy-800 text-slate-100'
             : 'border-line bg-navy-850 text-slate-300 hover:bg-navy-800 hover:text-slate-100'
         }`}
       >
         <GearIcon />
-        ตั้งค่าการเล่น
+        {!iconOnly && 'ตั้งค่าการเล่น'}
       </button>
 
       {open && (

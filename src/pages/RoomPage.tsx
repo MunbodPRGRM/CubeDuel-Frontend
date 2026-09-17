@@ -1,12 +1,13 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { AppHeader } from '@/components/AppHeader';
 import { Avatar } from '@/components/Avatar';
+import { BottomSheet } from '@/components/BottomSheet';
 import { FormAlert } from '@/components/FormAlert';
 import { PageSpinner } from '@/components/PageSpinner';
 import { PlaySettingsMenu } from '@/components/PlaySettings';
 import { useWideScreen } from '@/hooks/useWideScreen';
-import { formatEloChange } from '@/lib/format';
+import { formatEloChange, formatSolveTime, toSolveSeconds } from '@/lib/format';
 import { usePlayPrefs, type ResolvedRoomLayout, type RoomLayout } from '@/lib/play-prefs';
 import { LiveTime, type LiveTimeMode } from '@/room/LiveTime';
 import { PlayerCubePanel, type PlayerPanelVariant } from '@/room/PlayerCubePanel';
@@ -19,6 +20,7 @@ import { useMatchResult } from '@/room/useMatchResult';
 import { useQueue } from '@/socket/useQueue';
 import { useRoom } from '@/socket/useRoom';
 import { useSocket } from '@/socket/useSocket';
+import { useTutorial } from '@/tutorial/useTutorial';
 import {
   playerName,
   type MatchResult,
@@ -47,13 +49,36 @@ export default function RoomPage() {
   const { roomId: roomIdParam } = useParams<{ roomId: string }>();
   const roomId = Number(roomIdParam);
   const valid = Number.isInteger(roomId) && roomId > 0;
+  const wideScreen = useWideScreen();
+  const { roomLayout } = usePlayPrefs();
+  /**
+   * จอแคบกว่า `lg` + layout `auto`/`focus` = **โครงแนวตั้งจบในจอเดียว** (ADR-083 ข้อ 5)
+   * ผู้เล่นที่เลือก `classic`/`sides`/`stacked` เองบนจอแคบยังได้แผงซ้อนที่เลื่อนได้แบบเดิม (ADR-063 ข้อ 3)
+   */
+  const mobile = !wideScreen && (roomLayout === 'auto' || roomLayout === 'focus');
 
   return (
-    // จอ `lg` ขึ้นไปล็อกความสูงเท่าจอ หน้าไม่เลื่อน · จอแคบคอลัมน์ซ้อนกันจึงยังเลื่อนได้ (ADR-059 ข้อ 3)
-    <div className="min-h-screen bg-navy-900 lg:flex lg:h-[calc(100dvh-var(--offline-banner-h,0px))] lg:min-h-0 lg:flex-col lg:overflow-hidden">
-      <AppHeader />
-      <main className="page-wide px-4 py-4 lg:min-h-0 lg:flex-1">
-        {valid ? <RoomView roomId={roomId} /> : <RoomGoneCard message="เลขห้องในลิงก์ไม่ถูกต้อง" />}
+    // ⚠️ `RoomView` ต้องอยู่ตำแหน่งเดิมใน tree ทั้งสองโครง — สลับโครงแล้วห้องต้องไม่ถูก mount ใหม่
+    <div
+      className={
+        mobile
+          ? 'flex h-app flex-col overflow-hidden bg-navy-900'
+          : // จอ `lg` ขึ้นไปล็อกความสูงเท่าจอ หน้าไม่เลื่อน · จอแคบคอลัมน์ซ้อนกันจึงยังเลื่อนได้ (ADR-059 ข้อ 3)
+            'min-h-screen bg-navy-900 lg:flex lg:h-[calc(100dvh-var(--offline-banner-h,0px))] lg:min-h-0 lg:flex-col lg:overflow-hidden'
+      }
+    >
+      {/* จอแคบใช้แถบหัวของห้องเองแทน (ออก · ห้อง · ? · เฟือง) — ประหยัดที่ให้คิวบ์ */}
+      {(!mobile || !valid) && <AppHeader />}
+      <main
+        className={
+          mobile ? 'flex min-h-0 flex-1 flex-col' : 'page-wide px-4 py-4 lg:min-h-0 lg:flex-1'
+        }
+      >
+        {valid ? (
+          <RoomView roomId={roomId} mobile={mobile} />
+        ) : (
+          <RoomGoneCard message="เลขห้องในลิงก์ไม่ถูกต้อง" />
+        )}
       </main>
     </div>
   );
@@ -63,7 +88,7 @@ export default function RoomPage() {
  * ห้ามครอบด้วย `SocketGate` — หน้านี้ต้องคาอยู่ระหว่างเน็ตกระตุก ไม่ใช่ถูก unmount
  * ที่นั่งในห้องผูกกับ `userId` ไม่ใช่ socket ต่อกลับมาแล้ว `room:rejoin` เอง (ADR-034 ข้อ 3)
  */
-function RoomView({ roomId }: { roomId: number }) {
+function RoomView({ roomId, mobile }: { roomId: number; mobile: boolean }) {
   const navigate = useNavigate();
   const room = useRoom(roomId);
   const match = useMatch(room.snapshot);
@@ -75,9 +100,26 @@ function RoomView({ roomId }: { roomId: number }) {
   // เข้ามาหลังรอบจบ (กด F5 / ผู้ชมเพิ่งเข้า) จะไม่มี `match:finished` — ขอย้อนหลังแทน
   const result = useMatchResult(snapshot, match.result);
 
-  if (status === 'gone') return <RoomGoneCard message={goneMessage ?? 'ไม่ได้อยู่ในห้องนี้แล้ว'} />;
-  // ยังไม่เคยได้ snapshot แรก — แยกให้ชัดว่าติดที่การเชื่อมต่อหรือแค่รอ ack
-  if (!snapshot) return socketStatus === 'error' ? <ConnectionErrorCard /> : <PageSpinner />;
+  if (status === 'gone' || !snapshot) {
+    const card =
+      status === 'gone' ? (
+        <RoomGoneCard message={goneMessage ?? 'ไม่ได้อยู่ในห้องนี้แล้ว'} />
+      ) : // ยังไม่เคยได้ snapshot แรก — แยกให้ชัดว่าติดที่การเชื่อมต่อหรือแค่รอ ack
+      socketStatus === 'error' ? (
+        <ConnectionErrorCard />
+      ) : (
+        <PageSpinner />
+      );
+    // จอแคบไม่มีแถบหัวของเว็บ (ใช้ของห้องแทน) — ตอนยังไม่มีห้องให้ใส่คืน ไม่งั้นไม่มีทางกลับ
+    return mobile ? (
+      <>
+        <AppHeader />
+        <div className="px-4 py-4">{card}</div>
+      </>
+    ) : (
+      card
+    );
+  }
 
   /**
    * คิวบ์ก้อนใหญ่ทางซ้าย = ที่นั่งของเรา · **ผู้ชมไม่มีที่นั่ง จึงยึด `players[0]` แทน**
@@ -126,6 +168,50 @@ function RoomView({ roomId }: { roomId: number }) {
     );
   };
 
+  const matchPanelProps: MatchPanelProps = {
+    snapshot,
+    match,
+    result,
+    me,
+    focusPlayer,
+    isSpectator,
+    isHost,
+    roomBusy: room.busy,
+    roomError: room.actionError,
+    onSetReady: room.setReady,
+    onSwitchSeat: room.switchSeat,
+    onLeave: leave,
+    onRequeue: requeue,
+    queueBusy: queue.busy,
+  };
+
+  const selfPanel = (variant: PlayerPanelVariant) => (
+    <PlayerCubePanel
+      player={focusPlayer}
+      snapshot={snapshot}
+      isMe={!isSpectator && focusPlayer?.userId === me?.userId}
+      emptyLabel={isSpectator ? 'รอผู้เล่นเข้าห้อง' : 'ที่นั่งของคุณ'}
+      match={match}
+      variant={variant}
+      // จอแคบ: คู่แข่งอยู่ในกรอบคิวบ์เรา ลากย้ายมุม/ย่อได้ (ADR-081 ข้อ 2)
+      overlay={
+        pipRivals ? (
+          <PipDock corner={pipCorner} collapsed={pipCollapsed} panels={rivalPanels} />
+        ) : undefined
+      }
+    />
+  );
+
+  if (mobile) {
+    return (
+      <MobileRoomLayout
+        panelProps={matchPanelProps}
+        socketConnected={socketStatus === 'connected'}
+        stage={selfPanel('stage')}
+      />
+    );
+  }
+
   return (
     <div className="flex flex-col gap-4 lg:h-full">
       {socketStatus !== 'connected' && <ConnectionBanner />}
@@ -145,44 +231,138 @@ function RoomView({ roomId }: { roomId: number }) {
         layout={layout}
         compactRivals={compactRivals}
         pipRivals={pipRivals}
-        self={
-          <PlayerCubePanel
-            player={focusPlayer}
-            snapshot={snapshot}
-            isMe={!isSpectator && focusPlayer?.userId === me?.userId}
-            emptyLabel={isSpectator ? 'รอผู้เล่นเข้าห้อง' : 'ที่นั่งของคุณ'}
-            match={match}
-            // จอแคบ: คู่แข่งอยู่ในกรอบคิวบ์เรา ลากย้ายมุม/ย่อได้ (ADR-081 ข้อ 2)
-            overlay={
-              pipRivals ? (
-                <PipDock corner={pipCorner} collapsed={pipCollapsed} panels={rivalPanels} />
-              ) : undefined
-            }
-          />
-        }
+        self={selfPanel('full')}
         rivals={pipRivals ? [] : rivalPanels}
         info={
           <>
             <RoomHeaderCard snapshot={snapshot} focus={focusPlayer} rivals={rivals} />
-            <MatchPanel
-              snapshot={snapshot}
-              match={match}
-              result={result}
-              me={me}
-              focusPlayer={focusPlayer}
-              isSpectator={isSpectator}
-              isHost={isHost}
-              roomBusy={room.busy}
-              roomError={room.actionError}
-              onSetReady={room.setReady}
-              onSwitchSeat={room.switchSeat}
-              onLeave={leave}
-              onRequeue={requeue}
-              queueBusy={queue.busy}
-            />
+            <MatchPanel {...matchPanelProps} />
           </>
         }
       />
+    </div>
+  );
+}
+
+/**
+ * **ห้องแข่งบนจอแคบ** (ADR-083 ข้อ 5) — เรียงแนวตั้งหนึ่งจอ ไม่มีการเลื่อนหน้า
+ *
+ * แถบหัวห้อง → scramble บรรทัดเดียว → สถานะ + นาฬิกา + คำแนะนำ → คิวบ์เรา (`flex-1` + PiP คู่แข่ง) → แผงปุ่มล่าง
+ * ผลจบรอบเป็นแผ่นเลื่อนขึ้น **ในหน้าห้องเดิม** ปิดแล้วเปิดซ้ำได้จากแผงล่าง
+ *
+ * ทุกชิ้นเป็นตัวเดียวกับจอกว้าง (`MatchPanel` · `MatchClockBlock` · `PlayerCubePanel` · `PipDock`)
+ * เปลี่ยนแค่ที่วาง — ลำดับ state · การจับเวลา · การส่ง move ไม่ได้แตะ
+ * ไม่มีลิงก์ไปหน้าผลแมตช์ในแผ่นผล: เปลี่ยนหน้าโดยไม่ `room:leave` = ที่นั่งยังค้างในห้อง (ดูย้อนหลังได้จากประวัติในโปรไฟล์)
+ */
+function MobileRoomLayout({
+  panelProps,
+  socketConnected,
+  stage,
+}: {
+  panelProps: MatchPanelProps;
+  socketConnected: boolean;
+  /** แผงคิวบ์ของเรา (`variant="stage"`) พร้อม PiP คู่แข่ง */
+  stage: ReactNode;
+}) {
+  // ป้าย "กำลังดูในฐานะผู้ชม" อยู่ในแผงล่างแล้ว (`MatchPanel` dock) · ชื่อเจ้าของคิวบ์ใหญ่อยู่บนป้ายในกรอบคิวบ์
+  const { snapshot, result, focusPlayer, isSpectator, isHost, roomBusy, onLeave } = panelProps;
+  const tutorial = useTutorial();
+  const [scrambleOpen, setScrambleOpen] = useState(false);
+  /** รอบที่ผู้ใช้ปิดแผ่นผลไปแล้ว — จบรอบใหม่ (`finishedAtTs` ใหม่) แผ่นเปิดเองอีกครั้ง */
+  const [dismissedRound, setDismissedRound] = useState<number | null>(null);
+
+  const fromQueue = isQueueRoom(snapshot);
+  const roomIsFull = snapshot.players.length >= snapshot.maxPlayers;
+  const focusProgress = focusPlayer ? findProgress(snapshot, focusPlayer.userId) : null;
+  const resultOpen =
+    snapshot.state === 'FINISHED' && result !== null && dismissedRound !== result.finishedAtTs;
+
+  const facts = [
+    CUBE_TYPE_LABEL[snapshot.cubeType],
+    `ผู้เล่น ${snapshot.players.length}/${snapshot.maxPlayers}`,
+    // ห้องจากคิวไม่มีผู้ชม (ADR-079) — บอกว่ามีผลคะแนนแทน
+    fromQueue ? 'มีผลต่อ ELO' : `ผู้ชม ${snapshot.spectatorCount}`,
+    !fromQueue && snapshot.host
+      ? `หัวห้อง ${playerName(snapshot.host)}${snapshot.host.seat === 'spectator' ? ' (ผู้ชม)' : ''}`
+      : null,
+  ].filter((fact) => fact !== null);
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-2 px-3 pt-2 pb-3">
+      <header className="flex shrink-0 items-center gap-2">
+        {/* ปุ่มออกมีทุกเฟสเหมือนจอกว้าง — ตรรกะการออกกลางแข่งเป็นของ `useRoom`/server (ADR-083 ข้อ 5) */}
+        <button
+          type="button"
+          disabled={roomBusy}
+          onClick={() => void onLeave()}
+          className="shrink-0 rounded-lg border border-line bg-navy-850 px-2.5 py-1.5 text-xs font-semibold text-slate-300 transition hover:bg-navy-800 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          ออก
+        </button>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-slate-100">
+            {fromQueue ? roomKindLabel(snapshot) : 'ห้องสร้างเอง'}
+          </p>
+          <p className="truncate text-[11px] text-slate-400">{facts.join(' · ')}</p>
+        </div>
+        {snapshot.roomCode && <RoomCodeButton roomCode={snapshot.roomCode} compact />}
+        {/* คู่มือต้องกดได้จากทุกหน้า (ADR-053 ข้อ 4) — แถบหัวของเว็บถูกซ่อนในห้องจอแคบ */}
+        <button
+          type="button"
+          onClick={tutorial.open}
+          aria-label="เปิดคู่มือการใช้งาน"
+          className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-line bg-navy-850 text-sm font-semibold text-slate-400 transition hover:text-slate-100"
+        >
+          ?
+        </button>
+        <PlaySettingsMenu
+          iconOnly
+          cubeType={snapshot.cubeType}
+          layout={{
+            allowStacked: snapshot.maxPlayers === 2,
+            rivalCount: Math.max(1, snapshot.maxPlayers - 1),
+          }}
+        />
+      </header>
+
+      {!socketConnected && <ConnectionBanner />}
+
+      <button
+        type="button"
+        onClick={() => setScrambleOpen((open) => !open)}
+        aria-expanded={scrambleOpen}
+        disabled={snapshot.scramble === null}
+        className="flex shrink-0 items-center gap-2.5 rounded-xl border border-line-soft bg-navy-950/60 px-3 py-2 text-left disabled:cursor-default"
+      >
+        <span className="shrink-0 text-[10px] tracking-[0.2em] text-slate-500">SCRAMBLE</span>
+        <span
+          className={`tabular min-w-0 flex-1 text-sm text-slate-200 ${
+            scrambleOpen ? 'break-words' : 'truncate'
+          }`}
+        >
+          {snapshot.scramble ?? <span className="text-slate-600">จะแสดงเมื่อเริ่มการแข่งขัน</span>}
+        </span>
+      </button>
+
+      <div className="shrink-0 text-center">
+        <p className="text-xs font-semibold text-brand-400">{headline(snapshot, result)}</p>
+        <MatchClockBlock snapshot={snapshot} progress={focusProgress} compact />
+        <p className="mx-auto line-clamp-2 min-h-8 max-w-sm text-[11px] leading-4 text-slate-500">
+          {hintText(snapshot, roomIsFull, isSpectator, isHost, fromQueue)}
+        </p>
+      </div>
+
+      {stage}
+
+      <MatchPanel {...panelProps} variant="dock" onShowResult={() => setDismissedRound(null)} />
+
+      <BottomSheet
+        open={resultOpen}
+        onClose={() => result && setDismissedRound(result.finishedAtTs)}
+        title={headline(snapshot, result)}
+      >
+        <MatchPanel {...panelProps} variant="result" />
+      </BottomSheet>
     </div>
   );
 }
@@ -221,6 +401,22 @@ interface MatchPanelProps {
   /** ออกจากห้องแข่งขันแล้วเข้าคิวหาคู่ใหม่ทันที */
   onRequeue: () => Promise<void>;
   queueBusy: boolean;
+  /**
+   * - `column` — คอลัมน์ข้อมูลเต็มชุดของจอกว้าง (ค่าเดิม)
+   * - `dock` — แผงล่างของจอแคบ: ข้อผิดพลาด + ปุ่มตามเฟส ไม่มีปุ่มออก (อยู่แถบหัว) · จบรอบมีปุ่ม "ดูผล" (ADR-083 ข้อ 5)
+   * - `result` — เนื้อในแผ่นผลจบรอบของจอแคบ: แถวคะแนน + ปุ่มตามชนิดห้อง + ปุ่มออก
+   */
+  variant?: 'column' | 'dock' | 'result';
+  /** เปิดแผ่นผลจบรอบอีกครั้ง — ใช้กับ `dock` */
+  onShowResult?: () => void;
+}
+
+/** ห้องจากคิว (แข่งขัน 1v1 + หลายคนโหมด auto) — ตรงกับ `isQueueRoom()` ฝั่ง server */
+function isQueueRoom(snapshot: RoomSnapshot): boolean {
+  return (
+    snapshot.roomKind === 'competitive' ||
+    (snapshot.roomKind === 'multiplayer' && snapshot.roomMode === 'auto')
+  );
 }
 
 function MatchPanel({
@@ -238,6 +434,8 @@ function MatchPanel({
   onLeave,
   onRequeue,
   queueBusy,
+  variant = 'column',
+  onShowResult,
 }: MatchPanelProps) {
   const { state } = snapshot;
   const inLobby = state === 'WAITING';
@@ -250,9 +448,7 @@ function MatchPanel({
    * ถ้าเล่นซ้ำได้จะกลายเป็นช่องปั๊มคะแนน (`socket-events.md` ข้อ 4 · ADR-043 ข้อ 4)
    * — ตรงกับ `isQueueRoom()` ฝั่ง server เป๊ะ · `isHost` ของห้องพวกนี้ไม่มีความหมาย
    */
-  const fromQueue =
-    snapshot.roomKind === 'competitive' ||
-    (snapshot.roomKind === 'multiplayer' && snapshot.roomMode === 'auto');
+  const fromQueue = isQueueRoom(snapshot);
 
   const myProgress = me ? findProgress(snapshot, me.userId) : null;
   const focusProgress = focusPlayer ? findProgress(snapshot, focusPlayer.userId) : null;
@@ -293,6 +489,28 @@ function MatchPanel({
     </>
   );
 
+  const alerts = (
+    <>
+      {match.desynced && racing && (
+        <p
+          className={`rounded-xl border border-loss/40 bg-loss/10 px-3 py-2 text-left text-xs leading-5 text-loss ${
+            variant === 'dock' ? 'mb-2' : 'mt-4'
+          }`}
+        >
+          {match.reloadedMidSolve
+            ? 'รีเฟรชหน้าระหว่างรอบ — คิวบ์กลับไปที่ scramble แต่เซิร์ฟเวอร์ยังจำท่าที่หมุนไปแล้ว รอบนี้จึงแก้ต่อให้จบไม่ได้ กดยอมแพ้แล้วเริ่มรอบใหม่'
+            : 'การหมุนของคุณกับเซิร์ฟเวอร์ไม่ตรงกันแล้ว — รอบนี้จะยืนยันผลไม่ได้ แนะนำให้กดยอมแพ้แล้วเริ่มรอบใหม่'}
+        </p>
+      )}
+
+      {error && (
+        <div className={`text-left ${variant === 'dock' ? 'mb-2' : 'mt-4'}`}>
+          <FormAlert message={error} />
+        </div>
+      )}
+    </>
+  );
+
   const detailBlock = (
     <>
       <p className="mt-5 min-h-[3.5rem] text-sm leading-6 text-slate-400">
@@ -303,24 +521,23 @@ function MatchPanel({
 
       <EloRows snapshot={snapshot} result={result} />
 
-      {match.desynced && racing && (
-        <p className="mt-4 rounded-xl border border-loss/40 bg-loss/10 px-3 py-2 text-left text-xs leading-5 text-loss">
-          {match.reloadedMidSolve
-            ? 'รีเฟรชหน้าระหว่างรอบ — คิวบ์กลับไปที่ scramble แต่เซิร์ฟเวอร์ยังจำท่าที่หมุนไปแล้ว รอบนี้จึงแก้ต่อให้จบไม่ได้ กดยอมแพ้แล้วเริ่มรอบใหม่'
-            : 'การหมุนของคุณกับเซิร์ฟเวอร์ไม่ตรงกันแล้ว — รอบนี้จะยืนยันผลไม่ได้ แนะนำให้กดยอมแพ้แล้วเริ่มรอบใหม่'}
-        </p>
-      )}
-
-      {error && (
-        <div className="mt-4 text-left">
-          <FormAlert message={error} />
-        </div>
-      )}
+      {alerts}
     </>
   );
 
+  const leaveButton = (
+    <button
+      type="button"
+      disabled={roomBusy}
+      onClick={() => void onLeave()}
+      className="rounded-xl border border-line bg-navy-800 px-4 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-navy-700 disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      ออกจากห้อง
+    </button>
+  );
+
   const actionBlock = (
-    <div className="mt-5 flex flex-col gap-2.5">
+    <div className={`flex flex-col gap-2.5 ${variant === 'column' ? 'mt-5' : ''}`}>
       {isSpectator ? (
         <>
           <p className="rounded-xl border border-line-soft bg-navy-900/60 px-4 py-2.5 text-sm text-slate-400">
@@ -429,16 +646,39 @@ function MatchPanel({
         </>
       )}
 
-      <button
-        type="button"
-        disabled={roomBusy}
-        onClick={() => void onLeave()}
-        className="rounded-xl border border-line bg-navy-800 px-4 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-navy-700 disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        ออกจากห้อง
-      </button>
+      {/* จอแคบ: แผงล่างไม่มีปุ่มออก (อยู่แถบหัวห้อง) · จบรอบแล้วเปิดแผ่นผลซ้ำได้ */}
+      {variant === 'dock'
+        ? finished &&
+          onShowResult && (
+            <button
+              type="button"
+              onClick={onShowResult}
+              className="rounded-xl border border-brand-500/60 bg-navy-800 px-4 py-2.5 text-sm font-semibold text-brand-300 transition hover:bg-navy-700"
+            >
+              ดูผลรอบนี้
+            </button>
+          )
+        : leaveButton}
     </div>
   );
+
+  if (variant === 'dock') {
+    return (
+      <section className="shrink-0 rounded-2xl border border-line bg-navy-850 px-3 py-2.5 text-center">
+        {alerts}
+        {actionBlock}
+      </section>
+    );
+  }
+
+  if (variant === 'result') {
+    return (
+      <div className="flex flex-col gap-4">
+        <EloRows snapshot={snapshot} result={result} className="" showTimes />
+        {actionBlock}
+      </div>
+    );
+  }
 
   const roomFacts = (
     <dl className="mt-5 space-y-1.5 text-left text-sm">
@@ -470,9 +710,12 @@ function MatchPanel({
 function MatchClockBlock({
   snapshot,
   progress,
+  compact = false,
 }: {
   snapshot: RoomSnapshot;
   progress: PlayerProgress | null;
+  /** จอแคบ — ตัวเลขเล็กลงและไม่มีระยะห่างด้านบน (ADR-083 ข้อ 5) */
+  compact?: boolean;
 }) {
   const { state, phaseEndsAtTs, serverStartTs } = snapshot;
   const counting = state === 'COUNTDOWN' || state === 'INSPECTION';
@@ -501,13 +744,13 @@ function MatchClockBlock({
     : 'เวลา';
 
   return (
-    <div className="mt-6">
-      <p className="text-xs text-slate-400">{label}</p>
+    <div className={compact ? '' : 'mt-6'}>
+      <p className={`text-slate-400 ${compact ? 'text-[11px]' : 'text-xs'}`}>{label}</p>
       <LiveTime
         mode={mode}
         ts={ts}
         frozenMs={frozenMs}
-        className={`tabular block text-5xl font-bold ${
+        className={`tabular block font-bold ${compact ? 'text-4xl leading-tight' : 'text-5xl'} ${
           counting
             ? 'text-gold-400'
             : mode === 'frozen' && frozenMs === null
@@ -516,7 +759,7 @@ function MatchClockBlock({
         }`}
       />
       {state === 'FINAL_COUNTDOWN' && phaseEndsAtTs !== null && (
-        <p className="mt-2 text-sm font-semibold text-loss">
+        <p className={`font-semibold text-loss ${compact ? 'text-xs' : 'mt-2 text-sm'}`}>
           เหลืออีก <LiveTime mode="countdown" ts={phaseEndsAtTs} className="tabular" /> วินาที
         </p>
       )}
@@ -534,12 +777,24 @@ type NameSource = Pick<PlayerPublic, 'username' | 'nickname'>;
  * ห้อง 3–4 คนเรียงตาม `rankNo` แล้วเติมเลขอันดับข้างหน้า **เมื่อมีแถวเกิน 2 แถวเท่านั้น**
  * เพราะที่ 4 คนต้องรู้ว่าใครที่ 1–4 ส่วนห้อง 1v1 ต้องได้หน้าตาเดิมเป๊ะ (ADR-044 ข้อ 5)
  */
-function EloRows({ snapshot, result }: { snapshot: RoomSnapshot; result: MatchResult | null }) {
+function EloRows({
+  snapshot,
+  result,
+  className = 'mt-5',
+  showTimes = false,
+}: {
+  snapshot: RoomSnapshot;
+  result: MatchResult | null;
+  /** ระยะห่างด้านบน — คอลัมน์จอกว้าง `mt-5` · แผ่นผลจอแคบส่ง `''` */
+  className?: string;
+  /**
+   * เวลาของแต่ละคนหน้าคะแนน — แผ่นผลจอแคบ (ADR-083 ข้อ 5) · จอกว้างไม่ต้อง เพราะเวลาอยู่ในแผงคิวบ์ทุกช่องแล้ว
+   * แต่จอแคบคู่แข่งเป็น PiP ย่อได้ ต้องบอกในแผ่นผลเอง
+   */
+  showTimes?: boolean;
+}) {
   // ห้องสร้างเองไม่ปรับคะแนนเลย (CLAUDE.md ข้อ 7) — ห้องแข่งขัน + หลายคนโหมด auto ปรับจริง
-  const ratingApplied = result
-    ? result.ratingApplied
-    : snapshot.roomKind === 'competitive' ||
-      (snapshot.roomKind === 'multiplayer' && snapshot.roomMode === 'auto');
+  const ratingApplied = result ? result.ratingApplied : isQueueRoom(snapshot);
 
   /**
    * ก่อนจบรอบยังไม่มีอันดับให้เรียง จึงเรียงตามลำดับที่นั่งไปก่อน
@@ -561,7 +816,7 @@ function EloRows({ snapshot, result }: { snapshot: RoomSnapshot; result: MatchRe
   const showRank = rows.length > 2;
 
   return (
-    <dl className="mt-5 space-y-1.5 text-left text-sm">
+    <dl className={`space-y-1.5 text-left text-sm ${className}`}>
       {rows.map(({ userId, entry, name }) => {
         const change = entry?.eloChange ?? null;
         return (
@@ -570,9 +825,20 @@ function EloRows({ snapshot, result }: { snapshot: RoomSnapshot; result: MatchRe
               {showRank && entry && (
                 <span className="tabular mr-1.5 text-slate-400">#{entry.rankNo}</span>
               )}
-              {playerName(name)} ได้แต้ม
+              {playerName(name)}
+              {/* แผ่นผลจอแคบมีเวลาคั่นก่อนคะแนน — "ได้แต้ม 0:20.01" อ่านผิดความหมาย */}
+              {!showTimes && ' ได้แต้ม'}
             </dt>
             <dd className="flex shrink-0 items-center gap-2">
+              {showTimes && entry && (
+                <span
+                  className={`tabular mr-1 ${entry.solveTimeMs === null ? 'text-loss' : 'text-slate-200'}`}
+                >
+                  {entry.solveTimeMs === null
+                    ? 'DNF'
+                    : formatSolveTime(toSolveSeconds(entry.solveTimeMs))}
+                </span>
+              )}
               {ratingApplied && entry?.eloBefore != null && entry.eloAfter != null && (
                 <span className="tabular text-xs text-slate-500">
                   {entry.eloBefore} → <span className="text-slate-300">{entry.eloAfter}</span>
@@ -876,7 +1142,14 @@ function PlayerChip({ player }: { player: PlayerPublic | null }) {
   );
 }
 
-function RoomCodeButton({ roomCode }: { roomCode: string | null }) {
+function RoomCodeButton({
+  roomCode,
+  compact = false,
+}: {
+  roomCode: string | null;
+  /** แถบหัวห้องของจอแคบ — ตัวเลขเล็กลง มีกรอบให้รู้ว่ากดได้ */
+  compact?: boolean;
+}) {
   const [copied, setCopied] = useState(false);
 
   if (!roomCode) return <p className="tabular text-2xl font-bold text-slate-600">—</p>;
@@ -897,7 +1170,11 @@ function RoomCodeButton({ roomCode }: { roomCode: string | null }) {
       type="button"
       onClick={() => void copy()}
       title="คลิกเพื่อคัดลอกรหัสห้อง"
-      className="tabular text-2xl font-bold tracking-widest text-brand-400 transition hover:text-brand-300"
+      className={`tabular font-bold tracking-widest text-brand-400 transition hover:text-brand-300 ${
+        compact
+          ? 'shrink-0 rounded-lg border border-dashed border-line px-2 py-1.5 text-sm'
+          : 'text-2xl'
+      }`}
     >
       {copied ? 'คัดลอกแล้ว' : roomCode}
     </button>

@@ -30,8 +30,10 @@ import { LiveTime, type LiveTimeMode } from './LiveTime';
  * - `full` — หัวแผง + คิวบ์ + แถวตัวเลขล่าง (คิวบ์ของเราทุกห้อง · คู่แข่งห้อง 1v1 ที่ไม่ลอยมุมจอ)
  * - `compact` — ย้ายแถวตัวเลขล่างขึ้นไปบนหัวแผง (แถบคู่แข่งห้อง 3–4 คน · `focus` บนจอ `lg`)
  * - `pip` — คิวบ์เต็มกล่อง ข้อมูลเป็นป้ายทับ (`focus` บนจอแคบ · ADR-081 ข้อ 1)
+ * - `stage` — คิวบ์ของเราในห้องจอแคบ (ADR-083 ข้อ 5): **ไม่มีหัวแผง** (ชื่อ/ELO อยู่แถบหัวห้องแทน) · สูงตามกล่องแม่ (`flex-1`)
+ *   · ชื่อเจ้าของคิวบ์ขึ้นเป็นป้ายเมื่อไม่ใช่ของเรา (ผู้ชม) · แถวตัวเลขล่างคงไว้
  */
-export type PlayerPanelVariant = 'full' | 'compact' | 'pip';
+export type PlayerPanelVariant = 'full' | 'compact' | 'pip' | 'stage';
 
 interface PlayerCubePanelProps {
   player: PlayerPublic | null;
@@ -50,7 +52,7 @@ interface PlayerCubePanelProps {
   variant?: PlayerPanelVariant;
   /** แผง `pip` ถูกย่อเหลือชิป (ADR-081 ข้อ 2) — ใช้กับ `pip` เท่านั้น */
   collapsed?: boolean;
-  /** ของที่วาดทับกรอบคิวบ์ — ตอนนี้คือ `PipDock` ของคู่แข่งบนจอแคบ (ADR-081 ข้อ 2) · ใช้กับ `full` เท่านั้น */
+  /** ของที่วาดทับกรอบคิวบ์ — ตอนนี้คือ `PipDock` ของคู่แข่งบนจอแคบ (ADR-081 ข้อ 2) · ใช้กับ `full` / `stage` */
   overlay?: ReactNode;
 }
 
@@ -71,6 +73,7 @@ export function PlayerCubePanel({
 }: PlayerCubePanelProps) {
   const compact = variant === 'compact';
   const pip = variant === 'pip';
+  const stage = variant === 'stage';
   const progress = player ? snapshot.progress.find((p) => p.userId === player.userId) : undefined;
   const inLobby = snapshot.state === 'WAITING';
   /** ช่วงตรวจสอบบอกว่าใครกด "พร้อม" แล้ว (ADR-078) — ยังไม่มีใครแก้ ป้าย "กำลังแก้" ไม่มีความหมาย */
@@ -236,13 +239,18 @@ export function PlayerCubePanel({
 
   return (
     <section
-      className={`flex flex-col rounded-2xl border border-line bg-navy-850/60 ${
-        // แผงย่อไม่ล็อกความสูงเอง — ปล่อยให้คอลัมน์แม่หารความสูงให้เท่า ๆ กัน
-        // แผงเต็มบนจอ `lg` สูงเท่าแถวของ grid ที่ล็อกไว้เท่าจอแล้ว (ADR-059 ข้อ 3)
-        compact ? 'min-h-0 flex-1 p-3' : 'h-[30rem] p-4 lg:h-full lg:min-h-0'
+      className={`flex flex-col ${
+        stage
+          ? // จอแคบ: กล่องแม่ (แนวตั้งหนึ่งจอ) หารความสูงให้ — ไม่มีกรอบนอก กรอบคิวบ์มีกรอบของตัวเอง
+            'min-h-0 flex-1'
+          : `rounded-2xl border border-line bg-navy-850/60 ${
+              // แผงย่อไม่ล็อกความสูงเอง — ปล่อยให้คอลัมน์แม่หารความสูงให้เท่า ๆ กัน
+              // แผงเต็มบนจอ `lg` สูงเท่าแถวของ grid ที่ล็อกไว้เท่าจอแล้ว (ADR-059 ข้อ 3)
+              compact ? 'min-h-0 flex-1 p-3' : 'h-[30rem] p-4 lg:h-full lg:min-h-0'
+            }`
       }`}
     >
-      <div className="flex items-center justify-between gap-2">
+      <div className={`flex items-center justify-between gap-2 ${stage ? 'hidden' : ''}`}>
         {player ? (
           <>
             <div className="flex min-w-0 items-center gap-2">
@@ -282,15 +290,30 @@ export function PlayerCubePanel({
         canvas (ที่ renderer ตั้งขนาดตามกล่อง) จะดันกล่องให้สูงขึ้นเรื่อย ๆ ทุกเฟรม
         ด้วยเหตุผลเดียวกัน `CubeCanvas` ข้างในต้องถูกวางแบบ absolute — ดู `SelfCube`
       */}
-      <div className="relative mt-3 min-h-0 flex-1 overflow-hidden rounded-xl bg-navy-900/40">
+      <div
+        className={`relative min-h-0 flex-1 overflow-hidden ${
+          stage ? 'rounded-2xl border border-line bg-navy-850/60' : 'mt-3 rounded-xl bg-navy-900/40'
+        }`}
+      >
         {cube ?? (
           <div className="grid h-full place-items-center text-sm text-slate-600">{emptyLabel}</div>
+        )}
+        {/* ไม่มีหัวแผง — ชื่อเจ้าของคิวบ์ (ผู้ชมดูคนอื่น) กับป้ายหลุดขึ้นเป็นป้ายมุมซ้ายล่างแทน */}
+        {stage && player && (!isMe || !player.connected) && (
+          <p className="pointer-events-none absolute bottom-2 left-2 flex max-w-[60%] items-center gap-1.5 rounded-md bg-navy-900/85 px-2 py-0.5 text-[11px] text-slate-300 backdrop-blur">
+            {!isMe && <span className="truncate">{playerName(player)}</span>}
+            {!player.connected && <span className="shrink-0 text-loss">หลุดการเชื่อมต่อ</span>}
+          </p>
         )}
         {overlay}
       </div>
 
       {!compact && (
-        <div className="mt-3 grid grid-cols-3 items-end gap-2 rounded-xl border border-line-soft bg-navy-900/60 px-4 py-3">
+        <div
+          className={`grid grid-cols-3 items-end gap-2 rounded-xl border border-line-soft bg-navy-900/60 ${
+            stage ? 'mt-2 px-3 py-1.5' : 'mt-3 px-4 py-3'
+          }`}
+        >
           <div>
             <p className="text-[10px] tracking-[0.15em] text-slate-500">MOVES</p>
             <p className="tabular text-lg text-slate-200">{moveCount}</p>
