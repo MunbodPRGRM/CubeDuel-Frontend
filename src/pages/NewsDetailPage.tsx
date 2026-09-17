@@ -21,7 +21,7 @@ export default function NewsDetailPage() {
   if (!Number.isInteger(newsId) || newsId <= 0) return <Navigate to="/404" replace />;
 
   return (
-    <div className="min-h-screen bg-navy-900">
+    <div className="min-h-app bg-navy-900">
       <AppHeader />
       <main className="mx-auto max-w-3xl px-4 py-8">
         <Link to="/news" className="text-sm text-slate-400 transition hover:text-slate-200">

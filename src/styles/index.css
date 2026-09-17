@@ -30,6 +30,21 @@
   --color-gold-400: #fbbf24;
   --color-win: #4ade80;
   --color-loss: #f87171;
+
+  /* แผ่นเลื่อนขึ้นจากล่าง (`BottomSheet` — ADR-083 ข้อ 9) */
+  --animate-sheet-up: sheet-up 0.26s cubic-bezier(0.2, 0.8, 0.2, 1);
+  --animate-fade-in: fade-in 0.2s ease-out;
+
+  @keyframes sheet-up {
+    from {
+      transform: translateY(100%);
+    }
+  }
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+  }
 }
 
 /**
@@ -40,6 +55,32 @@
   width: 100%;
   max-width: 112rem;
   margin-inline: auto;
+}
+
+/**
+ * ความสูงเต็มจอที่เหลือจริง — หักแถบออฟไลน์ (บน) กับแถบเมนูล่างของจอแคบ (ล่าง) ออกแล้ว
+ * ใช้แทน `min-h-screen` ในหน้าที่มีแถบเมนูล่าง ไม่งั้นหน้าสั้น ๆ ก็เลื่อนได้เท่าความสูงแถบ (ADR-083 ข้อ 3)
+ * `h-app` = ล็อกความสูงสำหรับหน้าที่ "จบในจอเดียว" (ADR-083 ข้อ 8) — หน้าไหนใช้ทำในก้อนของหน้านั้น
+ */
+@utility min-h-app {
+  min-height: calc(100dvh - var(--offline-banner-h, 0px) - var(--tabbar-space, 0px));
+}
+
+@utility h-app {
+  height: calc(100dvh - var(--offline-banner-h, 0px) - var(--tabbar-space, 0px));
+}
+
+/**
+ * แถบเมนูล่าง (`MobileTabBar`) ลอยทับเนื้อหา — ตอนที่มันแสดง ให้ดัน `<body>` ขึ้นเท่าความสูงแถบ
+ * `--tabbar-space` ตั้งเฉพาะจอแคบกว่า `md` เพราะจอกว้างแถบซ่อนอยู่ · ของที่ลอยล่างจอ
+ * (`QueueBanner`) ต้องยกตัวขึ้นด้วยค่าเดียวกัน · safe-area เผื่อแอป Capacitor ที่วาดใต้แถบระบบ
+ */
+@media (width < 48rem) {
+  body.has-tabbar {
+    /* 3.75rem = `h-15` ของรายการ · 1px = เส้นขอบบนของแถบ */
+    --tabbar-space: calc(3.75rem + 1px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: var(--tabbar-space);
+  }
 }
 
 @layer base {

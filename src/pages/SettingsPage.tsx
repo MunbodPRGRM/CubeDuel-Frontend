@@ -33,7 +33,7 @@ export default function SettingsPage() {
   if (status === 'loading' || !user) return <PageSpinner />;
 
   return (
-    <div className="min-h-screen bg-navy-900">
+    <div className="min-h-app bg-navy-900">
       <AppHeader />
       <main className="page-wide grid gap-6 px-4 py-8 lg:grid-cols-[280px_minmax(0,1fr)]">
         <SettingsSidebar user={user} tab={tab} onTabChange={setTab} />

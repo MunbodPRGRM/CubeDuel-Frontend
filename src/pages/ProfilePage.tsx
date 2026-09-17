@@ -40,7 +40,7 @@ export default function ProfilePage() {
   if (!Number.isInteger(userId) || userId <= 0) return <Navigate to="/404" replace />;
 
   return (
-    <div className="min-h-screen bg-navy-900">
+    <div className="min-h-app bg-navy-900">
       <AppHeader />
       <main className="page-wide px-4 py-8">
         <ProfileBody

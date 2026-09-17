@@ -25,7 +25,7 @@ export default function NewsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-navy-900">
+    <div className="min-h-app bg-navy-900">
       <AppHeader />
       <main className="mx-auto max-w-3xl px-4 py-8">
         <header>

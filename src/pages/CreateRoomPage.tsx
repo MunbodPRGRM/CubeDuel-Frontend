@@ -19,7 +19,7 @@ import type { CubeType } from '@/types/cube';
  */
 export default function CreateRoomPage() {
   return (
-    <div className="min-h-screen bg-navy-900">
+    <div className="min-h-app bg-navy-900">
       <AppHeader />
       <main className="mx-auto max-w-xl px-4 py-10">
         <SocketGate>
