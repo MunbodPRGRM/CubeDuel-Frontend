@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '@/auth/useAuth';
 import { QueuePanel } from '@/queue/QueuePanel';
 import { useQueue } from '@/socket/useQueue';
+import { MobileHome } from '@/home/MobileHome';
+import { useNarrowScreen } from '@/hooks/useNarrowScreen';
 import { useApiData } from '@/hooks/useApiData';
 import { AppHeader } from '@/components/AppHeader';
 import { CubeTypeImage } from '@/components/CubeTypeImage';
@@ -20,6 +22,7 @@ import type { UserStats } from '@/types/stats';
 export default function HomePage() {
   const { user } = useAuth();
   const [cubeType, setCubeType] = useState<CubeType>('3x3x3');
+  const narrow = useNarrowScreen();
 
   const ratings = useApiData<UserRating[]>(user ? `/users/${user.userId}/ratings` : null);
   const rating = ratings.data?.find((r) => r.cubeType === cubeType);
@@ -31,6 +34,19 @@ export default function HomePage() {
   // หน้านี้อยู่หลัง `RequireAuth` แล้ว (ADR-073 ข้อ 3) — บรรทัดนี้มีไว้ให้ TypeScript รู้ว่ามี `user` เท่านั้น
   // ต้องอยู่หลัง hook ทุกตัว ไม่งั้นลำดับ hook เปลี่ยนตอนเซสชันหลุดกลางหน้า
   if (!user) return null;
+
+  // จอแคบโครงต่างกันทั้งหน้า — เรนเดอร์ทีละแบบ ไม่ซ่อนสองชุด (ADR-083 ข้อ 1 + 4) · ประเภทที่เลือกอยู่ข้ามกันได้ตอนหมุนจอ
+  if (narrow) {
+    return (
+      <MobileHome
+        skinId={user.cubeSkin}
+        cubeType={cubeType}
+        onCubeTypeChange={setCubeType}
+        rating={rating}
+        ao5={stats.data ? stats.data.ao5 : undefined}
+      />
+    );
+  }
 
   return (
     <div className="min-h-app bg-navy-900">
