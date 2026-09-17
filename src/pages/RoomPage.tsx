@@ -26,6 +26,7 @@ import {
   type PlayerProgress,
   type PlayerPublic,
   type RoomSnapshot,
+  type Seat,
 } from '@/socket/types';
 import { CUBE_TYPE_LABEL } from '@/types/leaderboard';
 
@@ -174,6 +175,7 @@ function RoomView({ roomId }: { roomId: number }) {
               roomBusy={room.busy}
               roomError={room.actionError}
               onSetReady={room.setReady}
+              onSwitchSeat={room.switchSeat}
               onLeave={leave}
               onRequeue={requeue}
               queueBusy={queue.busy}
@@ -213,6 +215,8 @@ interface MatchPanelProps {
   roomBusy: boolean;
   roomError: string | null;
   onSetReady: (ready: boolean) => Promise<void>;
+  /** สลับผู้เล่น ↔ ผู้ชม — ห้องที่มีรหัส · ก่อนเริ่ม/หลังจบรอบเท่านั้น (ADR-082) */
+  onSwitchSeat: (to: Seat) => Promise<void>;
   onLeave: () => Promise<void>;
   /** ออกจากห้องแข่งขันแล้วเข้าคิวหาคู่ใหม่ทันที */
   onRequeue: () => Promise<void>;
@@ -230,6 +234,7 @@ function MatchPanel({
   roomBusy,
   roomError,
   onSetReady,
+  onSwitchSeat,
   onLeave,
   onRequeue,
   queueBusy,
@@ -263,6 +268,19 @@ function MatchPanel({
     everyoneConnected &&
     !match.busy &&
     !roomBusy;
+  /** สลับผู้เล่น ↔ ผู้ชมได้เฉพาะห้องที่มีรหัส ก่อนเริ่มหรือหลังจบรอบ — ตรงกับ `switchSeat()` ฝั่ง server (ADR-082 ข้อ 2) */
+  const canSwitchSeat = !fromQueue && (inLobby || finished);
+
+  const startButton = (
+    <button
+      type="button"
+      disabled={!canStart}
+      onClick={() => void match.start()}
+      className="rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-navy-800 disabled:text-slate-500"
+    >
+      {startButtonLabel(isHost, finished, roomIsFull, everyoneConnected)}
+    </button>
+  );
 
   const error = match.actionError ?? roomError;
 
@@ -278,7 +296,7 @@ function MatchPanel({
   const detailBlock = (
     <>
       <p className="mt-5 min-h-[3.5rem] text-sm leading-6 text-slate-400">
-        {hintText(snapshot, roomIsFull, isSpectator, fromQueue)}
+        {hintText(snapshot, roomIsFull, isSpectator, isHost, fromQueue)}
       </p>
 
       <ScrambleBox scramble={snapshot.scramble} />
@@ -304,9 +322,25 @@ function MatchPanel({
   const actionBlock = (
     <div className="mt-5 flex flex-col gap-2.5">
       {isSpectator ? (
-        <p className="rounded-xl border border-line-soft bg-navy-900/60 px-4 py-2.5 text-sm text-slate-400">
-          คุณกำลังดูอยู่ในฐานะผู้ชม
-        </p>
+        <>
+          <p className="rounded-xl border border-line-soft bg-navy-900/60 px-4 py-2.5 text-sm text-slate-400">
+            {isHost ? 'คุณเป็นหัวห้อง · กำลังดูอยู่ในฐานะผู้ชม' : 'คุณกำลังดูอยู่ในฐานะผู้ชม'}
+          </p>
+          {canSwitchSeat && (
+            // หัวห้องที่นั่งเป็นผู้ชมยังกดเริ่มได้ (ADR-082 ข้อ 3)
+            <div className={`grid gap-2.5 ${isHost ? 'grid-cols-2' : ''}`}>
+              <button
+                type="button"
+                disabled={roomBusy || roomIsFull}
+                onClick={() => void onSwitchSeat('player')}
+                className="rounded-xl bg-win/90 px-4 py-2.5 text-sm font-semibold text-navy-950 transition hover:bg-win disabled:cursor-not-allowed disabled:bg-navy-800 disabled:text-slate-500"
+              >
+                {roomIsFull ? 'ผู้เล่นเต็มแล้ว' : 'เข้าร่วมเป็นผู้เล่น'}
+              </button>
+              {isHost && startButton}
+            </div>
+          )}
+        </>
       ) : (
         <>
           {inspecting ? (
@@ -359,16 +393,20 @@ function MatchPanel({
                   onConfirm={() => void match.surrender()}
                 />
               ) : (
-                <button
-                  type="button"
-                  disabled={!canStart}
-                  onClick={() => void match.start()}
-                  className="rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-navy-800 disabled:text-slate-500"
-                >
-                  {startButtonLabel(isHost, finished, roomIsFull, everyoneConnected)}
-                </button>
+                startButton
               )}
             </div>
+          )}
+
+          {canSwitchSeat && (
+            <button
+              type="button"
+              disabled={roomBusy}
+              onClick={() => void onSwitchSeat('spectator')}
+              className="rounded-xl border border-line bg-navy-850 px-4 py-2 text-sm text-slate-300 transition hover:bg-navy-800 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              ย้ายไปเป็นผู้ชม
+            </button>
           )}
 
           {/* ปุ่มทดสอบ — โผล่เฉพาะเมื่อ server เปิดสวิตช์ · เวลาหยุด ณ ตอนกด (ADR-060)
@@ -405,6 +443,13 @@ function MatchPanel({
   const roomFacts = (
     <dl className="mt-5 space-y-1.5 text-left text-sm">
       <Row label="ประเภทรูบิค" value={CUBE_TYPE_LABEL[snapshot.cubeType]} />
+      {/* หัวห้องที่นั่งเป็นผู้ชมไม่มีแผงผู้เล่นให้ติดป้าย — บอกชื่อไว้ที่นี่ (ADR-082 ข้อ 6) */}
+      {!fromQueue && snapshot.host && (
+        <Row
+          label="หัวห้อง"
+          value={`${playerName(snapshot.host)}${snapshot.host.seat === 'spectator' ? ' (ผู้ชม)' : ''}`}
+        />
+      )}
       <Row label="ผู้เล่น" value={`${snapshot.players.length}/${snapshot.maxPlayers} คน`} />
       {/* ห้องจากคิวไม่มีรหัสให้ผู้ชมเข้า (game-rules.md ข้อ 9 · ADR-079) — โชว์ "0 คน" ชวนเข้าใจผิด */}
       {!fromQueue && <Row label="ผู้ชม" value={`${snapshot.spectatorCount} คน`} />}
@@ -681,11 +726,17 @@ function hintText(
   snapshot: RoomSnapshot,
   roomIsFull: boolean,
   isSpectator: boolean,
+  isHost: boolean,
   fromQueue: boolean,
 ): string {
   const many = snapshot.maxPlayers > 2;
   switch (snapshot.state) {
     case 'WAITING':
+      if (isSpectator && isHost) {
+        return roomIsFull
+          ? 'ผู้เล่นครบแล้ว · คุณเป็นหัวห้อง กดเริ่มการแข่งขันได้เลยโดยไม่ต้องลงเล่น'
+          : `รอผู้เล่นอีก ${snapshot.maxPlayers - snapshot.players.length} คน · คุณเป็นหัวห้องที่นั่งดูอยู่ กดเริ่มได้เมื่อผู้เล่นครบ`;
+      }
       if (isSpectator) return 'กำลังรอหัวห้องเริ่มการแข่งขัน';
       return roomIsFull
         ? 'ผู้เล่นครบแล้ว รอหัวห้องกดเริ่มการแข่งขัน'
