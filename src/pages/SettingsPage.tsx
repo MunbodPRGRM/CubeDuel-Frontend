@@ -1,14 +1,12 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/auth/useAuth';
 import { AppHeader } from '@/components/AppHeader';
-import { SkinSwatches } from '@/components/skins/SkinSwatches';
 import { FormAlert } from '@/components/FormAlert';
 import { PageSpinner } from '@/components/PageSpinner';
 import { TextField } from '@/components/TextField';
 import { useApiData } from '@/hooks/useApiData';
 import { ApiError, apiFetch } from '@/lib/api';
-import { getSkin } from '@/cube';
 import { errorMessage } from '@/lib/errors';
 import { BIO_MAX_LENGTH, BIO_MAX_LINES } from '@/lib/validation';
 import { displayName, type SelfUser } from '@/types/auth';
@@ -22,7 +20,7 @@ type Tab = 'profile' | 'security';
  * ต่างจากดีไซน์สามจุด เพราะดีไซน์วาดของที่ระบบไม่มีที่เก็บ/ไม่ยอมให้แก้ (ADR-048):
  *   1. `username` กับ `email` เป็นช่อง **อ่านอย่างเดียว** (ข้อ 1)
  *   2. ~~ช่อง "รายละเอียดเพิ่มเติม" (bio) ไม่มีคอลัมน์รองรับ~~ → **มีแล้วตั้งแต่เฟส 12 ก้อนที่ 9** (ADR-066)
- *      · สกินที่เคยมายืนแทนที่ตรงนี้ย้ายไปหน้า `/skins` ของตัวเองแล้ว เหลือชิปสี + ลิงก์ (ADR-064 ข้อ 5)
+ *      · สกินย้ายไปหน้า `/skins` ของตัวเองแล้ว และเอาแถวลิงก์ออกจากหน้านี้แล้วด้วย (ADR-064 ข้อ 5 ยกเลิก — เฟส 13 ก้อนที่ 21)
  *   3. แท็บความปลอดภัยเพิ่มช่อง **รหัสผ่านปัจจุบัน** ที่ดีไซน์ไม่ได้วาดไว้ — API บังคับ (ข้อ 3)
  *      · บัญชี Google/Facebook ที่ยังไม่มีรหัสผ่าน (`hasPassword = false`) ไม่ถามทั้งรหัสเดิมและรหัสยืนยันตอนลบบัญชี (ADR-058 ข้อ 6)
  */
@@ -289,27 +287,6 @@ function ProfilePanel({ user }: { user: SelfUser }) {
                 {bio.length}/{BIO_MAX_LENGTH}
               </span>
             </div>
-          </div>
-        </Row>
-
-        {/* สกินมีหน้าของตัวเองแล้ว (ADR-064) — ที่นี่เหลือไว้ให้ "หาเจอ" เพราะไม่มีเมนูหลักให้เดา */}
-        <Row
-          label="สกินสีคิวบ์"
-          hint="เปลี่ยนสีของคิวบ์ 3 มิติทุกห้อง — เห็นเฉพาะฝั่งคุณ ไม่กระทบคู่แข่ง"
-        >
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-navy-900/40 px-4 py-3">
-            <div>
-              <p className="text-sm text-slate-100">{getSkin(user.cubeSkin).label}</p>
-              <div className="mt-2">
-                <SkinSwatches skin={getSkin(user.cubeSkin)} size="sm" />
-              </div>
-            </div>
-            <Link
-              to="/skins"
-              className="rounded-xl border border-line bg-navy-800 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:bg-navy-700"
-            >
-              เลือกสกิน
-            </Link>
           </div>
         </Row>
       </div>
