@@ -2,16 +2,15 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { Pagination } from '@/components/Pagination';
 import { useApiPage } from '@/hooks/useApiPage';
-import { apiFetch, apiUpload, fileUrl } from '@/lib/api';
+import { apiFetch } from '@/lib/api';
 import { errorMessage } from '@/lib/errors';
 import { formatNewsDate, type NewsListItem } from '@/types/news';
+import { NewsCover } from '@/news/NewsCover';
+import { NEWS_COVERS, NEWS_COVER_STYLES, type NewsCover as NewsCoverKey } from '@/news/news-covers';
 import { AdminDialog } from './AdminDialog';
 import { AdminLayout, AdminNotice } from './AdminLayout';
 
 const PAGE_SIZE = 10;
-/** ต้องตรงกับกฎฝั่ง server (api-contract.md ข้อ 7) — ตรวจฝั่งนี้เพื่อบอกผู้ใช้ก่อนอัปโหลดเสียเที่ยว */
-const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
-const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
 /** เขียน/แก้/ลบข่าวของแอดมิน (`POST/PATCH/DELETE /admin/news` — api-contract.md ข้อ 7) */
 export default function AdminNewsPage() {
@@ -109,20 +108,7 @@ function NewsRow({
 
   return (
     <article className="flex flex-wrap items-center gap-4 rounded-2xl border border-line bg-navy-850/80 px-5 py-4">
-      {news.image ? (
-        <img
-          src={fileUrl(news.image)}
-          alt=""
-          className="h-16 w-24 shrink-0 rounded-xl border border-line object-cover"
-        />
-      ) : (
-        <span
-          aria-hidden
-          className="grid h-16 w-24 shrink-0 place-items-center rounded-xl border border-line bg-navy-900 text-lg"
-        >
-          📰
-        </span>
-      )}
+      <NewsCover cover={news.cover} size="thumb" />
 
       <div className="min-w-0 flex-1">
         <p className="text-xs text-slate-500">
@@ -182,7 +168,7 @@ function NewsRow({
  * ฟอร์มเขียน/แก้ข่าว
  *
  * เนื้อข่าวเป็น **ข้อความล้วน** ไม่ใช่ HTML (ADR-049 ข้อ 3) — ช่องนี้จึงเป็น `<textarea>` ธรรมดา
- * ไม่มี rich text editor และไม่ต้องมี
+ * ไม่มี rich text editor และไม่ต้องมี · ปกเลือกจากชุดที่เว็บวาดให้ ไม่มีอัปโหลดรูป (ADR-084)
  */
 function NewsEditor({
   news,
@@ -197,8 +183,13 @@ function NewsEditor({
   const [title, setTitle] = useState(news?.title ?? '');
   const [content, setContent] = useState('');
   const [contentLoaded, setContentLoaded] = useState(!editingExisting);
-  const [file, setFile] = useState<File | null>(null);
-  const [removeImage, setRemoveImage] = useState(false);
+  // ข่าวที่มีคีย์ปกที่หน้านี้ไม่รู้จัก (server รุ่นใหม่กว่า) ตั้งต้นที่ `general` — บันทึกแล้วจะถูกเขียนทับ
+  const [cover, setCover] = useState<NewsCoverKey>(() => {
+    const current = news?.cover ?? '';
+    return (NEWS_COVERS as readonly string[]).includes(current)
+      ? (current as NewsCoverKey)
+      : 'general';
+  });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -222,41 +213,15 @@ function NewsEditor({
     };
   }, [newsId]);
 
-  function pickFile(picked: File | null) {
-    setError(null);
-    if (!picked) return setFile(null);
-    if (!ACCEPTED_TYPES.includes(picked.type)) {
-      return setError('รับเฉพาะไฟล์รูป JPEG / PNG / WebP');
-    }
-    if (picked.size > MAX_IMAGE_BYTES) return setError('ไฟล์รูปต้องมีขนาดไม่เกิน 2 MB');
-    setFile(picked);
-    setRemoveImage(false);
-  }
-
   async function save(e: FormEvent) {
     e.preventDefault();
     setError(null);
     setSaving(true);
     try {
-      if (file) {
-        // มีไฟล์ = ต้องส่งเป็น multipart (JSON แนบไฟล์ไม่ได้)
-        const form = new FormData();
-        form.append('title', title.trim());
-        form.append('content', content.trim());
-        form.append('image', file);
-        await apiUpload(
-          editingExisting ? `/admin/news/${news.newsId}` : '/admin/news',
-          form,
-          editingExisting ? 'PATCH' : 'POST',
-        );
-      } else {
-        const body: Record<string, unknown> = { title: title.trim(), content: content.trim() };
-        if (editingExisting && removeImage) body.removeImage = true;
-        await apiFetch(editingExisting ? `/admin/news/${news.newsId}` : '/admin/news', {
-          method: editingExisting ? 'PATCH' : 'POST',
-          body,
-        });
-      }
+      await apiFetch(editingExisting ? `/admin/news/${news.newsId}` : '/admin/news', {
+        method: editingExisting ? 'PATCH' : 'POST',
+        body: { title: title.trim(), content: content.trim(), cover },
+      });
       onSaved();
     } catch (err) {
       setError(errorMessage(err, 'บันทึกข่าวไม่สำเร็จ'));
@@ -296,47 +261,41 @@ function NewsEditor({
           />
         </label>
 
-        <div>
-          <span className="text-sm text-slate-300">รูปประกอบ (ไม่บังคับ)</span>
-          <p className="mt-0.5 text-xs text-slate-500">JPEG / PNG / WebP ไม่เกิน 2 MB</p>
-
-          {news?.image && !file && !removeImage && (
-            <div className="mt-2 flex items-center gap-3">
-              <img
-                src={fileUrl(news.image)}
-                alt=""
-                className="h-16 w-24 rounded-xl border border-line object-cover"
-              />
-              <button
-                type="button"
-                onClick={() => setRemoveImage(true)}
-                className="text-xs text-loss transition hover:underline"
-              >
-                เอารูปออก
-              </button>
-            </div>
-          )}
-          {removeImage && (
-            <p className="mt-2 text-xs text-loss">
-              จะเอารูปออกตอนบันทึก ·{' '}
-              <button
-                type="button"
-                onClick={() => setRemoveImage(false)}
-                className="text-slate-400 underline"
-              >
-                ยกเลิก
-              </button>
-            </p>
-          )}
-
-          <input
-            type="file"
-            accept={ACCEPTED_TYPES.join(',')}
-            onChange={(e) => pickFile(e.target.files?.[0] ?? null)}
-            className="mt-2 block w-full text-xs text-slate-400 file:mr-3 file:rounded-lg file:border file:border-line file:bg-navy-800 file:px-3 file:py-1.5 file:text-xs file:text-slate-200"
-          />
-          {file && <p className="mt-1 text-xs text-win">เลือกไฟล์ {file.name} แล้ว</p>}
-        </div>
+        <fieldset>
+          <legend className="text-sm text-slate-300">ปกข่าว</legend>
+          <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {NEWS_COVERS.map((key) => {
+              const style = NEWS_COVER_STYLES[key];
+              const selected = key === cover;
+              return (
+                <label
+                  key={key}
+                  className={`cursor-pointer rounded-xl border p-1.5 transition has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand-400 ${
+                    selected
+                      ? 'border-brand-500 bg-brand-500/10'
+                      : 'border-line hover:border-slate-500'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="news-cover"
+                    value={key}
+                    checked={selected}
+                    onChange={() => setCover(key)}
+                    className="sr-only"
+                  />
+                  <NewsCover cover={key} size="tile" />
+                  <span className="mt-1.5 block px-0.5 text-xs font-semibold text-slate-100">
+                    {style.label}
+                  </span>
+                  <span className="block px-0.5 text-[11px] leading-4 text-slate-500">
+                    {style.hint}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </fieldset>
 
         {error && <p className="text-sm text-loss">{error}</p>}
 

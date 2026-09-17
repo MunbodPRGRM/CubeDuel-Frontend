@@ -3,7 +3,7 @@ import { AppHeader } from '@/components/AppHeader';
 import { ErrorNotice } from '@/components/ErrorScreen';
 import { ShareButton } from '@/components/ShareButton';
 import { useApiData } from '@/hooks/useApiData';
-import { fileUrl } from '@/lib/api';
+import { NewsCover } from '@/news/NewsCover';
 import { formatNewsDate, newsAuthorName, type NewsDetail } from '@/types/news';
 
 /**
@@ -37,13 +37,8 @@ export default function NewsDetailPage() {
 
         {news.data && (
           <article className="mt-4 overflow-hidden rounded-2xl border border-line bg-navy-850/80">
-            {news.data.image && (
-              <img
-                src={fileUrl(news.data.image)}
-                alt={news.data.title}
-                className="max-h-96 w-full object-cover"
-              />
-            )}
+            {/* ปกเต็มความกว้างไม่มีขอบมนของตัวเอง — การ์ด `overflow-hidden` ตัดมุมให้ */}
+            <NewsCover cover={news.data.cover} size="hero" className="border-0 border-b" />
 
             <div className="px-6 py-6 sm:px-8">
               <div className="flex flex-wrap items-start justify-between gap-3">
