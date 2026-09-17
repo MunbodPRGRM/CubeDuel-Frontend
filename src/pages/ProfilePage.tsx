@@ -195,7 +195,7 @@ function ProfileBody({
               รายงาน
             </button>
           )}
-          {/* ตั้งค่า · สกิน · แอดมิน · ออกจากระบบ รวมในเมนูเดียว — เมนูบนถูกซ่อนบนจอแคบ (ADR-083 ข้อ 3 + 7) */}
+          {/* ตั้งค่า · แอดมิน · ออกจากระบบ รวมในเมนูเดียว — เมนูบนถูกซ่อนบนจอแคบ (ADR-083 ข้อ 3 + 7) */}
           {isOwner && (
             <button
               type="button"
@@ -265,10 +265,6 @@ function ProfileBody({
             <nav className="-mt-2 flex flex-col">
               <Link to="/settings" className={menuItem}>
                 ⚙ การตั้งค่า <span className="text-xs text-slate-500">บัญชีและโปรไฟล์</span>
-              </Link>
-              {/* สกินไม่มีที่ในแถบล่าง — ทางเข้าอยู่หน้าแรกกับเมนูนี้ (ADR-064 ข้อ 6 · ADR-080 ข้อ 1) */}
-              <Link to="/skins" className={menuItem}>
-                🎨 สกินคิวบ์
               </Link>
               {/* เมนูแอดมินโผล่เฉพาะบัญชีแอดมิน — ตัวกันจริงอยู่ฝั่ง server (`requireAdmin`) */}
               {viewer?.role === 'admin' && (
@@ -357,13 +353,6 @@ function ProfileBody({
                   className="rounded-xl border border-line bg-navy-800 px-5 py-2.5 text-center text-sm font-semibold text-slate-300 transition hover:bg-navy-700 hover:text-white"
                 >
                   ⚙ ตั้งค่า
-                </Link>
-                {/* สกินไม่มีที่ในเมนูหลัก (เต็มแล้ว) — ทางเข้าอยู่ที่โปรไฟล์ตัวเองกับหน้าตั้งค่า (ADR-064 ข้อ 6) */}
-                <Link
-                  to="/skins"
-                  className="rounded-xl border border-line bg-navy-800 px-5 py-2.5 text-center text-sm font-semibold text-slate-300 transition hover:bg-navy-700 hover:text-white"
-                >
-                  🎨 สกินคิวบ์
                 </Link>
                 <button
                   type="button"
