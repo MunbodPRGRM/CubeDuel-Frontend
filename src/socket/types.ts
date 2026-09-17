@@ -101,6 +101,20 @@ export interface RoomSnapshot {
    * ปุ่มทดสอบ (ADR-060) · ⚠️ ถอดออกก่อน deploy
    */
   devInstantFinish: boolean;
+  /**
+   * หัวห้อง — **นั่งเป็นผู้ชมได้ จึงอาจไม่อยู่ใน `players`** · ใช้ตัวนี้ตัดสินว่าใครเป็นหัวห้อง
+   * ไม่ใช่ `PlayerPublic.isHost` (ADR-082 ข้อ 3) · ห้องจากคิวมีค่าแต่ไม่มีความหมาย
+   */
+  host: RoomHost | null;
+}
+
+export type Seat = 'player' | 'spectator';
+
+export interface RoomHost {
+  userId: number;
+  username: string;
+  nickname: string | null;
+  seat: Seat;
 }
 
 /**
@@ -264,6 +278,11 @@ export interface RoomReadyPayload {
   ready: boolean;
 }
 
+/** `room:switch_seat` — สลับที่นั่งของตัวเองในห้องเดิม (ADR-082) · ack เป็น `RoomSnapshotResult` */
+export interface RoomSwitchSeatPayload {
+  to: Seat;
+}
+
 export type LeaveReason = 'left' | 'disconnected' | 'kicked';
 export type AbortReason = 'player_left' | 'timeout' | 'host_left';
 
@@ -352,6 +371,8 @@ export interface ClientToServerEvents {
   'room:leave': (payload: Record<string, never>, ack?: AckFn<null>) => void;
   'room:ready': (payload: RoomReadyPayload, ack?: AckFn<null>) => void;
   'room:start': (payload: Record<string, never>, ack?: AckFn<null>) => void;
+  /** สลับผู้เล่น ↔ ผู้ชม เฉพาะ WAITING / FINISHED ของห้องที่มีรหัส — ที่นั่งเดิมตอบ snapshot เฉย ๆ (ADR-082) */
+  'room:switch_seat': (payload: RoomSwitchSeatPayload, ack?: AckFn<RoomSnapshotResult>) => void;
   'solve:ready': (payload: Record<string, never>, ack?: AckFn<null>) => void;
   /** กด/ยกเลิก "พร้อม" ช่วง inspection — ห้ามสับสนกับ `solve:ready` ของช่วง LOADING (ADR-078) */
   'solve:inspection_ready': (
