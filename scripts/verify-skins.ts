@@ -9,6 +9,11 @@
  *   - 4 สีที่ทรงพีระมิดใช้ (`tetraFaceColors`) ≥ 25
  *   - สีหน้าเทียบเนื้อพลาสติก             ≥ 25
  *
+ * **เฟส 13 ก้อนที่ 25 (ADR-087 ข้อ 7):** สกินที่มีลวดลาย — ลายคูณสีสติกเกอร์ให้มืดลงได้ถึงค่าเทาที่
+ * มืดที่สุดของลาย จึงเทียบทุกคู่ซ้ำ **ทั้งตอนสว่างเต็มและตอนมืดสุด (รวมข้ามกัน)** ด้วยเกณฑ์เดิม
+ * และตรวจจากพิกเซลจริงของ `renderPattern` ว่าไม่มีจุดไหนมืดกว่า `PATTERN_MIN_GRAY`
+ * · ผิวโลหะ/เรืองแสงวัดด้วยสคริปต์ไม่ได้ — ต้องเปิดดูในพรีวิวด้วยตา
+ *
  * `backend/` อยู่คนละ repo — ถ้าเช็กเอาต์มาแค่ repo นี้ ข้อที่เทียบรายชื่อกับ server จะถูกข้ามพร้อมบอก
  *
  * รัน: `npm run verify:skins`
@@ -19,10 +24,11 @@ import { fileURLToPath } from 'node:url';
 import {
   CUBE_SKINS,
   DEFAULT_SKIN_ID,
-  SKIN_CATEGORIES,
   tetraFaceColors,
+  type CubeSkin,
   type FaceName,
 } from '../src/cube/three/colors.ts';
+import { PATTERN_MIN_GRAY, renderPattern } from '../src/cube/three/skin-patterns.ts';
 
 const MIN_FACE_DELTA = 15;
 const MIN_TETRA_DELTA = 25;
@@ -124,13 +130,47 @@ function deltaE2000(hexA: number, hexB: number): number {
   return deltaE2000Lab(toLab(hexA), toLab(hexB));
 }
 
-/** คู่ที่ใกล้กันที่สุดในชุดสี */
-function closestPair(colors: [string, number][]): { delta: number; pair: string } {
+/**
+ * สีที่ถูกลายคูณด้วยค่าเทา `gray` — คูณใน **linear space** แบบเดียวกับ shader
+ * (Three.js แปลงสี vertex จาก sRGB เป็น linear ก่อนเข้า shader แล้วลายคูณตรงนั้น)
+ */
+function darken(hex: number, gray: number): number {
+  if (gray >= 1) return hex;
+  const channel = (shift: number): number => {
+    const c = ((hex >> shift) & 255) / 255;
+    const linear = c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    const out = linear * gray;
+    const srgb = out <= 0.0031308 ? out * 12.92 : 1.055 * out ** (1 / 2.4) - 0.055;
+    return Math.round(Math.min(1, Math.max(0, srgb)) * 255);
+  };
+  return (channel(16) << 16) | (channel(8) << 8) | channel(0);
+}
+
+/** ค่าเทาที่มืดที่สุดของลาย · สีเรียบ = 1 */
+function darkestGray(skin: CubeSkin): number {
+  if (!skin.pattern) return 1;
+  let min = 255;
+  for (const value of renderPattern(skin.pattern)) if (value < min) min = value;
+  return min / 255;
+}
+
+/**
+ * คู่ที่ใกล้กันที่สุดในชุดสี — เทียบทั้งสว่างเต็ม/มืดสุดทั้งสองฝั่ง (4 แบบต่อคู่) แล้วเอาค่าที่แย่ที่สุด
+ * สีเรียบ `gray = 1` ทั้ง 4 แบบคือคู่เดิม ผลจึงเท่ากับของเดิมก่อนมีลาย
+ */
+function closestPair(colors: [string, number][], gray = 1): { delta: number; pair: string } {
   let best = { delta: Infinity, pair: '' };
   for (let i = 0; i < colors.length; i++) {
     for (let j = i + 1; j < colors.length; j++) {
-      const delta = deltaE2000(colors[i]![1], colors[j]![1]);
-      if (delta < best.delta) best = { delta, pair: `${colors[i]![0]}–${colors[j]![0]}` };
+      for (const [ga, gb] of [
+        [1, 1],
+        [1, gray],
+        [gray, 1],
+        [gray, gray],
+      ] as const) {
+        const delta = deltaE2000(darken(colors[i]![1], ga), darken(colors[j]![1], gb));
+        if (delta < best.delta) best = { delta, pair: `${colors[i]![0]}–${colors[j]![0]}` };
+      }
     }
   }
   return best;
@@ -176,18 +216,18 @@ console.log('\n1) รายชื่อสกิน');
     ids[0] === DEFAULT_SKIN_ID,
     ids[0],
   );
-  const categories = SKIN_CATEGORIES.map((category) => category.id);
   check(
-    'ทุกสกินอยู่ในหมวดที่มีจริง',
-    CUBE_SKINS.every((skin) => categories.includes(skin.category)),
+    'ชื่อ คำอธิบาย และป้ายไม่ว่าง',
+    CUBE_SKINS.every(
+      (skin) => skin.label.trim() !== '' && skin.hint.trim() !== '' && skin.tag.trim() !== '',
+    ),
   );
   check(
-    'ทุกหมวดมีสกินอย่างน้อยหนึ่งตัว (ไม่มีตัวกรองที่กดแล้วว่าง)',
-    categories.every((category) => CUBE_SKINS.some((skin) => skin.category === category)),
-  );
-  check(
-    'ชื่อและคำอธิบายไม่ว่าง',
-    CUBE_SKINS.every((skin) => skin.label.trim() !== '' && skin.hint.trim() !== ''),
+    `สกินตั้งต้น (${DEFAULT_SKIN_ID}) เป็นสีเรียบ ผิวพลาสติก — ภาพเดิมก่อนมีลายต้องไม่เปลี่ยน`,
+    CUBE_SKINS[0]!.pattern === null &&
+      CUBE_SKINS[0]!.finish.metalness < 0.1 &&
+      CUBE_SKINS[0]!.finish.glow === 0 &&
+      !CUBE_SKINS[0]!.finish.environment,
   );
 
   if (existsSync(backendConstants)) {
@@ -214,21 +254,44 @@ console.log('\n1) รายชื่อสกิน');
   }
 }
 
-// ---------------------------------------------------------------- 2) สีแยกกันออก
+// ---------------------------------------------------------------- 2) ลวดลาย
+
+console.log(`\n2) ลวดลาย — ทุกพิกเซลสว่างอย่างน้อย ${PATTERN_MIN_GRAY} (ADR-087 ข้อ 2)`);
+for (const skin of CUBE_SKINS) {
+  if (!skin.pattern) {
+    console.log(`  – ${skin.id.padEnd(11)} สีเรียบ ไม่มีลาย`);
+    continue;
+  }
+  const gray = darkestGray(skin);
+  check(
+    skin.id.padEnd(11),
+    gray >= PATTERN_MIN_GRAY,
+    `ลาย ${skin.pattern} · มืดสุด ${gray.toFixed(3)}`,
+  );
+}
+
+// ---------------------------------------------------------------- 3) สีแยกกันออก
 
 console.log(
-  `\n2) สีแยกกันออก (CIEDE2000 · หน้า ≥ ${MIN_FACE_DELTA} · พีระมิด ≥ ${MIN_TETRA_DELTA} · พลาสติก ≥ ${MIN_BODY_DELTA})`,
+  `\n3) สีแยกกันออก (CIEDE2000 · หน้า ≥ ${MIN_FACE_DELTA} · พีระมิด ≥ ${MIN_TETRA_DELTA} · พลาสติก ≥ ${MIN_BODY_DELTA} · รวมตอนลายมืดสุด)`,
 );
 const FACES: FaceName[] = ['U', 'D', 'F', 'B', 'R', 'L'];
 for (const skin of CUBE_SKINS) {
-  const faces = closestPair(FACES.map((face) => [face, skin.faceColors[face]]));
+  const gray = darkestGray(skin);
+  const faces = closestPair(
+    FACES.map((face) => [face, skin.faceColors[face]]),
+    gray,
+  );
   const tetra = closestPair(
     tetraFaceColors(skin).map((color, index) => [`หน้า${index + 1}`, color]),
+    gray,
   );
   let body = { delta: Infinity, face: '' };
   for (const face of FACES) {
-    const delta = deltaE2000(skin.faceColors[face], skin.bodyColor);
-    if (delta < body.delta) body = { delta, face };
+    for (const g of [1, gray]) {
+      const delta = deltaE2000(darken(skin.faceColors[face], g), skin.bodyColor);
+      if (delta < body.delta) body = { delta, face };
+    }
   }
 
   const ok =

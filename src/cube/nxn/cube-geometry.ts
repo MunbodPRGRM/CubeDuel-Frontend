@@ -12,6 +12,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { CLASSIC_SKIN, type CubeSkin, type FaceName } from '../three/colors.ts';
 import { paintGeometry } from '../three/convex-piece.ts';
+import { markBody, markSticker } from '../three/pattern-attributes.ts';
 
 /** ย่อเนื้อชิ้นลงเพื่อให้เห็น **ร่องระหว่างชิ้น** เหมือนลูกจริง */
 const BODY_SCALE = 0.92;
@@ -30,13 +31,18 @@ const FACE_AT: Record<string, FaceName> = {
   '2:-1': 'B',
 };
 
-/** สติกเกอร์หนึ่งแผ่นบนหน้าที่ตั้งฉากกับแกน `axis` ฝั่ง `sign` ของชิ้นที่อยู่ตรง `center` */
+/**
+ * สติกเกอร์หนึ่งแผ่นบนหน้าที่ตั้งฉากกับแกน `axis` ฝั่ง `sign` ของชิ้นที่อยู่ตรง `center`
+ *
+ * @param seed เลขประจำสติกเกอร์ — ให้ลายของแต่ละแผ่นเริ่มคนละจุด
+ */
 function buildSticker(
   axis: number,
   sign: number,
   center: readonly number[],
   cell: number,
   skin: CubeSkin,
+  seed: number,
 ): THREE.BufferGeometry {
   const size = cell * STICKER_SCALE;
   const plane = new THREE.PlaneGeometry(size, size);
@@ -51,7 +57,13 @@ function buildSticker(
   position[axis] += sign * offset;
   plane.translate(position[0]!, position[1]!, position[2]!);
 
-  return paintGeometry(plane, skin.faceColors[FACE_AT[`${axis}:${sign}`]!]!);
+  const outward = [0, 0, 0];
+  outward[axis] = sign;
+  return markSticker(paintGeometry(plane, skin.faceColors[FACE_AT[`${axis}:${sign}`]!]!), {
+    center: position,
+    outward,
+    seed,
+  });
 }
 
 /**
@@ -70,7 +82,7 @@ export function buildCubeletGeometries(
   /** ความกว้างของหนึ่งชิ้น เมื่อทั้งลูกกินพื้นที่ [-1, 1] เท่ากับ Pyramorphix */
   const cell = 2 / n;
 
-  return homeCoords.map((coord) => {
+  return homeCoords.map((coord, pieceIndex) => {
     const center = coord.map((v) => (v * cell) / 2);
     const body = new THREE.BoxGeometry(
       cell * BODY_SCALE,
@@ -78,10 +90,13 @@ export function buildCubeletGeometries(
       cell * BODY_SCALE,
     ).translate(center[0]!, center[1]!, center[2]!);
 
-    const parts = [paintGeometry(body, skin.bodyColor)];
+    const parts = [markBody(paintGeometry(body, skin.bodyColor))];
     for (let axis = 0; axis < 3; axis++) {
       for (const sign of [1, -1]) {
-        if (coord[axis] === sign * outer) parts.push(buildSticker(axis, sign, center, cell, skin));
+        if (coord[axis] === sign * outer) {
+          const seed = pieceIndex * 6 + axis * 2 + (sign > 0 ? 0 : 1);
+          parts.push(buildSticker(axis, sign, center, cell, skin, seed));
+        }
       }
     }
 
