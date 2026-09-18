@@ -58,16 +58,25 @@
 }
 
 /**
- * ความสูงเต็มจอที่เหลือจริง — หักแถบออฟไลน์ (บน) กับแถบเมนูล่างของจอแคบ (ล่าง) ออกแล้ว
+ * ขอบบนที่แถบสถานะของมือถือ (เวลา · แบต) ทับอยู่ — แอป Capacitor วาดแบบ edge-to-edge บน Android 15+
+ * `--safe-area-inset-top` = ค่าที่ปลั๊กอิน SystemBars ของ Capacitor 8 ฉีดมาให้ (WebView รุ่นเก่า
+ * `env()` คืน 0 ผิด ๆ) · เบราว์เซอร์ปกติไม่มีทั้งสองตัว → 0 เว็บไม่เปลี่ยน
+ */
+:root {
+  --safe-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+}
+
+/**
+ * ความสูงเต็มจอที่เหลือจริง — หักขอบแถบสถานะ แถบออฟไลน์ (บน) กับแถบเมนูล่างของจอแคบ (ล่าง) ออกแล้ว
  * ใช้แทน `min-h-screen` ในหน้าที่มีแถบเมนูล่าง ไม่งั้นหน้าสั้น ๆ ก็เลื่อนได้เท่าความสูงแถบ (ADR-083 ข้อ 3)
  * `h-app` = ล็อกความสูงสำหรับหน้าที่ "จบในจอเดียว" (ADR-083 ข้อ 8) — หน้าไหนใช้ทำในก้อนของหน้านั้น
  */
 @utility min-h-app {
-  min-height: calc(100dvh - var(--offline-banner-h, 0px) - var(--tabbar-space, 0px));
+  min-height: calc(100dvh - var(--safe-top) - var(--offline-banner-h, 0px) - var(--tabbar-space, 0px));
 }
 
 @utility h-app {
-  height: calc(100dvh - var(--offline-banner-h, 0px) - var(--tabbar-space, 0px));
+  height: calc(100dvh - var(--safe-top) - var(--offline-banner-h, 0px) - var(--tabbar-space, 0px));
 }
 
 /**
@@ -89,6 +98,8 @@
   }
 
   body {
+    /* ดันเนื้อหาลงพ้นแถบสถานะมือถือ · `OfflineBanner` เขียนทับด้วย inline style ที่รวมค่านี้แล้ว */
+    padding-top: var(--safe-top);
     background-color: var(--color-navy-900);
     color: #e2e8f0;
     -webkit-font-smoothing: antialiased;

@@ -592,7 +592,7 @@ export default function PracticePage() {
 
   return (
     // จอ `lg` ขึ้นไปล็อกความสูงเท่าจอ หน้าไม่เลื่อน — แผงควบคุมเลื่อนในตัวเองแทน (ADR-059 ข้อ 3)
-    <div className="min-h-screen bg-navy-900 lg:flex lg:h-[calc(100dvh-var(--offline-banner-h,0px))] lg:min-h-0 lg:flex-col lg:overflow-hidden">
+    <div className="min-h-app bg-navy-900 lg:flex lg:h-app lg:min-h-0 lg:flex-col lg:overflow-hidden">
       <AppHeader />
 
       <main className="page-wide flex flex-col gap-4 px-4 py-4 lg:min-h-0 lg:flex-1">

@@ -37,7 +37,8 @@ export function OfflineBanner() {
 
     const root = document.documentElement;
     const previous = document.body.style.paddingTop;
-    document.body.style.paddingTop = `${height}px`;
+    // บวกขอบแถบสถานะมือถือด้วย ไม่งั้น inline style ทับ `padding-top` ของ body ใน `index.css` หาย
+    document.body.style.paddingTop = `calc(var(--safe-top) + ${height}px)`;
     // หน้าที่ล็อกความสูงเท่าจอ (ห้องแข่ง · ห้องฝึกซ้อม) ต้องหักความสูงแถบนี้ออกเอง
     // ไม่งั้น `100dvh` + padding ข้างบน = ล้นจอเท่าความสูงแถบพอดี (ADR-059 ข้อ 3)
     root.style.setProperty('--offline-banner-h', `${height}px`);
@@ -54,7 +55,7 @@ export function OfflineBanner() {
     <div
       ref={ref}
       role="status"
-      className="fixed inset-x-0 top-0 z-50 bg-loss/90 px-4 py-2 text-center text-sm font-semibold text-navy-950 shadow-lg"
+      className="fixed inset-x-0 top-[var(--safe-top)] z-50 bg-loss/90 px-4 py-2 text-center text-sm font-semibold text-navy-950 shadow-lg"
     >
       ออฟไลน์ — ไม่มีการเชื่อมต่ออินเทอร์เน็ต ระบบจะต่อกลับให้เองเมื่อเน็ตกลับมา
     </div>

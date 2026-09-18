@@ -22,7 +22,7 @@ export function ErrorScreen({
   actions?: ReactNode;
 }) {
   return (
-    <div className="flex min-h-screen flex-col bg-navy-900">
+    <div className="flex min-h-app flex-col bg-navy-900">
       <header className="border-b border-line bg-navy-950/70">
         <div className="page-wide flex h-16 items-center gap-2.5 px-4">
           <CubeLogo size={30} />

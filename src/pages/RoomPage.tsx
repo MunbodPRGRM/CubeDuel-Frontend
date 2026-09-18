@@ -64,7 +64,7 @@ export default function RoomPage() {
         mobile
           ? 'flex h-app flex-col overflow-hidden bg-navy-900'
           : // จอ `lg` ขึ้นไปล็อกความสูงเท่าจอ หน้าไม่เลื่อน · จอแคบคอลัมน์ซ้อนกันจึงยังเลื่อนได้ (ADR-059 ข้อ 3)
-            'min-h-screen bg-navy-900 lg:flex lg:h-[calc(100dvh-var(--offline-banner-h,0px))] lg:min-h-0 lg:flex-col lg:overflow-hidden'
+            'min-h-app bg-navy-900 lg:flex lg:h-app lg:min-h-0 lg:flex-col lg:overflow-hidden'
       }
     >
       {/* จอแคบใช้แถบหัวของห้องเองแทน (ออก · ห้อง · ? · เฟือง) — ประหยัดที่ให้คิวบ์ */}
