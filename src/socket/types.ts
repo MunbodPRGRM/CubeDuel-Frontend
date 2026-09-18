@@ -441,6 +441,11 @@ export interface ServerToClientEvents {
    * ต้องล้างเซสชันในเครื่องทันที ไม่ต้องยิง `/auth/logout` เพราะ token ถูกเพิกถอนไปแล้ว
    */
   'session:revoked': (payload: { reason: 'signed_in_elsewhere' }) => void;
+  /**
+   * จำนวนสมาชิกออนไลน์ — ได้ทันทีตอนต่อ + ได้ใหม่เมื่อเปลี่ยน ไม่เกิน 1 ครั้งต่อ 5 วินาที (ADR-086)
+   * รายชื่อไม่มาทางนี้ ใช้ `GET /users/online`
+   */
+  'presence:count': (payload: { online: number }) => void;
 
   error: (payload: AckError) => void;
 }
