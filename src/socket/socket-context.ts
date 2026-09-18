@@ -18,6 +18,11 @@ export interface SocketContextValue {
   clock: ServerClock;
   /** RTT ล่าสุด (ms) — `null` = ยังไม่เคย ping สำเร็จ */
   rttMs: number | null;
+  /**
+   * จำนวนสมาชิกออนไลน์จาก `presence:count` (ADR-086) — `null` = socket ไม่ได้ต่ออยู่
+   * **ห้ามโชว์ค่าเก่าตอนหลุด** ไม่รู้ว่ายังจริงอยู่ไหม จึงล้างเป็น `null` ทุกครั้งที่สายขาด
+   */
+  onlineCount: number | null;
   /** สั่งต่อใหม่ด้วยมือหลังเจอ error */
   reconnect: () => void;
 }

@@ -28,6 +28,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<SocketStatus>('idle');
   const [error, setError] = useState<AckError | null>(null);
   const [rttMs, setRttMs] = useState<number | null>(null);
+  const [onlineCount, setOnlineCount] = useState<number | null>(null);
   /** เพิ่มค่าเพื่อบังคับให้ effect สร้าง connection ใหม่ (ปุ่ม "ลองเชื่อมต่อใหม่") */
   const [retryToken, setRetryToken] = useState(0);
 
@@ -39,6 +40,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       setSocket(null);
       setStatus('idle');
       setError(null);
+      setOnlineCount(null);
       return;
     }
 
@@ -90,6 +92,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       // เส้นทางเน็ตอาจเปลี่ยนตอนต่อใหม่ ค่า offset เดิมเชื่อไม่ได้แล้ว
       clock.reset();
       setRttMs(null);
+      setOnlineCount(null);
 
       if (reason === 'io server disconnect') {
         fail({ code: 'E_INTERNAL', message: 'เซิร์ฟเวอร์ตัดการเชื่อมต่อ' });
@@ -139,6 +142,12 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       endSession('บัญชีนี้ถูกเข้าสู่ระบบจากอุปกรณ์อื่น — หนึ่งบัญชีใช้ได้ทีละเครื่อง');
     });
 
+    // server ส่งมาทันทีหลังต่อติด แล้วส่งใหม่ทุกครั้งที่ตัวเลขเปลี่ยน (ADR-086 ข้อ 2)
+    s.on('presence:count', ({ online }) => {
+      if (disposed) return;
+      setOnlineCount(online);
+    });
+
     // error ที่ไม่ได้ผูกกับ ack (เช่น `solve:move` ที่ผิดกติกา) — หน้าที่ใช้จะดักเองอีกที
     s.on('error', (payload) => {
       console.warn('[socket]', payload.code, payload.message);
@@ -153,12 +162,13 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       s.removeAllListeners();
       s.disconnect();
       setSocket(null);
+      setOnlineCount(null);
     };
   }, [authStatus, userId, retryToken, endSession]);
 
   const value = useMemo<SocketContextValue>(
-    () => ({ socket, status, error, clock: clockRef.current, rttMs, reconnect }),
-    [socket, status, error, rttMs, reconnect],
+    () => ({ socket, status, error, clock: clockRef.current, rttMs, onlineCount, reconnect }),
+    [socket, status, error, rttMs, onlineCount, reconnect],
   );
 
   return <SocketContext.Provider value={value}>{children}</SocketContext.Provider>;

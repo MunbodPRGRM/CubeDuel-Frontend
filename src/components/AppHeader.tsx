@@ -6,6 +6,7 @@ import { useTutorial } from '@/tutorial/useTutorial';
 import type { UserRating } from '@/types/leaderboard';
 import { Avatar } from './Avatar';
 import { CubeLogo } from './CubeLogo';
+import { OnlineBadge } from './OnlineBadge';
 
 /**
  * แถบบนสุดตามดีไซน์ — เมนูหลัก + ชิปผู้ใช้ (ชื่อ + ELO + รูปโปรไฟล์) ที่กดไปหน้าโปรไฟล์ได้
@@ -58,6 +59,9 @@ export function AppHeader() {
         )}
 
         <div className="ml-auto flex items-center gap-3">
+          {/* จำนวนสมาชิกออนไลน์ + รายชื่อ (ADR-086) — แถบนี้อยู่บนทุกหน้าทั้งสองขนาดจอ (หน้าแรกจอแคบก็ใช้ตัวนี้)
+              จึงวางที่เดียวพอ · ไม่ล็อกอิน = ไม่มี socket = ป้ายไม่แสดงเอง */}
+          {user && <OnlineBadge />}
           {/* ทางเข้าเดียวของ "เปิดคู่มือซ้ำ" — เป็นไอคอนเพราะเมนูหลักเต็มแล้ว และมันไม่ใช่หน้าจอ
               ที่คนเข้าบ่อยพอจะแย่งที่ของเมนู · ต้องอยู่ในแถบบนเพื่อให้กดได้จากทุกหน้า (ADR-053 ข้อ 4)
               · คนที่ยังไม่ล็อกอินไม่เห็น — คู่มือพูดถึงหน้าที่เขาเข้าไม่ได้แล้ว (ADR-073 ข้อ 2) */}
