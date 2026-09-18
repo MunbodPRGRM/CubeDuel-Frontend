@@ -19,7 +19,7 @@ interface AuthLayoutProps {
  */
 export function AuthLayout({ eyebrow, title, subtitle, children, footer }: AuthLayoutProps) {
   return (
-    <div className="min-h-screen bg-navy-950 lg:grid lg:grid-cols-[1.05fr_1fr]">
+    <div className="min-h-app bg-navy-950 lg:grid lg:grid-cols-[1.05fr_1fr]">
       {/* ---------- ซ้าย ---------- */}
       <section className="relative overflow-hidden bg-navy-900 px-6 py-8 lg:px-14 lg:py-12">
         {/* แสงฟุ้งมุมซ้ายบนตามดีไซน์ */}
