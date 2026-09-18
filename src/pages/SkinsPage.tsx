@@ -8,7 +8,7 @@ import { FormAlert } from '@/components/FormAlert';
 import { PageSpinner } from '@/components/PageSpinner';
 import { SkinGallery } from '@/components/skins/SkinGallery';
 import { SkinSwatches } from '@/components/skins/SkinSwatches';
-import { CUBE_SKINS, SKIN_CATEGORIES, getSkin } from '@/cube';
+import { CUBE_SKINS, getSkin } from '@/cube';
 import { useNarrowScreen } from '@/hooks/useNarrowScreen';
 import { errorMessage } from '@/lib/errors';
 import type { CubeType } from '@/types/cube';
@@ -16,7 +16,7 @@ import type { CubeType } from '@/types/cube';
 /**
  * หน้าเลือกสกินสีคิวบ์ — **หน้าของมันเอง ไม่ใช่ลูกของหน้าตั้งค่า** (ADR-080 · ต่อยอด ADR-064)
  *
- * ซ้าย: ตัวกรองหมวด + การ์ดสกิน (รูป SVG ไม่มี WebGL) · ขวา: พรีวิว 3 มิติ **ตัวเดียว** สลับประเภทด้วยแท็บ
+ * ซ้าย: การ์ดสกิน (รูป SVG ไม่มี WebGL · ไม่มีตัวกรองหมวดแล้ว — ADR-087) · ขวา: พรีวิว 3 มิติ **ตัวเดียว** สลับประเภทด้วยแท็บ
  * (แต่ละตัวคือ WebGL context ของตัวเอง — ADR-044 ข้อ 4) + ปุ่มบันทึก · จอแคบพรีวิวอยู่บน
  *
  * เลือกแล้วเห็นผลทันทีในพรีวิว แต่ **ต้องกดบันทึก** ถึงจะลงบัญชี (`PATCH /users/me`)
@@ -39,7 +39,6 @@ export default function SkinsPage() {
   const previewSkin = skinId ?? savedSkin;
   const dirty = previewSkin !== savedSkin;
   const preview = getSkin(previewSkin);
-  const categoryLabel = SKIN_CATEGORIES.find((entry) => entry.id === preview.category)?.label;
 
   function choose(id: string) {
     setSkinId(id);
@@ -122,6 +121,7 @@ export default function SkinsPage() {
             <div className="flex min-w-0 flex-1 flex-col gap-1.5">
               <CubeTypeSelect value={cubeType} onChange={setCubeType} />
               <p className="truncate font-semibold text-slate-100">{preview.label}</p>
+              <p className="truncate text-[11px] text-brand-300">{preview.tag}</p>
               <p className="line-clamp-2 text-[11px] leading-4 text-slate-500">{preview.hint}</p>
               <SkinSwatches skin={preview} />
             </div>
@@ -149,8 +149,8 @@ export default function SkinsPage() {
           <p className="text-sm text-brand-400">ปรับแต่งคิวบ์</p>
           <h1 className="text-3xl font-bold text-white">สกินคิวบ์</h1>
           <p className="mt-1 text-sm text-slate-500">
-            {CUBE_SKINS.length} แบบ ฟรีทั้งหมด · เปลี่ยนสีคิวบ์ 3 มิติทุกห้อง — เห็นเฉพาะฝั่งคุณ
-            ไม่กระทบคู่แข่ง
+            {CUBE_SKINS.length} แบบ ฟรีทั้งหมด · เปลี่ยนสี ลาย และผิวของคิวบ์ 3 มิติทุกห้อง —
+            เห็นเฉพาะฝั่งคุณ ไม่กระทบคู่แข่ง
           </p>
         </header>
 
@@ -181,11 +181,9 @@ export default function SkinsPage() {
                 <p className="font-semibold text-slate-100">{preview.label}</p>
                 <p className="mt-0.5 text-xs leading-5 text-slate-500">{preview.hint}</p>
               </div>
-              {categoryLabel && (
-                <span className="shrink-0 rounded-md bg-navy-900/70 px-2 py-0.5 text-[11px] text-slate-400">
-                  {categoryLabel}
-                </span>
-              )}
+              <span className="shrink-0 rounded-md bg-navy-900/70 px-2 py-0.5 text-[11px] text-slate-400">
+                {preview.tag}
+              </span>
             </div>
             <div className="flex items-center justify-between gap-3">
               <SkinSwatches skin={preview} />

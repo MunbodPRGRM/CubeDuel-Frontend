@@ -1,12 +1,7 @@
-import { useState } from 'react';
-import { CUBE_SKINS, SKIN_CATEGORIES, type CubeSkin, type SkinCategory } from '@/cube';
+import { CUBE_SKINS, type CubeSkin } from '@/cube';
 import { SkinCubeIcon } from './SkinCubeIcon';
 import { SkinSwatches } from './SkinSwatches';
 import { skinCss } from './skin-css';
-
-const CATEGORY_LABEL = Object.fromEntries(
-  SKIN_CATEGORIES.map((category) => [category.id, category.label]),
-) as Record<SkinCategory, string>;
 
 interface SkinGalleryProps {
   /** สกินที่กำลังดูในพรีวิว (อาจยังไม่ได้บันทึก) */
@@ -14,64 +9,23 @@ interface SkinGalleryProps {
   /** สกินที่บันทึกไว้ในบัญชี — ได้ป้าย "ใช้อยู่" */
   savedId: string;
   onChange: (skinId: string) => void;
-  /** จอแคบ: ตัวกรองแถวเดียวเลื่อนแนวนอน · การ์ดเตี้ยสองคอลัมน์ (ADR-083 ข้อ 7) */
+  /** จอแคบ: การ์ดเตี้ยสองคอลัมน์ (ADR-083 ข้อ 7) */
   compact?: boolean;
 }
 
 /**
- * ตัวกรองหมวด + การ์ดสกินทั้งหมด (ADR-080 ข้อ 5)
+ * การ์ดสกินทั้งหมด (ADR-080 ข้อ 5 · ADR-087)
  *
- * รูปบนการ์ดเป็น SVG จากจานสี **ไม่มี WebGL** (ข้อ 3) — หน้าตาจริงดูที่พรีวิวตัวเดียวของหน้า
- * ตัวกรองไม่จำข้ามการเปิดหน้า เพราะไม่ใช่ค่าตั้ง
+ * รูปบนการ์ดเป็น SVG จากจานสี + ลาย **ไม่มี WebGL** (ADR-080 ข้อ 3 · ADR-087 ข้อ 6) — ผิววัสดุ
+ * (เงา/โลหะ/เรืองแสง) ดูที่พรีวิว 3 มิติตัวเดียวของหน้า · **ไม่มีตัวกรองหมวดแล้ว** สกินเหลือ 5 ตัว (ADR-087 ข้อ 1)
  */
 export function SkinGallery({ value, savedId, onChange, compact = false }: SkinGalleryProps) {
-  const [category, setCategory] = useState<SkinCategory | 'all'>('all');
-  const skins =
-    category === 'all' ? CUBE_SKINS : CUBE_SKINS.filter((skin) => skin.category === category);
-
-  const filters: { id: SkinCategory | 'all'; label: string; count: number }[] = [
-    { id: 'all', label: 'ทั้งหมด', count: CUBE_SKINS.length },
-    ...SKIN_CATEGORIES.map((entry) => ({
-      ...entry,
-      count: CUBE_SKINS.filter((skin) => skin.category === entry.id).length,
-    })),
-  ];
-
   return (
     <div>
       <div
-        role="group"
-        aria-label="กรองตามหมวด"
-        // จอแคบ: แถวเดียวเลื่อนแนวนอน ไม่ตัดบรรทัดกินความสูง (ADR-083 ข้อ 7)
-        className={`flex gap-2 ${compact ? 'overflow-x-auto [scrollbar-width:none]' : 'flex-wrap'}`}
+        className={compact ? 'grid grid-cols-2 gap-2' : 'grid gap-3 sm:grid-cols-2 xl:grid-cols-3'}
       >
-        {filters.map((filter) => {
-          const active = filter.id === category;
-          return (
-            <button
-              key={filter.id}
-              type="button"
-              aria-pressed={active}
-              onClick={() => setCategory(filter.id)}
-              className={`shrink-0 rounded-full border px-3.5 py-1.5 text-sm transition ${
-                active
-                  ? 'border-brand-500 bg-brand-500/15 font-semibold text-brand-300'
-                  : 'border-line bg-navy-850/80 text-slate-400 hover:border-slate-600 hover:text-slate-200'
-              }`}
-            >
-              {filter.label}
-              <span className="ml-1.5 text-xs text-slate-500">{filter.count}</span>
-            </button>
-          );
-        })}
-      </div>
-
-      <div
-        className={
-          compact ? 'mt-3 grid grid-cols-2 gap-2' : 'mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3'
-        }
-      >
-        {skins.map((skin) => (
+        {CUBE_SKINS.map((skin) => (
           <SkinCard
             key={skin.id}
             skin={skin}
@@ -139,9 +93,11 @@ function SkinCard({
             กำลังลอง
           </span>
         )}
-        <span className="absolute right-2.5 top-2.5 rounded-md bg-navy-950/70 px-2 py-0.5 text-[11px] text-slate-400">
-          {CATEGORY_LABEL[skin.category]}
-        </span>
+        {!compact && (
+          <span className="absolute right-2.5 top-2.5 rounded-md bg-navy-950/70 px-2 py-0.5 text-[11px] text-slate-400">
+            {skin.tag}
+          </span>
+        )}
       </div>
 
       <div

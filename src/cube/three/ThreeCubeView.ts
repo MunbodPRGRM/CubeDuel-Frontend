@@ -33,8 +33,10 @@ import type {
   CubeView,
   SetScrambleOptions,
 } from '../types.ts';
+import { CLASSIC_SKIN, type CubeSkin } from './colors.ts';
 import type { Mat3 } from './lattice.ts';
 import type { DragCandidate, PuzzleModel, TurnSpec } from './model.ts';
+import { createEnvironment, createSkinMaterial } from './skin-material.ts';
 
 /** ระยะเวลาอนิเมชันหมุนหนึ่งครั้ง — เร็วพอให้ speedcuber ไม่รู้สึกว่าคิวบ์หนืด */
 const TURN_DURATION_MS = 110;
@@ -123,6 +125,11 @@ export interface ThreeCubeViewSpec {
   kpuzzle: KPuzzle;
   /** กติกา "แก้เสร็จ" ของประเภทนี้ */
   isSolved(pattern: KPattern): boolean;
+  /**
+   * สกินที่ geometry สร้างมาด้วย — ใช้ตั้งผิววัสดุ/ลวดลาย (ADR-087) · ไม่ส่ง = `classic`
+   * เปลี่ยนสกินต้องสร้าง view ใหม่ทั้งตัว (สีอยู่ใน geometry) — `CubeCanvas` ทำอยู่แล้ว
+   */
+  skin?: CubeSkin;
 }
 
 /** move ที่ลงบัญชีแล้ว รออนิเมชันอย่างเดียว */
@@ -200,6 +207,10 @@ export class ThreeCubeView implements CubeView {
   /** `performance.now()` ของเฟรมที่เลื่อนกล้องตามล่าสุด — `0` = ยังไม่เริ่ม/ถึงเป้าแล้ว */
   #followAt = 0;
   #material: THREE.Material;
+  /** ปล่อย material + texture ลวดลายของสกิน */
+  #disposeMaterial: () => void;
+  /** environment map ของผิวโลหะ — `null` = สกินนี้ไม่ใช้ (ADR-087 ข้อ 4) */
+  #environment: THREE.Texture | null = null;
   /**
    * กลุ่มที่ครอบ **ทุกชิ้นของคิวบ์** ไว้ชั้นเดียว — ตัวที่หมุนเวลาผู้เล่นเลือก "หน้า U อยู่ล่าง"
    *
@@ -283,12 +294,15 @@ export class ThreeCubeView implements CubeView {
     // เริ่มที่โหมดล็อกเสมอ — `CubeCanvas` สลับให้ตามค่าที่ผู้เล่นตั้งไว้ทันทีหลังสร้าง
     this.#controls = this.#createControls('locked');
 
-    this.#material = new THREE.MeshStandardMaterial({
-      vertexColors: true,
-      roughness: 0.45,
-      metalness: 0.02,
-      flatShading: true,
-    });
+    // ผิววัสดุ + ลวดลายตามสกิน (ADR-087) · `classic` ได้ material แบบเดิมเป๊ะ ไม่ปะ shader
+    const skin = spec.skin ?? CLASSIC_SKIN;
+    const skinMaterial = createSkinMaterial(skin, this.#renderer.capabilities.getMaxAnisotropy());
+    this.#material = skinMaterial.material;
+    this.#disposeMaterial = skinMaterial.dispose;
+    if (skin.finish.environment) {
+      this.#environment = createEnvironment(this.#renderer);
+      this.#scene.environment = this.#environment;
+    }
     // ทุกชิ้น (รวม pivot ที่ใช้เล่นอนิเมชัน) อยู่ในกลุ่มนี้ ไม่ได้อยู่ในฉากตรง ๆ — การพลิกภาพ
     // ทั้งลูกจึงเป็นการหมุนกลุ่มเดียว และข้างในกลุ่มยังเป็นพิกัดมาตรฐานทุกอย่าง
     this.#orient = new THREE.Group();
@@ -1179,7 +1193,8 @@ export class ThreeCubeView implements CubeView {
     this.#detachControls();
     this.#controls.dispose();
     for (const mesh of this.#meshes) mesh.geometry.dispose();
-    this.#material.dispose();
+    this.#disposeMaterial();
+    this.#environment?.dispose();
     this.#renderer.dispose();
     this.#renderer.domElement.remove();
   }

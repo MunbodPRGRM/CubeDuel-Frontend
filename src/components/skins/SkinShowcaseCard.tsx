@@ -1,12 +1,12 @@
 import { Link } from 'react-router-dom';
-import { CUBE_SKINS, SKIN_CATEGORIES, getSkin } from '@/cube';
+import { CUBE_SKINS, getSkin } from '@/cube';
 import { SkinCubeIcon } from './SkinCubeIcon';
 
 /**
  * การ์ด "สกินคิวบ์" บนหน้าแรก — ทางเข้าหน้า `/skins` ที่เจ้าของเลือก (ADR-080 ข้อ 1)
  *
- * รูปเป็น SVG ทั้งหมด **ไม่มี WebGL บนหน้าแรก** · เรียงสกินของเราไว้หน้าสุด ตามด้วยหมวดละหนึ่งตัว
- * ให้เห็นว่ามีแบบไหนบ้างโดยไม่ต้องกดเข้าไป
+ * รูปเป็น SVG ทั้งหมด **ไม่มี WebGL บนหน้าแรก** · เรียงสกินของเราไว้หน้าสุด ตามด้วยสกินที่เหลือทุกตัว
+ * ให้เห็นว่ามีแบบไหนบ้างโดยไม่ต้องกดเข้าไป (ไม่มีหมวดแล้ว — ADR-087 ข้อ 1)
  */
 export function SkinShowcaseCard({
   skinId,
@@ -34,9 +34,7 @@ export function SkinShowcaseCard({
     );
   }
 
-  const samples = SKIN_CATEGORIES.map((category) =>
-    CUBE_SKINS.find((skin) => skin.category === category.id && skin.id !== current.id),
-  ).filter((skin) => skin !== undefined);
+  const samples = CUBE_SKINS.filter((skin) => skin.id !== current.id);
 
   return (
     <section className="mt-8 overflow-hidden rounded-2xl border border-line bg-navy-850">
@@ -63,7 +61,7 @@ export function SkinShowcaseCard({
           <p className="text-xs text-brand-400">สกินคิวบ์</p>
           <h2 className="mt-0.5 font-semibold text-slate-100">ใช้อยู่: {current.label}</h2>
           <p className="mt-1 text-sm text-slate-400">
-            มีให้เลือก {CUBE_SKINS.length} แบบ ฟรีทั้งหมด · เปลี่ยนสีคิวบ์ 3 มิติทุกห้อง
+            มีให้เลือก {CUBE_SKINS.length} แบบ ฟรีทั้งหมด · ลายคาร์บอน รังผึ้ง หินอ่อน โลหะขัด ·
             เห็นเฉพาะฝั่งคุณ
           </p>
         </div>
