@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { fileUrl } from '@/lib/api';
+import { NewsCover } from '@/news/NewsCover';
 import { formatNewsDate, newsAuthorName, type NewsListItem } from '@/types/news';
 
 /**
@@ -14,7 +14,7 @@ export function NewsCard({ news, compact }: { news: NewsListItem; compact?: bool
       to={`/news/${news.newsId}`}
       className="group flex gap-4 rounded-2xl border border-line bg-navy-850/80 p-4 transition hover:border-brand-500/50 hover:bg-navy-850"
     >
-      <NewsThumb image={news.image} title={news.title} compact={compact} />
+      <NewsCover cover={news.cover} size={compact ? 'thumb' : 'card'} />
 
       <div className="min-w-0 flex-1">
         <p className="text-xs text-slate-500">
@@ -34,38 +34,5 @@ export function NewsCard({ news, compact }: { news: NewsListItem; compact?: bool
         </p>
       </div>
     </Link>
-  );
-}
-
-/** ข่าวที่ไม่มีรูปยังต้องมีบล็อกซ้ายเสมอ ไม่งั้นแถวในรายการเหลื่อมกันไปมา */
-function NewsThumb({
-  image,
-  title,
-  compact,
-}: {
-  image: string | null;
-  title: string;
-  compact?: boolean;
-}) {
-  const size = compact ? 'h-16 w-16' : 'h-24 w-32';
-
-  if (!image) {
-    return (
-      <span
-        aria-hidden
-        className={`grid shrink-0 place-items-center rounded-xl border border-line bg-navy-900 text-xl ${size}`}
-      >
-        📰
-      </span>
-    );
-  }
-
-  return (
-    <img
-      src={fileUrl(image)}
-      alt={title}
-      loading="lazy"
-      className={`shrink-0 rounded-xl border border-line object-cover ${size}`}
-    />
   );
 }

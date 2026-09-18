@@ -3,7 +3,7 @@ import { useAuth } from '@/auth/useAuth';
 import { NOT_CONNECTED_MESSAGE } from '@/lib/errors';
 import { emitAck, socketErrorMessage, type TypedClientSocket } from './socket-client';
 import { useSocket } from './useSocket';
-import type { PlayerPublic, RoomSnapshot, RoomSnapshotResult } from './types';
+import type { PlayerPublic, RoomSnapshot, RoomSnapshotResult, Seat } from './types';
 
 /**
  * ผูกหน้าจอหนึ่งหน้าเข้ากับห้องหนึ่งห้อง
@@ -29,12 +29,15 @@ export interface UseRoomResult {
   /** ที่นั่งของเราในห้อง — `null` เมื่อเข้ามาในฐานะผู้ชม */
   me: PlayerPublic | null;
   isSpectator: boolean;
+  /** อ่านจาก `snapshot.host` — หัวห้องนั่งเป็นผู้ชมได้ (ADR-082 ข้อ 3) */
   isHost: boolean;
   /** ผู้เล่นคนอื่นในห้อง (ห้อง 1v1 มีได้ตัวเดียว) */
   others: PlayerPublic[];
   busy: boolean;
   actionError: string | null;
   setReady: (ready: boolean) => Promise<void>;
+  /** `room:switch_seat` — สลับผู้เล่น ↔ ผู้ชมในห้องเดิม (ADR-082) · จอเปลี่ยนตาม `room:state` ที่ตามมา */
+  switchSeat: (to: Seat) => Promise<void>;
   leave: () => Promise<boolean>;
 }
 
@@ -162,6 +165,15 @@ export function useRoom(roomId: number): UseRoomResult {
     [run],
   );
 
+  const switchSeat = useCallback(
+    async (to: Seat) => {
+      // ไม่เอา snapshot จาก ack มาใส่เอง — server ส่ง `room:state` ตามมาเสมอ (ADR-036 ข้อ 4)
+      // สลับไปที่นั่งเดิมไม่มี broadcast แต่ก็ไม่มีอะไรเปลี่ยนให้ต้องวาดใหม่
+      await run((s) => emitAck<RoomSnapshotResult>(s, 'room:switch_seat', { to }));
+    },
+    [run],
+  );
+
   const leave = useCallback(async () => {
     const ok = await run((s) => emitAck<null>(s, 'room:leave', {}));
     if (ok) markGone('ออกจากห้องแล้ว');
@@ -188,11 +200,13 @@ export function useRoom(roomId: number): UseRoomResult {
     me,
     // อยู่ในห้องแล้วแต่ไม่มีที่นั่งผู้เล่น = เข้ามาในฐานะผู้ชม
     isSpectator: snapshot !== null && me === null,
-    isHost: me?.isHost ?? false,
+    // ไม่ใช่ `me?.isHost` — หัวห้องที่นั่งเป็นผู้ชมไม่มีที่นั่งให้อ่าน (ADR-082 ข้อ 3)
+    isHost: myUserId !== null && snapshot?.host?.userId === myUserId,
     others,
     busy,
     actionError,
     setReady,
+    switchSeat,
     leave,
   };
 }

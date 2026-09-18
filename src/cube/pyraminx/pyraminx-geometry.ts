@@ -95,7 +95,7 @@ export function stickerCount(pieceIndex: number): number {
 export function buildPyraminxGeometries(skin: CubeSkin = CLASSIC_SKIN): THREE.BufferGeometry[] {
   const faces = pyraminxFaces(skin);
   return PYRAMINX_PIECES.map((_, index) =>
-    buildConvexPiece(planesForPiece(index), faces, undefined, skin.bodyColor),
+    buildConvexPiece(planesForPiece(index), faces, undefined, skin.bodyColor, { seed: index }),
   );
 }
 

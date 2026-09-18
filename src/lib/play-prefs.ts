@@ -34,11 +34,25 @@ export interface PlayPrefs {
   cubeOrientation: CubeOrientation;
   /** การจัดวางหน้าห้องแข่ง */
   roomLayout: RoomLayout;
+  /** มุมที่แผงคู่แข่งแบบ PiP เกาะอยู่ในกรอบคิวบ์เรา (`focus` บนจอแคบ · ADR-081 ข้อ 2) */
+  pipCorner: PipCorner;
+  /** แผง PiP ถูกย่อเหลือชิปชื่อ + เวลาหรือไม่ */
+  pipCollapsed: boolean;
 }
 
-const DEFAULTS: PlayPrefs = { cameraMode: 'locked', cubeOrientation: 'top', roomLayout: 'auto' };
+/** มุมของกรอบคิวบ์ — ห้อง 3–4 คนตอนกางเต็มแถวใช้แค่ครึ่งบน/ล่าง (ADR-081 ข้อ 2) */
+export type PipCorner = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+
+const DEFAULTS: PlayPrefs = {
+  cameraMode: 'locked',
+  cubeOrientation: 'top',
+  roomLayout: 'auto',
+  pipCorner: 'top-right',
+  pipCollapsed: false,
+};
 
 const ROOM_LAYOUTS: readonly RoomLayout[] = ['auto', 'classic', 'sides', 'focus', 'stacked'];
+const PIP_CORNERS: readonly PipCorner[] = ['top-left', 'top-right', 'bottom-left', 'bottom-right'];
 
 /**
  * อ่านแบบไม่เชื่อของในเครื่อง — ค่าที่ไม่รู้จัก (แก้มือ / เวอร์ชันเก่า) ตกกลับไปค่าเริ่มต้น
@@ -55,6 +69,10 @@ function read(): PlayPrefs {
       roomLayout: ROOM_LAYOUTS.includes(parsed.roomLayout as RoomLayout)
         ? (parsed.roomLayout as RoomLayout)
         : 'auto',
+      pipCorner: PIP_CORNERS.includes(parsed.pipCorner as PipCorner)
+        ? (parsed.pipCorner as PipCorner)
+        : 'top-right',
+      pipCollapsed: parsed.pipCollapsed === true,
     };
   } catch {
     return DEFAULTS;

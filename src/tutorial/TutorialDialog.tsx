@@ -30,6 +30,13 @@ export function TutorialDialog({ onClose }: TutorialDialogProps) {
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  // โหลดภาพหน้าจอทุกขั้นไว้ก่อน — กดถัดไปแล้วภาพต้องขึ้นทันที ไม่ใช่กล่องว่างรอโหลด (ไฟล์ละ 10–20 KB)
+  useEffect(() => {
+    for (const s of TUTORIAL_STEPS) {
+      if (s.image) new Image().src = s.image.src;
+    }
+  }, []);
+
   // โฟกัสปุ่มหลักตอนเปิด เพื่อให้กด Enter รัวจบคู่มือได้โดยไม่ต้องแตะเมาส์
   useEffect(() => {
     nextRef.current?.focus();
@@ -72,7 +79,17 @@ export function TutorialDialog({ onClose }: TutorialDialogProps) {
         <div ref={bodyRef} className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
           <p className="text-sm leading-6 text-slate-300">{step.lead}</p>
 
-          <div className="mt-3">{step.visual}</div>
+          {step.image && (
+            // ภาพชุดเดียวใช้ทุกจอ — 16:10 + `object-contain` ไม่ตัดภาพ (ADR-085 ข้อ 2)
+            <img
+              src={step.image.src}
+              alt={step.image.alt}
+              width={960}
+              height={600}
+              className="mt-3 aspect-[16/10] w-full rounded-xl border border-line bg-navy-900 object-contain"
+            />
+          )}
+          {step.visual && <div className="mt-3">{step.visual}</div>}
 
           <ul className="mt-3 space-y-1.5">
             {step.points.map((point) => (

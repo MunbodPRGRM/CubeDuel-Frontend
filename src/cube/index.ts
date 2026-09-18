@@ -34,7 +34,15 @@ export type {
   CubeView,
 } from './types.ts';
 export { ALLOWED_MOVES, inverseMove, isAllowedMove, normalizeMove } from './moves.ts';
-export { CUBE_SKINS, DEFAULT_SKIN_ID, getSkin, type CubeSkin } from './three/colors.ts';
+export {
+  CUBE_SKINS,
+  DEFAULT_SKIN_ID,
+  getSkin,
+  type CubeSkin,
+  type FaceName,
+  type SkinFinish,
+} from './three/colors.ts';
+export { PATTERN_TILE_WORLD, renderPattern, type PatternKind } from './three/skin-patterns.ts';
 
 /**
  * สร้างคิวบ์ 3 มิติลงใน `container`
@@ -59,6 +67,7 @@ export async function createCubeView(
       geometries: buildPyramorphixGeometries(model.lattice.homeCoords, skin),
       kpuzzle,
       isSolved: () => model.isSolved(),
+      skin,
     });
   }
 
@@ -70,6 +79,7 @@ export async function createCubeView(
       geometries: buildPyraminxGeometries(skin),
       kpuzzle,
       isSolved: () => model.isSolved(),
+      skin,
     });
   }
 
@@ -79,6 +89,7 @@ export async function createCubeView(
     model,
     geometries: buildCubeletGeometries(model.n, model.lattice.homeCoords, skin),
     kpuzzle,
+    skin,
     // **ยอมให้ทั้งลูกถูกหมุนไปทั้งก้อน** — `U D'` (2x2x2) กับ `Uw D'` (3x3x3) หมุนทั้งลูกได้
     // ทั้งที่ไม่มี move `x y z` อยู่ในกติกา ถ้าใช้ `isIdentical` ลูกที่ครบทุกหน้าแล้วจะถูก
     // ตัดสินว่ายังไม่เสร็จ นาฬิกาไม่หยุด (ADR-030) · ต้องตรงกับ `backend/src/lib/cube-state.ts`

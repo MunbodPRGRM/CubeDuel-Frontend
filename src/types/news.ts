@@ -13,8 +13,11 @@ export interface NewsAuthor {
 interface NewsBase {
   newsId: number;
   title: string;
-  /** พาธ (`/uploads/news/…`) ไม่ใช่ URL เต็ม — ต่อโดเมนด้วย `fileUrl()` ก่อนใช้ */
-  image: string | null;
+  /**
+   * คีย์ปกที่เว็บวาดให้ (ADR-084) — พิมพ์เป็น `string` ไม่ใช่ `NewsCover` โดยตั้งใจ
+   * server อาจส่งคีย์ใหม่ที่หน้านี้ยังไม่รู้จัก → วาดผ่าน `newsCoverStyle()` ซึ่งตกกลับเป็น `general`
+   */
+  cover: string;
   author: NewsAuthor;
   createdAt: string;
   updatedAt: string;

@@ -1,14 +1,12 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/auth/useAuth';
 import { AppHeader } from '@/components/AppHeader';
-import { SkinSwatches } from '@/components/CubeSkinPicker';
 import { FormAlert } from '@/components/FormAlert';
 import { PageSpinner } from '@/components/PageSpinner';
 import { TextField } from '@/components/TextField';
 import { useApiData } from '@/hooks/useApiData';
 import { ApiError, apiFetch } from '@/lib/api';
-import { getSkin } from '@/cube';
 import { errorMessage } from '@/lib/errors';
 import { BIO_MAX_LENGTH, BIO_MAX_LINES } from '@/lib/validation';
 import { displayName, type SelfUser } from '@/types/auth';
@@ -22,7 +20,7 @@ type Tab = 'profile' | 'security';
  * ต่างจากดีไซน์สามจุด เพราะดีไซน์วาดของที่ระบบไม่มีที่เก็บ/ไม่ยอมให้แก้ (ADR-048):
  *   1. `username` กับ `email` เป็นช่อง **อ่านอย่างเดียว** (ข้อ 1)
  *   2. ~~ช่อง "รายละเอียดเพิ่มเติม" (bio) ไม่มีคอลัมน์รองรับ~~ → **มีแล้วตั้งแต่เฟส 12 ก้อนที่ 9** (ADR-066)
- *      · สกินที่เคยมายืนแทนที่ตรงนี้ย้ายไปหน้า `/skins` ของตัวเองแล้ว เหลือชิปสี + ลิงก์ (ADR-064 ข้อ 5)
+ *      · สกินย้ายไปหน้า `/skins` ของตัวเองแล้ว และเอาแถวลิงก์ออกจากหน้านี้แล้วด้วย (ADR-064 ข้อ 5 ยกเลิก — เฟส 13 ก้อนที่ 21)
  *   3. แท็บความปลอดภัยเพิ่มช่อง **รหัสผ่านปัจจุบัน** ที่ดีไซน์ไม่ได้วาดไว้ — API บังคับ (ข้อ 3)
  *      · บัญชี Google/Facebook ที่ยังไม่มีรหัสผ่าน (`hasPassword = false`) ไม่ถามทั้งรหัสเดิมและรหัสยืนยันตอนลบบัญชี (ADR-058 ข้อ 6)
  */
@@ -33,15 +31,45 @@ export default function SettingsPage() {
   if (status === 'loading' || !user) return <PageSpinner />;
 
   return (
-    <div className="min-h-screen bg-navy-900">
+    <div className="min-h-app bg-navy-900">
       <AppHeader />
-      <main className="page-wide grid gap-6 px-4 py-8 lg:grid-cols-[280px_minmax(0,1fr)]">
-        <SettingsSidebar user={user} tab={tab} onTabChange={setTab} />
+      <main className="page-wide grid gap-6 px-4 py-4 md:py-8 lg:grid-cols-[280px_minmax(0,1fr)]">
+        {/* จอแคบซ่อนการ์ดผู้ใช้ + เมนูข้าง — เหลือแถบแท็บด้านบนแทน (ADR-083 ข้อ 7) */}
+        <div className="hidden md:block">
+          <SettingsSidebar user={user} tab={tab} onTabChange={setTab} />
+        </div>
         <section>
           <header className="mb-4">
             <p className="text-sm text-brand-400">การตั้งค่า</p>
-            <h1 className="text-3xl font-bold text-white">บัญชี และ โปรไฟล์</h1>
+            <h1 className="text-2xl font-bold text-white md:text-3xl">บัญชี และ โปรไฟล์</h1>
           </header>
+          <div
+            role="tablist"
+            aria-label="หมวดการตั้งค่า"
+            className="mb-4 grid grid-cols-2 gap-1 rounded-xl border border-line bg-navy-850/80 p-1 md:hidden"
+          >
+            {(
+              [
+                ['profile', 'โปรไฟล์'],
+                ['security', 'ความปลอดภัย'],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                role="tab"
+                aria-selected={tab === value}
+                onClick={() => setTab(value)}
+                className={`rounded-lg py-2 text-sm transition ${
+                  tab === value
+                    ? 'bg-brand-500 font-semibold text-white'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           {tab === 'profile' ? <ProfilePanel user={user} /> : <SecurityPanel user={user} />}
         </section>
       </main>
@@ -184,7 +212,7 @@ function ProfilePanel({ user }: { user: SelfUser }) {
         </button>
       </div>
 
-      <div className="space-y-6 rounded-2xl border border-line bg-navy-850/80 px-6 py-6 sm:px-8">
+      <div className="space-y-6 rounded-2xl border border-line bg-navy-850/80 px-4 py-5 sm:px-8 sm:py-6">
         <div>
           <h2 className="text-xl font-semibold text-white">โปรไฟล์</h2>
           <p className="text-sm text-slate-500">ตั้งค่าข้อมูลส่วนตัวของคุณ</p>
@@ -261,27 +289,6 @@ function ProfilePanel({ user }: { user: SelfUser }) {
             </div>
           </div>
         </Row>
-
-        {/* สกินมีหน้าของตัวเองแล้ว (ADR-064) — ที่นี่เหลือไว้ให้ "หาเจอ" เพราะไม่มีเมนูหลักให้เดา */}
-        <Row
-          label="สกินสีคิวบ์"
-          hint="เปลี่ยนสีของคิวบ์ 3 มิติทุกห้อง — เห็นเฉพาะฝั่งคุณ ไม่กระทบคู่แข่ง"
-        >
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-navy-900/40 px-4 py-3">
-            <div>
-              <p className="text-sm text-slate-100">{getSkin(user.cubeSkin).label}</p>
-              <div className="mt-2">
-                <SkinSwatches skin={getSkin(user.cubeSkin)} size="sm" />
-              </div>
-            </div>
-            <Link
-              to="/skins"
-              className="rounded-xl border border-line bg-navy-800 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:bg-navy-700"
-            >
-              เลือกสกิน
-            </Link>
-          </div>
-        </Row>
       </div>
     </form>
   );
@@ -304,7 +311,7 @@ function Row({ label, hint, children }: { label: string; hint: string; children:
 
 function SecurityPanel({ user }: { user: SelfUser }) {
   return (
-    <div className="space-y-6 rounded-2xl border border-line bg-navy-850/80 px-6 py-6 sm:px-8">
+    <div className="space-y-6 rounded-2xl border border-line bg-navy-850/80 px-4 py-5 sm:px-8 sm:py-6">
       <div>
         <h2 className="text-xl font-semibold text-white">ความปลอดภัย</h2>
         <p className="text-sm text-slate-500">ตั้งค่าบัญชีเพื่อความปลอดภัย</p>

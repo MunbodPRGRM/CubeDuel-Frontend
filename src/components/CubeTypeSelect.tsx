@@ -5,22 +5,31 @@ interface CubeTypeSelectProps {
   value: CubeType;
   onChange: (value: CubeType) => void;
   disabled?: boolean;
+  /** ข้อความบอกเหตุผลตอนล็อก (tooltip) — เหมือน `CubeTypePicker` */
+  disabledHint?: string;
 }
 
 /**
- * เลือกประเภทรูบิคแบบ dropdown — ใช้ในแผงที่แคบ (ห้องฝึกซ้อม · ADR-059 ข้อ 6)
+ * เลือกประเภทรูบิคแบบ dropdown — ห้องฝึกซ้อม (ADR-059 ข้อ 6) · การ์ดหลักของหน้าแรก (เฟส 13 ก้อนที่ 8)
  *
  * ใช้ `<select>` ของเบราว์เซอร์ตรง ๆ ไม่เขียน listbox เอง — คีย์บอร์ด/screen reader ได้ฟรี
  * และบนมือถือ (เฟส 9) จะเปิดตัวเลือกแบบ native ของเครื่อง · สีของรายการที่กางออกมามืดตาม
  * `color-scheme: dark` ใน `styles/index.css` · หน้าอื่นยังใช้แท็บ `CubeTypePicker` เหมือนเดิม
+ * ความกว้างเต็มกล่องที่ครอบ — ผู้เรียกกำหนดความกว้างเอง
  */
-export function CubeTypeSelect({ value, onChange, disabled = false }: CubeTypeSelectProps) {
+export function CubeTypeSelect({
+  value,
+  onChange,
+  disabled = false,
+  disabledHint,
+}: CubeTypeSelectProps) {
   return (
     <div className="relative">
       <select
         aria-label="เลือกประเภทรูบิค"
         value={value}
         disabled={disabled}
+        title={disabled ? disabledHint : undefined}
         onChange={(e) => onChange(e.target.value as CubeType)}
         className="w-full cursor-pointer appearance-none rounded-lg border border-line bg-navy-900/70 py-2 pl-3 pr-9 text-sm font-medium text-slate-100 transition hover:border-brand-500/60 focus:border-brand-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
       >

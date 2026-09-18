@@ -77,7 +77,7 @@ export function buildPyramorphixGeometries(
   skin: CubeSkin = CLASSIC_SKIN,
 ): THREE.BufferGeometry[] {
   const faces = tetraFaces(skin);
-  return homeCoords.map((coord) =>
-    buildConvexPiece(planesFor(coord), faces, undefined, skin.bodyColor),
+  return homeCoords.map((coord, index) =>
+    buildConvexPiece(planesFor(coord), faces, undefined, skin.bodyColor, { seed: index }),
   );
 }

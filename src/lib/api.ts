@@ -13,17 +13,6 @@ const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:4000/api/v1';
  * ส่วน refresh token อยู่ใน httpOnly cookie → ต้องส่ง `credentials: 'include'` ทุกครั้ง
  */
 
-/**
- * โดเมนของ **API server** (ตัด `/api/v1` ทิ้ง) — ไฟล์ที่อัปโหลด (รูปข่าว) เสิร์ฟจากที่นี่
- * ไม่ใช่จากโดเมนของเว็บ ตอน deploy สองอย่างนี้อยู่คนละที่กัน (ADR-049 ข้อ 2)
- */
-const FILE_BASE_URL = BASE_URL.replace(/\/api\/v\d+\/?$/, '');
-
-/** พาธที่ API คืนมา (`/uploads/news/…`) → URL ที่ `<img>` ใช้ได้จริง */
-export function fileUrl(path: string): string {
-  return path.startsWith('/') ? `${FILE_BASE_URL}${path}` : path;
-}
-
 /** provider ที่เข้าสู่ระบบได้ — ตรงกับ path `/auth/oauth/<slug>` และ `?provider=` ตอนพากลับพร้อม error (ADR-070) */
 export type OAuthProviderSlug = 'google' | 'facebook';
 
@@ -35,6 +24,37 @@ export type OAuthProviderSlug = 'google' | 'facebook';
 export function oauthLoginUrl(provider: OAuthProviderSlug, returnTo?: string): string {
   const query = returnTo && returnTo !== '/' ? `?returnTo=${encodeURIComponent(returnTo)}` : '';
   return `${BASE_URL}/auth/oauth/${provider}${query}`;
+}
+
+/**
+ * ผลของ `GET /health` ในมุมของหน้ารอเซิร์ฟเวอร์ตื่น (ADR-072 ข้อ 3)
+ *   - `ok` = process ขึ้น + DB ต่อติด
+ *   - `db_down` = server ตอบเองว่าต่อ DB ไม่ได้ (503 + `db: "down"`)
+ *   - `unreachable` = ต่อไม่ติด / หมดเวลา / ได้คำตอบอื่นที่ไม่ใช่ของเรา (เช่น 502 จาก proxy ของ Render ตอนตื่น)
+ */
+export type ServerHealth = 'ok' | 'db_down' | 'unreachable';
+
+/**
+ * ถาม `/health` หนึ่งครั้ง — **ไม่ผ่าน `request()`** ตั้งใจ: ไม่แนบ token ไม่ต่ออายุ
+ * และ `/health` ไม่มี envelope `{ data }` (api-contract.md ข้อ 10) · ไม่โยน error ทุกกรณี
+ */
+export async function checkServerHealth(timeoutMs: number): Promise<ServerHealth> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${BASE_URL}/health`, { signal: controller.signal, cache: 'no-store' });
+    if (res.ok) return 'ok';
+    if (res.status === 503) {
+      // 503 จาก proxy ไม่ใช่ JSON ของเรา → ยังนับว่า server ไม่ตื่น ไม่ใช่เรื่องฐานข้อมูล
+      const body = (await res.json().catch(() => null)) as { db?: unknown } | null;
+      if (body?.db === 'down') return 'db_down';
+    }
+    return 'unreachable';
+  } catch {
+    return 'unreachable';
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export class ApiError extends Error {
@@ -191,37 +211,6 @@ async function request<T>(
 
 export async function apiFetch<T>(path: string, options: FetchOptions = {}): Promise<T> {
   return (await request<T>(path, options)).data;
-}
-
-/**
- * ส่ง `multipart/form-data` (ฟอร์มข่าวที่แนบรูป — api-contract.md ข้อ 7)
- *
- * **ห้ามตั้ง `Content-Type` เอง** — เบราว์เซอร์ต้องเป็นคนใส่พร้อม `boundary` ให้ ถ้าตั้งทับ
- * ฝั่ง server จะแกะ multipart ไม่ออก · นอกนั้นเหมือน `apiFetch` ทุกอย่าง (แนบ token · ต่ออายุแล้วยิงซ้ำ)
- */
-export async function apiUpload<T>(
-  path: string,
-  form: FormData,
-  method: 'POST' | 'PATCH' = 'POST',
-): Promise<T> {
-  const send = () => {
-    const headers: Record<string, string> = {};
-    if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
-    return fetch(`${BASE_URL}${path}`, { method, headers, credentials: 'include', body: form });
-  };
-
-  let res: Response;
-  try {
-    res = await send();
-  } catch {
-    // ยิงไม่ถึง server เลย (เน็ตหลุด / backend ไม่ได้รัน) — คนละเรื่องกับ server ตอบ 500
-    throw new ApiError(0, 'E_NETWORK', ERROR_MESSAGES.E_NETWORK);
-  }
-
-  if (res.status === 401 && accessToken !== null && (await refreshSession())) res = await send();
-  if (!res.ok) throw await toApiError(res);
-
-  return ((await res.json()) as { data: T }).data;
 }
 
 /** สำหรับ endpoint ที่คืน `meta` มาด้วย (กระดานอันดับ ประวัติการแข่ง ฯลฯ) */

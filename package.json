@@ -13,7 +13,8 @@
     "verify:pyramorphix": "node --experimental-strip-types scripts/verify-pyramorphix.ts",
     "verify:pyraminx": "node --experimental-strip-types scripts/verify-pyraminx.ts",
     "verify:errors": "node --experimental-strip-types scripts/verify-errors.ts",
-    "verify": "npm run verify:cube && npm run verify:pyramorphix && npm run verify:pyraminx && npm run verify:errors"
+    "verify:skins": "node --experimental-strip-types scripts/verify-skins.ts",
+    "verify": "npm run verify:cube && npm run verify:pyramorphix && npm run verify:pyraminx && npm run verify:errors && npm run verify:skins"
   },
   "dependencies": {
     "cubing": "^0.63.4",

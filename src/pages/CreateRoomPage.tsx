@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AppHeader } from '@/components/AppHeader';
 import { CubeTypePicker } from '@/components/CubeTypePicker';
+import { CubeTypeSelect } from '@/components/CubeTypeSelect';
 import { FormAlert } from '@/components/FormAlert';
 import { SocketGate } from '@/socket/SocketGate';
 import { emitAck, socketErrorMessage } from '@/socket/socket-client';
@@ -13,15 +14,15 @@ import type { CubeType } from '@/types/cube';
 /**
  * สร้างห้องที่มีรหัสห้อง แล้วเข้าห้องทันที (`socket-events.md` ข้อ 5)
  *
- * รองรับสองขนาด: **2 คน** (`kind: 'custom'` — 1 ต่อ 1 มีผู้ชมได้) กับ **3–4 คน**
- * (`kind: 'multiplayer'` — ไม่มีผู้ชม) · ทั้งคู่เป็นห้องที่ **ไม่ปรับคะแนน ELO** เพราะ
+ * รองรับสองขนาด: **2 คน** (`kind: 'custom'` — 1 ต่อ 1) กับ **3–4 คน** (`kind: 'multiplayer'`)
+ * · ทั้งคู่มีผู้ชมได้ (ADR-079) และเป็นห้องที่ **ไม่ปรับคะแนน ELO** เพราะ
  * ห้องที่เข้าด้วยรหัสเป็นโหมด `custom` เสมอ ไม่มีฟิลด์ให้ client เลือกเอง (ADR-043 ข้อ 5)
  */
 export default function CreateRoomPage() {
   return (
-    <div className="min-h-screen bg-navy-900">
+    <div className="min-h-app bg-navy-900">
       <AppHeader />
-      <main className="mx-auto max-w-xl px-4 py-10">
+      <main className="mx-auto max-w-xl px-4 py-4 sm:py-10">
         <SocketGate>
           <CreateRoomForm />
         </SocketGate>
@@ -33,8 +34,8 @@ export default function CreateRoomPage() {
 /** `kind` กับ `maxPlayers` ต้องเข้าคู่กัน ไม่งั้น server ตอบ `E_VALIDATION` */
 const SIZES = [
   { players: 2, kind: 'custom', label: '2 คน', note: '1 ต่อ 1 · มีผู้ชมได้' },
-  { players: 3, kind: 'multiplayer', label: '3 คน', note: 'ไม่มีผู้ชม' },
-  { players: 4, kind: 'multiplayer', label: '4 คน', note: 'ไม่มีผู้ชม' },
+  { players: 3, kind: 'multiplayer', label: '3 คน', note: 'แข่งพร้อมกัน · มีผู้ชมได้' },
+  { players: 4, kind: 'multiplayer', label: '4 คน', note: 'แข่งพร้อมกัน · มีผู้ชมได้' },
 ] as const;
 
 type RoomSize = (typeof SIZES)[number];
@@ -70,15 +71,20 @@ function CreateRoomForm() {
   };
 
   return (
-    <section className="rounded-2xl border border-line bg-navy-850 px-6 py-7 sm:px-8">
+    <section className="rounded-2xl border border-line bg-navy-850 px-4 py-5 sm:px-8 sm:py-7">
       <h1 className="text-xl font-bold text-white">สร้างห้อง</h1>
       <p className="mt-1.5 text-sm text-slate-400">
         ห้องสำหรับเล่นกับเพื่อน — แชร์รหัสห้องให้อีกฝ่ายกด “ใส่เลขห้อง” เพื่อเข้ามา
       </p>
 
-      <div className="mt-7">
+      <div className="mt-6 sm:mt-7">
         <p className="text-sm text-slate-300">ประเภทรูบิค</p>
-        <div className="mt-2">
+        {/* จอแคบเป็น dropdown แบบหน้าอื่น (ADR-083 ข้อ 4.2) — ปุ่ม 4 ช่องตัดสองแถวที่ 360 px
+            ทั้งสองตัวไม่มีสถานะในตัว ซ่อนด้วย CSS ได้ ไม่ต้องเลือกด้วย hook */}
+        <div className="mt-2 md:hidden">
+          <CubeTypeSelect value={cubeType} onChange={setCubeType} />
+        </div>
+        <div className="mt-2 hidden md:block">
           <CubeTypePicker value={cubeType} onChange={setCubeType} />
         </div>
         <p className="mt-2 text-xs text-slate-500">
@@ -118,7 +124,7 @@ function CreateRoomForm() {
         <div>
           <dt className="text-xs text-slate-500">รูปแบบห้อง</dt>
           <dd className="mt-0.5 text-slate-200">
-            {size.players === 2 ? '1 ต่อ 1 (มีผู้ชมได้)' : `${size.players} คน (ไม่มีผู้ชม)`}
+            {size.players === 2 ? '1 ต่อ 1 (มีผู้ชมได้)' : `${size.players} คน (มีผู้ชมได้)`}
           </dd>
         </div>
         <div>
@@ -133,12 +139,13 @@ function CreateRoomForm() {
         </div>
       )}
 
-      <div className="mt-7 flex flex-wrap gap-3">
+      {/* จอแคบ: ปุ่มเต็มความกว้างซ้อนกัน กดถึงด้วยนิ้วโป้ง (ADR-083 ข้อ 8 · ก้อน 20) */}
+      <div className="mt-6 grid gap-2.5 sm:mt-7 sm:flex sm:flex-wrap sm:gap-3">
         <button
           type="button"
           onClick={() => void create()}
           disabled={submitting}
-          className="flex items-center gap-2 rounded-xl bg-brand-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-brand-500/40"
+          className="flex items-center justify-center gap-2 rounded-xl bg-brand-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-brand-500/40 sm:py-2.5"
         >
           {submitting && (
             <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
@@ -147,7 +154,7 @@ function CreateRoomForm() {
         </button>
         <Link
           to="/room/join"
-          className="rounded-xl border border-line bg-navy-800 px-5 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-navy-700"
+          className="rounded-xl border border-line bg-navy-800 px-5 py-3 text-center text-sm font-semibold text-slate-200 transition hover:bg-navy-700 sm:py-2.5"
         >
           มีรหัสห้องอยู่แล้ว
         </Link>

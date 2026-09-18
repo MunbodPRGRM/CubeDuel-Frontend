@@ -18,6 +18,7 @@ import { ConvexGeometry } from 'three/examples/jsm/geometries/ConvexGeometry.js'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { BODY_COLOR } from './colors.ts';
 import { cross, dot, normalize, type Vec3 } from './lattice.ts';
+import { markBody, markSticker } from './pattern-attributes.ts';
 
 /** ครึ่งปริภูมิ `normal · p >= d` — ผิวของมันคือระนาบ `normal · p = d` (ด้านนอกอยู่ฝั่ง −normal) */
 export interface HalfSpace {
@@ -63,16 +64,6 @@ export function paintGeometry(geometry: THREE.BufferGeometry, hex: number): THRE
   }
   flat.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   return flat;
-}
-
-/** เหลือเฉพาะ attribute ที่ทุกก้อนมีเหมือนกัน ไม่งั้น `mergeGeometries` ปฏิเสธ */
-export function keepBasicAttributes(geometry: THREE.BufferGeometry): THREE.BufferGeometry {
-  for (const name of Object.keys(geometry.attributes)) {
-    if (name !== 'position' && name !== 'normal' && name !== 'color') {
-      geometry.deleteAttribute(name);
-    }
-  }
-  return geometry;
 }
 
 function solve3x3(m: readonly Vec3[], rhs: readonly number[]): number[] | null {
@@ -150,6 +141,7 @@ function buildSticker(
   face: OuterFace,
   corners: readonly (readonly number[])[],
   style: PieceStyle,
+  seed: number,
 ): THREE.BufferGeometry | null {
   if (corners.length < 3) return null;
 
@@ -197,7 +189,11 @@ function buildSticker(
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
   geometry.computeVertexNormals();
-  return paintGeometry(geometry, face.color);
+  return markSticker(paintGeometry(geometry, face.color), {
+    center: centroidOf(lifted),
+    outward,
+    seed,
+  });
 }
 
 /**
@@ -206,12 +202,14 @@ function buildSticker(
  * @param planes ระนาบทั้งหมดที่ล้อมชิ้นนี้ (ทั้งรอยตัดข้างในและหน้าจริงของรูบิค)
  * @param outerFaces หน้าจริงของรูบิคพร้อมสี — ชิ้นที่ไม่ได้แตะหน้าไหน ก็ไม่มีสติกเกอร์ของหน้านั้น
  * @param bodyColor สีเนื้อพลาสติกของสกินที่ผู้เล่นเลือก (ไม่ส่ง = สกิน `classic`)
+ * @param pattern ข้อมูลลวดลาย (ADR-087) — `seed` = เลขประจำชิ้น ให้ลายของแต่ละแผ่นเริ่มคนละจุด
  */
 export function buildConvexPiece(
   planes: readonly HalfSpace[],
   outerFaces: readonly OuterFace[],
   style: PieceStyle = DEFAULT_PIECE_STYLE,
   bodyColor: number = BODY_COLOR,
+  pattern: { seed?: number } = {},
 ): THREE.BufferGeometry {
   const raw = pieceCorners(planes);
   if (raw.length < 4) {
@@ -221,7 +219,7 @@ export function buildConvexPiece(
   const center = centroidOf(raw);
   const corners = raw.map((p) => shrinkToward(p, center, style.bodyScale));
 
-  const body = keepBasicAttributes(
+  const body = markBody(
     paintGeometry(
       new ConvexGeometry(corners.map((p) => new THREE.Vector3(p[0]!, p[1]!, p[2]!))),
       bodyColor,
@@ -229,12 +227,13 @@ export function buildConvexPiece(
   );
   const parts: THREE.BufferGeometry[] = [body];
 
-  for (const face of outerFaces) {
+  outerFaces.forEach((face, faceIndex) => {
     const distance = shrunkPlaneDistance(face.plane, center, style.bodyScale);
     const onFace = corners.filter((p) => Math.abs(dot(face.plane.normal, p) - distance) < 1e-6);
-    const sticker = buildSticker(face, onFace, style);
-    if (sticker) parts.push(keepBasicAttributes(sticker));
-  }
+    const seed = (pattern.seed ?? 0) * outerFaces.length + faceIndex;
+    const sticker = buildSticker(face, onFace, style, seed);
+    if (sticker) parts.push(sticker);
+  });
 
   const merged = mergeGeometries(parts, false);
   if (!merged) throw new Error('รวม geometry ของชิ้นส่วนไม่สำเร็จ');

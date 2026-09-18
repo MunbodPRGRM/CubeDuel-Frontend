@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Avatar } from '@/components/Avatar';
 import { CubeCanvas, type CubeCanvasHandle } from '@/components/CubeCanvas';
 import type { CubeMoveEvent, CubeState } from '@/cube';
@@ -22,7 +22,18 @@ import { LiveTime, type LiveTimeMode } from './LiveTime';
  * ช่องของ **คู่แข่ง** เป็นภาพสะท้อนที่เดินตาม `opponent:move` เท่านั้น หมุนเองไม่ได้
  *
  * ห้อง 3–4 คนใช้แผงตัวเดียวกันนี้ในโหมด `compact` สำหรับแถบคู่แข่ง (ADR-044 ข้อ 3)
+ * · แผงคู่แข่งที่ลอยมุมจอบนมือถือใช้โหมด `pip` (ADR-081)
  */
+
+/**
+ * หน้าตาของแผง
+ * - `full` — หัวแผง + คิวบ์ + แถวตัวเลขล่าง (คิวบ์ของเราทุกห้อง · คู่แข่งห้อง 1v1 ที่ไม่ลอยมุมจอ)
+ * - `compact` — ย้ายแถวตัวเลขล่างขึ้นไปบนหัวแผง (แถบคู่แข่งห้อง 3–4 คน · `focus` บนจอ `lg`)
+ * - `pip` — คิวบ์เต็มกล่อง ข้อมูลเป็นป้ายทับ (`focus` บนจอแคบ · ADR-081 ข้อ 1)
+ * - `stage` — คิวบ์ของเราในห้องจอแคบ (ADR-083 ข้อ 5): **ไม่มีหัวแผง** (ชื่อ/ELO อยู่แถบหัวห้องแทน) · สูงตามกล่องแม่ (`flex-1`)
+ *   · ชื่อเจ้าของคิวบ์ขึ้นเป็นป้ายเมื่อไม่ใช่ของเรา (ผู้ชม) · แถวตัวเลขล่างคงไว้
+ */
+export type PlayerPanelVariant = 'full' | 'compact' | 'pip' | 'stage';
 
 interface PlayerCubePanelProps {
   player: PlayerPublic | null;
@@ -32,11 +43,17 @@ interface PlayerCubePanelProps {
   emptyLabel: string;
   match: UseMatchResult;
   /**
-   * แผงย่อสำหรับแถบคู่แข่งของห้อง 3–4 คน — **ย้ายแถวตัวเลขล่างขึ้นไปอยู่บนหัวแผง**
+   * `compact` = แผงย่อสำหรับแถบคู่แข่งของห้อง 3–4 คน — **ย้ายแถวตัวเลขล่างขึ้นไปอยู่บนหัวแผง**
    * เพราะคิวบ์หลายลูกซ้อนในคอลัมน์เดียวเหลือความสูงลูกละ ~1/3 ถ้าคงแถวล่างไว้ด้วย
-   * จะไม่เหลือที่ให้คิวบ์เลย · ห้อง 1v1 ต้องไม่ส่ง prop นี้ (หน้าตาต้องเหมือนเดิมเป๊ะ)
+   * จะไม่เหลือที่ให้คิวบ์เลย · ห้อง 1v1 ที่ไม่ลอยมุมจอต้องเป็น `full` (หน้าตาต้องเหมือนเดิมเป๊ะ)
+   *
+   * `pip` = กล่อง ~150 px บนมือถือ ที่หัวแผงอย่างเดียวก็กินไปครึ่งกล่องแล้ว (ADR-081)
    */
-  compact?: boolean;
+  variant?: PlayerPanelVariant;
+  /** แผง `pip` ถูกย่อเหลือชิป (ADR-081 ข้อ 2) — ใช้กับ `pip` เท่านั้น */
+  collapsed?: boolean;
+  /** ของที่วาดทับกรอบคิวบ์ — ตอนนี้คือ `PipDock` ของคู่แข่งบนจอแคบ (ADR-081 ข้อ 2) · ใช้กับ `full` / `stage` */
+  overlay?: ReactNode;
 }
 
 /** state ที่คิวบ์หมุนได้จริง — ตรงกับฝั่ง server (`match.ts`) */
@@ -50,10 +67,17 @@ export function PlayerCubePanel({
   isMe,
   emptyLabel,
   match,
-  compact = false,
+  variant = 'full',
+  collapsed = false,
+  overlay,
 }: PlayerCubePanelProps) {
+  const compact = variant === 'compact';
+  const pip = variant === 'pip';
+  const stage = variant === 'stage';
   const progress = player ? snapshot.progress.find((p) => p.userId === player.userId) : undefined;
   const inLobby = snapshot.state === 'WAITING';
+  /** ช่วงตรวจสอบบอกว่าใครกด "พร้อม" แล้ว (ADR-078) — ยังไม่มีใครแก้ ป้าย "กำลังแก้" ไม่มีความหมาย */
+  const inspecting = snapshot.state === 'INSPECTION' && progress?.status === 'solving';
   /** จำนวน move ที่นับได้ทันทีฝั่งเรา — ของ server มาทุก 500 ms ซึ่งช้าเกินกว่าจะดูลื่น */
   const [liveMoveCount, setLiveMoveCount] = useState(0);
 
@@ -69,7 +93,11 @@ export function PlayerCubePanel({
       ? player.isReady
         ? 'พร้อม'
         : 'ไม่พร้อม'
-      : SOLVE_STATUS_LABEL[progress?.status ?? 'solving'];
+      : inspecting
+        ? player.inspectionReady
+          ? 'พร้อมแล้ว'
+          : 'กำลังตรวจสอบ'
+        : SOLVE_STATUS_LABEL[progress?.status ?? 'solving'];
 
   const statusClass = !player
     ? 'text-slate-600'
@@ -77,11 +105,15 @@ export function PlayerCubePanel({
       ? player.isReady
         ? 'text-win'
         : 'text-loss'
-      : progress?.status === 'solved'
-        ? 'text-win'
-        : progress?.status === 'solving'
-          ? 'text-slate-200'
-          : 'text-loss';
+      : inspecting
+        ? player.inspectionReady
+          ? 'text-win'
+          : 'text-slate-200'
+        : progress?.status === 'solved'
+          ? 'text-win'
+          : progress?.status === 'solving'
+            ? 'text-slate-200'
+            : 'text-loss';
 
   // จบรอบไปแล้วให้ค้างเลขไว้ · ยังแก้อยู่และนาฬิกาเดินแล้วให้นับขึ้น · นอกนั้นเป็น 0
   let timeMode: LiveTimeMode = 'idle';
@@ -98,19 +130,127 @@ export function PlayerCubePanel({
       mode={timeMode}
       ts={snapshot.serverStartTs}
       frozenMs={frozenMs}
-      className={`tabular text-brand-400 ${compact ? 'text-sm' : 'text-lg'}`}
+      className={`tabular text-brand-400 ${pip ? 'text-[10px]' : compact ? 'text-sm' : 'text-lg'}`}
     />
   );
 
+  const cube = player ? (
+    isMe ? (
+      <SelfCube
+        snapshot={snapshot}
+        match={match}
+        status={progress?.status}
+        canTurn={
+          snapshot.state === 'WAITING' ||
+          (isSolvingState(snapshot.state) && progress?.status === 'solving')
+        }
+        onMoveCount={setLiveMoveCount}
+      />
+    ) : (
+      <MirrorCube
+        snapshot={snapshot}
+        userId={player.userId}
+        status={progress?.status}
+        serverMoveCount={progress?.moveCount ?? 0}
+        pip={pip}
+      />
+    )
+  ) : null;
+
+  if (pip) {
+    if (!player) {
+      return (
+        <section
+          className={`grid place-items-center border border-dashed border-line bg-navy-900/85 text-slate-500 ${
+            collapsed
+              ? 'rounded-full px-2 py-1 text-[10px]'
+              : 'h-full w-full rounded-xl text-[11px]'
+          }`}
+        >
+          รอผู้เล่น
+        </section>
+      );
+    }
+    const badge = pipBadge(player, snapshot.state, progress?.status, inspecting);
+    const border =
+      badge?.tone === 'win' ? 'border-win' : badge?.tone === 'loss' ? 'border-loss' : 'border-line';
+
+    /*
+      ⚠️ กล่องห่อคิวบ์ต้องเป็น **ลูกตัวแรกเสมอทั้งตอนกางและตอนย่อ** — React จะได้เก็บ `CubeCanvas` ตัวเดิมไว้
+      ย่อแล้วแค่ซ่อน (`invisible`) ไม่ unmount เพราะ move ที่พลาดไประหว่างย่อเอาคืนไม่ได้ (ADR-081 ข้อ 2)
+    */
+    if (collapsed) {
+      return (
+        <section
+          aria-label={`${playerName(player)} · ${statusText}`}
+          className={`relative flex max-w-[11rem] items-center gap-1.5 rounded-full border-2 bg-navy-900/95 px-2 py-1 text-[10px] leading-3 shadow-lg shadow-black/40 ${border}`}
+        >
+          <div className="invisible absolute h-24 w-24">{cube}</div>
+          <span className="min-w-0 truncate font-medium text-slate-100">{playerName(player)}</span>
+          {/* ช่องเวลาของคน DNF ขึ้นคำว่า DNF อยู่แล้ว — ป้ายซ้ำในชิปแคบ ๆ อ่านเป็น "DNF DNF" */}
+          {badge && badge.label !== 'DNF' && (
+            <span
+              className={`shrink-0 font-medium ${badge.tone === 'win' ? 'text-win' : 'text-loss'}`}
+            >
+              {badge.label}
+            </span>
+          )}
+          <span className="shrink-0">{liveTime}</span>
+        </section>
+      );
+    }
+
+    return (
+      // ขอบสีบอกสถานะ + ป้ายคำเสมอ — สีอย่างเดียวคนตาบอดสีแยกไม่ออก (ADR-081 ข้อ 1)
+      <section
+        aria-label={`${playerName(player)} · ${statusText}`}
+        className={`@container relative h-full w-full overflow-hidden rounded-xl border-2 bg-navy-900/90 shadow-lg shadow-black/40 ${border}`}
+      >
+        <div className="contents">{cube}</div>
+        {badge && (
+          <span
+            className={`pointer-events-none absolute left-1.5 top-1.5 rounded bg-navy-900/85 px-1.5 py-0.5 text-[10px] font-medium leading-3 ${
+              badge.tone === 'win' ? 'text-win' : 'text-loss'
+            }`}
+          >
+            {badge.label}
+          </span>
+        )}
+        {/*
+          กล่องกว้างตั้งแต่ 7rem (ห้อง 1v1 / 3 คน): ชื่อบรรทัดหนึ่ง เวลา + จำนวนท่าบรรทัดสอง
+          กล่องแคบกว่านั้น (ห้อง 4 คนบนจอ ~360 px เหลือ ~90 px): **บรรทัดเดียว** ชื่อ + เวลา ตัดจำนวนท่า
+          ไม่งั้นป้ายสองบรรทัดกินไปหนึ่งในสามของกล่อง · ใช้ container query เพราะขนาดกล่องไม่ผูกกับจอ
+        */}
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-wrap items-baseline gap-x-1 bg-navy-900/80 px-1.5 py-0.5 text-[10px] leading-3 backdrop-blur @min-[7rem]:px-2 @min-[7rem]:py-1">
+          <span className="min-w-0 flex-1 truncate font-medium text-slate-100 @min-[7rem]:basis-full">
+            {playerName(player)}
+          </span>
+          <span className="shrink-0 text-slate-400">
+            {liveTime}
+            <span className="hidden @min-[7rem]:inline">
+              {' '}
+              · <span className="tabular">{moveCount}</span> ท่า
+            </span>
+          </span>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section
-      className={`flex flex-col rounded-2xl border border-line bg-navy-850/60 ${
-        // แผงย่อไม่ล็อกความสูงเอง — ปล่อยให้คอลัมน์แม่หารความสูงให้เท่า ๆ กัน
-        // แผงเต็มบนจอ `lg` สูงเท่าแถวของ grid ที่ล็อกไว้เท่าจอแล้ว (ADR-059 ข้อ 3)
-        compact ? 'min-h-0 flex-1 p-3' : 'h-[30rem] p-4 lg:h-full lg:min-h-0'
+      className={`flex flex-col ${
+        stage
+          ? // จอแคบ: กล่องแม่ (แนวตั้งหนึ่งจอ) หารความสูงให้ — ไม่มีกรอบนอก กรอบคิวบ์มีกรอบของตัวเอง
+            'min-h-0 flex-1'
+          : `rounded-2xl border border-line bg-navy-850/60 ${
+              // แผงย่อไม่ล็อกความสูงเอง — ปล่อยให้คอลัมน์แม่หารความสูงให้เท่า ๆ กัน
+              // แผงเต็มบนจอ `lg` สูงเท่าแถวของ grid ที่ล็อกไว้เท่าจอแล้ว (ADR-059 ข้อ 3)
+              compact ? 'min-h-0 flex-1 p-3' : 'h-[30rem] p-4 lg:h-full lg:min-h-0'
+            }`
       }`}
     >
-      <div className="flex items-center justify-between gap-2">
+      <div className={`flex items-center justify-between gap-2 ${stage ? 'hidden' : ''}`}>
         {player ? (
           <>
             <div className="flex min-w-0 items-center gap-2">
@@ -150,34 +290,30 @@ export function PlayerCubePanel({
         canvas (ที่ renderer ตั้งขนาดตามกล่อง) จะดันกล่องให้สูงขึ้นเรื่อย ๆ ทุกเฟรม
         ด้วยเหตุผลเดียวกัน `CubeCanvas` ข้างในต้องถูกวางแบบ absolute — ดู `SelfCube`
       */}
-      <div className="relative mt-3 min-h-0 flex-1 overflow-hidden rounded-xl bg-navy-900/40">
-        {player ? (
-          isMe ? (
-            <SelfCube
-              snapshot={snapshot}
-              match={match}
-              status={progress?.status}
-              canTurn={
-                snapshot.state === 'WAITING' ||
-                (isSolvingState(snapshot.state) && progress?.status === 'solving')
-              }
-              onMoveCount={setLiveMoveCount}
-            />
-          ) : (
-            <MirrorCube
-              snapshot={snapshot}
-              userId={player.userId}
-              status={progress?.status}
-              serverMoveCount={progress?.moveCount ?? 0}
-            />
-          )
-        ) : (
+      <div
+        className={`relative min-h-0 flex-1 overflow-hidden ${
+          stage ? 'rounded-2xl border border-line bg-navy-850/60' : 'mt-3 rounded-xl bg-navy-900/40'
+        }`}
+      >
+        {cube ?? (
           <div className="grid h-full place-items-center text-sm text-slate-600">{emptyLabel}</div>
         )}
+        {/* ไม่มีหัวแผง — ชื่อเจ้าของคิวบ์ (ผู้ชมดูคนอื่น) กับป้ายหลุดขึ้นเป็นป้ายมุมซ้ายล่างแทน */}
+        {stage && player && (!isMe || !player.connected) && (
+          <p className="pointer-events-none absolute bottom-2 left-2 flex max-w-[60%] items-center gap-1.5 rounded-md bg-navy-900/85 px-2 py-0.5 text-[11px] text-slate-300 backdrop-blur">
+            {!isMe && <span className="truncate">{playerName(player)}</span>}
+            {!player.connected && <span className="shrink-0 text-loss">หลุดการเชื่อมต่อ</span>}
+          </p>
+        )}
+        {overlay}
       </div>
 
       {!compact && (
-        <div className="mt-3 grid grid-cols-3 items-end gap-2 rounded-xl border border-line-soft bg-navy-900/60 px-4 py-3">
+        <div
+          className={`grid grid-cols-3 items-end gap-2 rounded-xl border border-line-soft bg-navy-900/60 ${
+            stage ? 'mt-2 px-3 py-1.5' : 'mt-3 px-4 py-3'
+          }`}
+        >
           <div>
             <p className="text-[10px] tracking-[0.15em] text-slate-500">MOVES</p>
             <p className="tabular text-lg text-slate-200">{moveCount}</p>
@@ -194,6 +330,25 @@ export function PlayerCubePanel({
       )}
     </section>
   );
+}
+
+/**
+ * ป้ายสั้นมุมซ้ายบนของแผง `pip` — ยังแก้อยู่/ยังไม่พร้อม = ไม่มีป้าย (ขอบเทาเฉย ๆ)
+ * หลุดการเชื่อมต่อมาก่อนทุกอย่าง เพราะเป็นเรื่องที่คนดูต้องรู้ตอนนี้ และอาจกลับมาได้เอง
+ */
+function pipBadge(
+  player: PlayerPublic,
+  state: RoomSnapshot['state'],
+  status: SolveStatus | undefined,
+  inspecting: boolean,
+): { label: string; tone: 'win' | 'loss' } | null {
+  if (!player.connected) return { label: 'หลุด', tone: 'loss' };
+  if (state === 'WAITING') return player.isReady ? { label: 'พร้อม', tone: 'win' } : null;
+  if (inspecting) return player.inspectionReady ? { label: 'พร้อม', tone: 'win' } : null;
+  if (status === 'solved') return { label: 'เสร็จ', tone: 'win' };
+  if (status === 'dnf') return { label: 'DNF', tone: 'loss' };
+  if (status === 'surrendered') return { label: 'ยอมแพ้', tone: 'loss' };
+  return null;
 }
 
 /**
@@ -306,6 +461,8 @@ interface MirrorCubeProps {
   status: SolveStatus | undefined;
   /** จำนวน move ที่ server บอกว่าคนนี้หมุนไปแล้ว — ใช้จับว่าภาพของเราตกหล่นหรือยัง */
   serverMoveCount: number;
+  /** อยู่ในกล่อง PiP — ป้ายสองตัวข้างล่างต้องย่อ ไม่งั้นบังคิวบ์ทั้งลูก (ADR-081 ข้อ 1) */
+  pip: boolean;
 }
 
 /**
@@ -315,7 +472,7 @@ interface MirrorCubeProps {
  * ผู้ชมเข้าระหว่างแข่ง) จะไม่มีทางรู้ move ที่คู่แข่งหมุนไปก่อนหน้า — snapshot มีแต่ตัวเลข
  * `moveCount` ไม่มี move stream ภาพจึงค้างอยู่ที่ scramble ต้องบอกผู้ใช้ตรง ๆ ว่าไม่ครบ
  */
-function MirrorCube({ snapshot, userId, status, serverMoveCount }: MirrorCubeProps) {
+function MirrorCube({ snapshot, userId, status, serverMoveCount, pip }: MirrorCubeProps) {
   const { socket } = useSocket();
   const cubeRef = useRef<CubeCanvasHandle>(null);
   useSolveWhenServerSaysSolved(cubeRef, status);
@@ -379,7 +536,8 @@ function MirrorCube({ snapshot, userId, status, serverMoveCount }: MirrorCubePro
 
   return (
     <>
-      <div className="absolute inset-0">
+      {/* PiP: คิวบ์ไม่รับนิ้ว — นิ้วที่แตะกล่องคือการลากกล่องเสมอ (ADR-081 ข้อ 2) */}
+      <div className={`absolute inset-0 ${pip ? 'pointer-events-none' : ''}`}>
         <CubeCanvas
           ref={cubeRef}
           cubeType={snapshot.cubeType}
@@ -388,16 +546,51 @@ function MirrorCube({ snapshot, userId, status, serverMoveCount }: MirrorCubePro
           turnsEnabled={false}
         />
       </div>
-      {tracking && (
-        <p className="pointer-events-none absolute bottom-2 left-2 rounded-md bg-navy-900/80 px-2 py-0.5 text-[10px] text-slate-400 backdrop-blur">
-          มุมกล้องของผู้เล่นคนนี้
-        </p>
-      )}
-      {incomplete && snapshot.scramble !== null && (
-        <p className="pointer-events-none absolute inset-x-3 top-3 rounded-lg border border-gold-400/40 bg-navy-900/85 px-3 py-1.5 text-center text-[11px] text-gold-400 backdrop-blur">
-          ภาพคิวบ์ของคู่แข่งไม่ครบ (เข้ามากลางรอบ) · ตัวเลขด้านล่างยังถูกต้อง
-        </p>
-      )}
+      {tracking &&
+        (pip ? (
+          <span
+            role="img"
+            aria-label="มุมกล้องของผู้เล่นคนนี้"
+            // ใต้มุมขวาบน — มุมบนสุดเป็นที่ของปุ่มย่อใน `PipDock`
+            className="pointer-events-none absolute right-1.5 top-6 grid h-5 w-5 place-items-center rounded-full bg-navy-900/80 text-slate-300"
+          >
+            <CameraIcon />
+          </span>
+        ) : (
+          <p className="pointer-events-none absolute bottom-2 left-2 rounded-md bg-navy-900/80 px-2 py-0.5 text-[10px] text-slate-400 backdrop-blur">
+            มุมกล้องของผู้เล่นคนนี้
+          </p>
+        ))}
+      {incomplete &&
+        snapshot.scramble !== null &&
+        (pip ? (
+          // ใต้แถวป้ายสถานะ — กล่องห้อง 4 คนกว้างแค่ ~90 px วางแถวเดียวกันจะทับกัน
+          <span
+            role="img"
+            aria-label="ภาพคิวบ์ของคู่แข่งไม่ครบ (เข้ามากลางรอบ)"
+            className="pointer-events-none absolute left-1.5 top-6 whitespace-nowrap rounded border border-gold-400/40 bg-navy-900/85 px-1.5 py-0.5 text-[10px] leading-3 text-gold-400"
+          >
+            <span aria-hidden className="@min-[7rem]:hidden">
+              !
+            </span>
+            <span aria-hidden className="hidden @min-[7rem]:inline">
+              ภาพไม่ครบ
+            </span>
+          </span>
+        ) : (
+          <p className="pointer-events-none absolute inset-x-3 top-3 rounded-lg border border-gold-400/40 bg-navy-900/85 px-3 py-1.5 text-center text-[11px] text-gold-400 backdrop-blur">
+            ภาพคิวบ์ของคู่แข่งไม่ครบ (เข้ามากลางรอบ) · ตัวเลขด้านล่างยังถูกต้อง
+          </p>
+        ))}
     </>
+  );
+}
+
+function CameraIcon() {
+  return (
+    <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" aria-hidden>
+      <rect x="1.5" y="4.5" width="9" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M10.5 7l4-2v6l-4-2" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+    </svg>
   );
 }

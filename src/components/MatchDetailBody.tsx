@@ -58,7 +58,7 @@ export function MatchDetailBody({
         />
       </dl>
 
-      <p className="mt-4 text-xs text-slate-500">สูตรกวน</p>
+      <p className="mt-4 text-xs text-slate-500">scramble</p>
       <p className="tabular mt-1 break-words rounded-xl border border-line bg-navy-900/60 px-3 py-2 text-xs leading-6 text-slate-300">
         {detail.scramble}
       </p>

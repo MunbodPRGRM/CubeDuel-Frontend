@@ -14,23 +14,43 @@ import { QueueWaitTime } from './QueueWaitTime';
 /** หมดเวลารอที่ 180 วิ (`game-rules.md` ข้อ 8) — ใช้บอกผู้ใช้เฉย ๆ ตัวตัดสินจริงอยู่ที่ server */
 const QUEUE_TIMEOUT_SECONDS = 180;
 
-export function QueuePanel() {
+/** `className` = ระยะห่างด้านบน · ค่าเดิม `mt-5` สำหรับวางใต้ปุ่มในการ์ดหลัก · หน้าแรกจอแคบส่ง `''` เพราะวางในกล่อง flex ที่มี gap แล้ว */
+export function QueuePanel({ className = 'mt-5' }: { className?: string }) {
   const queue = useQueue();
   /** คิวหลายคนต่างจากคิว 1v1 สองเรื่อง: หาหลายคน และไม่ใช้ช่วงคะแนนเลย (game-rules.md ข้อ 8) */
   const multi = queue.kind === 'multiplayer';
 
   if (queue.phase === 'timeout') {
+    /**
+     * หมดเวลาสองแบบคนละเรื่องกันคนละขั้ว — แบบหนึ่งคือ "ไม่มีใครมาเล่นด้วย"
+     * อีกแบบคือ "มีคนรออยู่แล้วแต่เราไม่ได้กดยืนยัน" ถ้าใช้ข้อความเดียวกันจะชวนเข้าใจผิดหนัก
+     */
+    const missedReadyCheck = queue.timedOutReason === 'ready_check';
     return (
-      <div className="mt-5 rounded-xl border border-gold-400/40 bg-gold-400/10 px-4 py-3 text-sm text-gold-400">
+      <div
+        className={`${className} rounded-xl border border-gold-400/40 bg-gold-400/10 px-4 py-3 text-sm text-gold-400`}
+      >
         <p className="font-semibold">
-          รอครบ {Math.round((queue.timedOutAfterMs ?? 0) / 1000)} วินาทีแล้ว
-          {multi ? 'ยังรวมกลุ่มไม่ครบ 3 คน' : 'ยังไม่เจอคู่'}
+          {missedReadyCheck
+            ? 'ไม่ได้กดยืนยันภายใน 12 วินาที จึงออกจากคิวให้'
+            : `รอครบ ${Math.round((queue.timedOutAfterMs ?? 0) / 1000)} วินาทีแล้ว${
+                multi ? 'ยังรวมกลุ่มไม่ครบ 3 คน' : 'ยังไม่เจอคู่'
+              }`}
         </p>
         <p className="mt-1 text-xs leading-5 text-slate-400">
-          ตอนนี้ยังไม่มีผู้เล่นคนอื่นรออยู่
-          {queue.cubeType ? ` ในประเภท ${CUBE_TYPE_LABEL[queue.cubeType]}` : ''} · กด “
-          {multi ? 'ห้องหลายคน' : 'จับคู่'}” อีกครั้งเพื่อรอต่อ
-          หรือชวนเพื่อนเล่นในห้องสร้างเองไปก่อน
+          {missedReadyCheck ? (
+            <>
+              รอบนั้นถูกยกเลิกไปแล้วและไม่มีผลต่อคะแนนหรือสถิติ · กด “
+              {multi ? 'ห้องหลายคน' : 'จับคู่'}” อีกครั้งได้เลย ไม่มีบทลงโทษ
+            </>
+          ) : (
+            <>
+              ตอนนี้ยังไม่มีผู้เล่นคนอื่นรออยู่
+              {queue.cubeType ? ` ในประเภท ${CUBE_TYPE_LABEL[queue.cubeType]}` : ''} · กด “
+              {multi ? 'ห้องหลายคน' : 'จับคู่'}” อีกครั้งเพื่อรอต่อ
+              หรือชวนเพื่อนเล่นในห้องสร้างเองไปก่อน
+            </>
+          )}
         </p>
         <button
           type="button"
@@ -45,14 +65,20 @@ export function QueuePanel() {
 
   if (queue.phase !== 'queued') {
     return queue.error ? (
-      <div className="mt-5">
+      <div className={className}>
         <FormAlert message={queue.error} />
       </div>
     ) : null;
   }
 
   return (
-    <div className="mt-5">
+    <div className={className}>
+      {/* กลุ่มที่เพิ่งถูกยกเลิกเพราะอีกฝ่ายไม่กดยืนยัน — ไม่ใช่ error จึงใช้โทนกลาง (ADR-077) */}
+      {queue.notice && (
+        <p className="mb-3 rounded-xl border border-line bg-navy-800/60 px-3 py-2 text-xs leading-5 text-slate-400">
+          {queue.notice}
+        </p>
+      )}
       <p className="flex flex-wrap items-center gap-2 text-sm text-brand-400">
         <span className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-brand-500/30 border-t-brand-400" />
         {multi ? 'กำลังรวมกลุ่มผู้เล่น 3–4 คน' : 'กำลังค้นหาผู้เล่น'}

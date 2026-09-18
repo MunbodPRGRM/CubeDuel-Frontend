@@ -7,6 +7,8 @@ interface TimerDisplayProps {
   startedAt: number | null;
   resultSeconds: number | null;
   inspectionLeft: number;
+  /** จอแคบ — ตัวเลขเล็กลงหนึ่งขั้น (ADR-083 ข้อ 5) */
+  compact?: boolean;
 }
 
 /**
@@ -20,6 +22,7 @@ export function TimerDisplay({
   startedAt,
   resultSeconds,
   inspectionLeft,
+  compact = false,
 }: TimerDisplayProps) {
   const valueRef = useRef<HTMLParagraphElement>(null);
 
@@ -53,10 +56,12 @@ export function TimerDisplay({
 
   return (
     <div className="text-center">
-      <p className="text-xs tracking-wide text-slate-400">{label}</p>
+      <p className={`tracking-wide text-slate-400 ${compact ? 'text-[11px]' : 'text-xs'}`}>
+        {label}
+      </p>
       <p
         ref={valueRef}
-        className={`tabular text-5xl font-bold ${
+        className={`tabular font-bold ${compact ? 'text-4xl leading-tight' : 'text-5xl'} ${
           phase === 'inspection'
             ? 'text-gold-400'
             : phase === 'finished' && resultSeconds === null

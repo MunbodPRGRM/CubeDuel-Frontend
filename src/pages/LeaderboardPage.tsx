@@ -4,10 +4,12 @@ import { useAuth } from '@/auth/useAuth';
 import { AppHeader } from '@/components/AppHeader';
 import { Avatar } from '@/components/Avatar';
 import { CubeTypePicker } from '@/components/CubeTypePicker';
+import { CubeTypeSelect } from '@/components/CubeTypeSelect';
 import { ErrorNotice } from '@/components/ErrorScreen';
 import { Pagination } from '@/components/Pagination';
 import { useApiData } from '@/hooks/useApiData';
 import { useApiPage } from '@/hooks/useApiPage';
+import { useNarrowScreen } from '@/hooks/useNarrowScreen';
 import { formatEloChange, formatSolveTime, formatWinRate } from '@/lib/format';
 import { isCubeType, type CubeType } from '@/types/cube';
 import {
@@ -44,6 +46,7 @@ export default function LeaderboardPage() {
   const page = Math.max(1, Number(params.get('page')) || 1);
 
   const [search, setSearch] = useState('');
+  const narrow = useNarrowScreen();
 
   /** เก็บตัวเลือกไว้ใน URL — แชร์ลิงก์กระดานของประเภท/สัปดาห์ที่กำลังดูอยู่ได้ */
   function update(
@@ -90,8 +93,144 @@ export default function LeaderboardPage() {
     if (board.meta && page > board.meta.totalPages) update({ page: board.meta.totalPages });
   }, [board.meta?.totalPages]);
 
+  const myRow: AnyLeaderboardRow | null =
+    showMyRow && user && myRating
+      ? {
+          rank: myRating.rank,
+          userId: user.userId,
+          username: user.username,
+          nickname: user.nickname,
+          eloRating: myRating.eloRating,
+          matchesPlayed: myRating.matchesPlayed,
+          wins: myRating.wins,
+          losses: myRating.losses,
+          winRate: myRating.winRate,
+          bestTime: myRating.bestTime,
+        }
+      : null;
+
+  const scopeToggle = (
+    <ToggleGroup
+      options={[
+        { value: 'all', label: 'ทั้งหมด' },
+        { value: 'weekly', label: 'สัปดาห์นี้' },
+      ]}
+      value={scope}
+      onChange={(v) => update({ scope: v })}
+      ariaLabel="ช่วงเวลาของกระดาน"
+    />
+  );
+
+  const emptyMessages = (
+    <>
+      {!board.loading && rows.length === 0 && (
+        <p className="px-5 py-10 text-center text-sm text-slate-500">
+          {scope === 'weekly'
+            ? 'สัปดาห์นี้ยังไม่มีใครลงแข่งในประเภทนี้'
+            : 'ยังไม่มีผู้เล่นบนกระดานอันดับของประเภทนี้'}
+        </p>
+      )}
+
+      {rows.length > 0 && filtered.length === 0 && (
+        <p className="px-5 py-10 text-center text-sm text-slate-500">
+          ไม่พบผู้เล่นชื่อนี้ในหน้านี้ (ค้นหาได้เฉพาะ {rows.length} แถวที่แสดงอยู่ — ลองเปลี่ยนหน้า)
+        </p>
+      )}
+    </>
+  );
+
+  const pagination = board.meta && (
+    <Pagination
+      page={board.meta.page}
+      totalPages={board.meta.totalPages}
+      total={board.meta.total}
+      unitLabel="คน"
+      disabled={board.loading}
+      onChange={(next) => update({ page: next })}
+    />
+  );
+
+  if (narrow) {
+    return (
+      // จอแคบ: หน้าไม่เลื่อน รายชื่อเลื่อนในกรอบ แถวของฉันปักไว้ล่าง (ADR-083 ข้อ 6)
+      // ไม่มีแท่นสามอันดับแรก — กินครึ่งจอ · อันดับ 1–3 ใช้สีเลขอันดับแทน
+      <div className="flex h-app flex-col bg-navy-900">
+        <AppHeader />
+
+        <main className="flex min-h-0 flex-1 flex-col gap-2.5 px-4 pt-3 pb-3">
+          <h1 className="shrink-0 text-xl font-extrabold text-white">กระดานจัดอันดับ</h1>
+
+          {/* dropdown แบบเดียวกับหน้าแรกจอแคบ (เจ้าของเลือก · ADR-083 ข้อ 4.2) */}
+          <div className="shrink-0">
+            <CubeTypeSelect value={cubeType} onChange={(v) => update({ cubeType: v })} />
+          </div>
+
+          <div className="flex shrink-0 items-center justify-between gap-2">
+            {scopeToggle}
+            <ToggleGroup
+              options={[
+                { value: 'elo', label: 'ELO' },
+                { value: 'bestTime', label: 'เวลา' },
+              ]}
+              value={sortBy}
+              onChange={(v) => update({ sortBy: v })}
+              ariaLabel="เกณฑ์การเรียง"
+            />
+          </div>
+
+          {scope === 'weekly' && board.meta?.weekStart && (
+            <p className="line-clamp-2 shrink-0 text-[11px] leading-4 text-slate-500">
+              นับตั้งแต่ {formatWeekStart(board.meta.weekStart)} (จันทร์ 00:00 เวลาไทย) ·
+              จัดอันดับจากผลรวมแต้มที่ได้ในสัปดาห์นี้
+            </p>
+          )}
+
+          <input
+            type="search"
+            aria-label="ค้นหาผู้เล่นในหน้านี้"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="ค้นหาผู้เล่นในหน้านี้"
+            className="w-full shrink-0 rounded-xl border border-line bg-navy-850/80 px-4 py-2 text-sm text-slate-200 placeholder:text-slate-600 focus:border-brand-500 focus:outline-none"
+          />
+
+          {board.error && <ErrorNotice message={board.error} onRetry={board.reload} />}
+
+          <section
+            aria-label="รายชื่ออันดับ"
+            className={`min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-2xl border border-line bg-navy-850/80 ${
+              board.loading ? 'opacity-50 transition-opacity' : ''
+            }`}
+          >
+            <ol>
+              {filtered.map((row) => (
+                <li key={row.userId} className="border-b border-line-soft last:border-b-0">
+                  <MobileRow
+                    row={row}
+                    scope={scope}
+                    sortBy={sortBy}
+                    isMe={user?.userId === row.userId}
+                  />
+                </li>
+              ))}
+            </ol>
+            {emptyMessages}
+            {pagination}
+          </section>
+
+          {/* อันดับของตัวเองมีเฉพาะ "ทั้งหมด + ELO" — โหมดอื่น API ไม่บอก ห้ามคำนวณเอง (ADR-047 ข้อ 4 · ADR-083 ข้อ 6) */}
+          {myRow && (
+            <div className="shrink-0 overflow-hidden rounded-2xl border border-brand-500/60">
+              <MobileRow row={myRow} scope={scope} sortBy={sortBy} isMe />
+            </div>
+          )}
+        </main>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-navy-900">
+    <div className="min-h-app bg-navy-900">
       <AppHeader />
 
       <main className="page-wide px-4 py-8">
@@ -102,15 +241,7 @@ export default function LeaderboardPage() {
 
         <div className="mt-6 flex flex-wrap items-center gap-3">
           <CubeTypePicker value={cubeType} onChange={(v) => update({ cubeType: v })} />
-          <ToggleGroup
-            options={[
-              { value: 'all', label: 'ทั้งหมด' },
-              { value: 'weekly', label: 'สัปดาห์นี้' },
-            ]}
-            value={scope}
-            onChange={(v) => update({ scope: v })}
-            ariaLabel="ช่วงเวลาของกระดาน"
-          />
+          {scopeToggle}
           <ToggleGroup
             options={[
               { value: 'elo', label: 'เรียงตาม ELO' },
@@ -187,7 +318,7 @@ export default function LeaderboardPage() {
                   />
                 ))}
 
-                {showMyRow && (
+                {myRow && (
                   <>
                     <tr>
                       {/* แถวนี้มีเฉพาะ `scope=all` ซึ่งไม่มีคอลัมน์ "แต้มสัปดาห์นี้" → 6 คอลัมน์เสมอ */}
@@ -195,53 +326,16 @@ export default function LeaderboardPage() {
                         · · ·
                       </td>
                     </tr>
-                    <Row
-                      row={{
-                        rank: myRating.rank,
-                        userId: user.userId,
-                        username: user.username,
-                        nickname: user.nickname,
-                        eloRating: myRating.eloRating,
-                        matchesPlayed: myRating.matchesPlayed,
-                        wins: myRating.wins,
-                        losses: myRating.losses,
-                        winRate: myRating.winRate,
-                        bestTime: myRating.bestTime,
-                      }}
-                      scope={scope}
-                      isMe
-                    />
+                    <Row row={myRow} scope={scope} isMe />
                   </>
                 )}
               </tbody>
             </table>
           </div>
 
-          {!board.loading && rows.length === 0 && (
-            <p className="px-5 py-10 text-center text-sm text-slate-500">
-              {scope === 'weekly'
-                ? 'สัปดาห์นี้ยังไม่มีใครลงแข่งในประเภทนี้'
-                : 'ยังไม่มีผู้เล่นบนกระดานอันดับของประเภทนี้'}
-            </p>
-          )}
+          {emptyMessages}
 
-          {rows.length > 0 && filtered.length === 0 && (
-            <p className="px-5 py-10 text-center text-sm text-slate-500">
-              ไม่พบผู้เล่นชื่อนี้ในหน้านี้ (ค้นหาได้เฉพาะ {rows.length} แถวที่แสดงอยู่ —
-              ลองเปลี่ยนหน้า)
-            </p>
-          )}
-
-          {board.meta && (
-            <Pagination
-              page={board.meta.page}
-              totalPages={board.meta.totalPages}
-              total={board.meta.total}
-              unitLabel="คน"
-              disabled={board.loading}
-              onChange={(next) => update({ page: next })}
-            />
-          )}
+          {pagination}
         </section>
 
         {scope === 'weekly' && user && !meIsOnPage && (
@@ -312,6 +406,71 @@ function Row({
       )}
       <td className="tabular px-5 py-3 text-right font-semibold text-brand-400">{row.eloRating}</td>
     </tr>
+  );
+}
+
+/**
+ * แถวกระดานของจอแคบ (ADR-083 ข้อ 6) — ทั้งแถวกดไปโปรไฟล์
+ * ค่าหลักขวามือตามโหมด: ELO · เวลาที่ดีที่สุด · แต้มสัปดาห์นี้ (weekly + เรียงตาม ELO จัดอันดับจากแต้มสัปดาห์)
+ * ค่ารองใต้ค่าหลักเป็นตัวที่หายไปจากคอลัมน์ของจอกว้าง
+ */
+function MobileRow({
+  row,
+  scope,
+  sortBy,
+  isMe,
+}: {
+  row: AnyLeaderboardRow;
+  scope: LeaderboardScope;
+  sortBy: LeaderboardSort;
+  isMe: boolean;
+}) {
+  const rankColor =
+    row.rank === 1 ? 'text-gold-400' : row.rank <= 3 ? 'text-slate-300' : 'text-slate-500';
+  const name = row.nickname || row.username;
+  const change = row.eloChange;
+  const changeText = change === undefined ? '—' : `${formatEloChange(change)} สัปดาห์นี้`;
+  const changeColor =
+    (change ?? 0) > 0 ? 'text-win' : (change ?? 0) < 0 ? 'text-loss' : 'text-slate-400';
+
+  let main: { text: string; className: string };
+  let sub: string;
+  if (sortBy === 'bestTime') {
+    main = { text: formatSolveTime(row.bestTime), className: 'text-slate-100' };
+    sub = scope === 'weekly' ? changeText : `${row.eloRating} ELO`;
+  } else if (scope === 'weekly') {
+    main = { text: change === undefined ? '—' : formatEloChange(change), className: changeColor };
+    sub = `${row.eloRating} ELO`;
+  } else {
+    main = { text: String(row.eloRating), className: 'text-brand-400' };
+    sub = `ดีที่สุด ${formatSolveTime(row.bestTime)}`;
+  }
+
+  return (
+    <Link
+      to={`/users/${row.userId}`}
+      className={`flex items-center gap-3 px-3 py-2.5 transition hover:bg-navy-800/60 ${
+        isMe ? 'bg-brand-500/10' : ''
+      }`}
+    >
+      <span className={`tabular w-9 shrink-0 text-sm font-semibold ${rankColor}`}>#{row.rank}</span>
+      <Avatar name={name} size="sm" highlight={row.rank === 1} />
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-1.5">
+          <span className="truncate text-sm font-medium text-slate-100">{name}</span>
+          {isMe && <span className="shrink-0 text-[10px] text-brand-400">(คุณ)</span>}
+        </span>
+        <span className="tabular block text-[11px] text-slate-500">
+          {row.matchesPlayed === 0
+            ? 'ยังไม่เคยลงแข่ง'
+            : `${row.wins}W ${row.losses}L · ${formatWinRate(row.winRate)}`}
+        </span>
+      </span>
+      <span className="shrink-0 text-right">
+        <span className={`tabular block text-sm font-semibold ${main.className}`}>{main.text}</span>
+        <span className="tabular block text-[11px] text-slate-500">{sub}</span>
+      </span>
+    </Link>
   );
 }
 

@@ -1,9 +1,11 @@
+import { useState } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { useAuth } from '@/auth/useAuth';
 import { AppHeader } from '@/components/AppHeader';
 import { ErrorNotice } from '@/components/ErrorScreen';
 import { MatchDetailBody } from '@/components/MatchDetailBody';
-import { ShareButton } from '@/components/ShareButton';
+import { ShareCardDialog } from '@/components/share/ShareCardDialog';
+import { buildMatchCard } from '@/components/share/share-card-data';
 import { useApiData } from '@/hooks/useApiData';
 import type { MatchDetail, MultiplayerMatchDetail } from '@/types/match';
 
@@ -17,6 +19,7 @@ import type { MatchDetail, MultiplayerMatchDetail } from '@/types/match';
  */
 export default function MatchResultPage({ kind }: { kind: '1v1' | 'multiplayer' }) {
   const params = useParams();
+  const [sharing, setSharing] = useState(false);
   const raw = kind === '1v1' ? params.matchId : params.multiplayerMatchId;
   const id = Number(raw);
   const { user } = useAuth();
@@ -30,10 +33,10 @@ export default function MatchResultPage({ kind }: { kind: '1v1' | 'multiplayer' 
 
   const loading = duel.loading || multi.loading;
   const error = duel.error ?? multi.error;
-  const path = kind === '1v1' ? `/matches/${id}` : `/multiplayer-matches/${id}`;
+  const detail = duel.data ?? multi.data ?? null;
 
   return (
-    <div className="min-h-screen bg-navy-900">
+    <div className="min-h-app bg-navy-900">
       <AppHeader />
       <main className="mx-auto max-w-2xl px-4 py-8">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -43,7 +46,15 @@ export default function MatchResultPage({ kind }: { kind: '1v1' | 'multiplayer' 
             </p>
             <h1 className="text-2xl font-bold text-white">ผลการแข่งขัน</h1>
           </div>
-          <ShareButton path={path} title="ผลการแข่งขัน CubeDuel" />
+          {/* แชร์เป็นการ์ดรูปภาพ — ต้องรอผลโหลดเสร็จก่อนถึงจะมีอะไรวาด (ADR-074) */}
+          <button
+            type="button"
+            disabled={!detail}
+            onClick={() => setSharing(true)}
+            className="rounded-xl border border-line bg-navy-800 px-4 py-2 text-sm font-medium text-slate-300 transition hover:bg-navy-700 hover:text-white disabled:opacity-50"
+          >
+            🖼 แชร์การ์ด
+          </button>
         </div>
 
         <div className="mt-4 rounded-2xl border border-line bg-navy-850/80">
@@ -61,6 +72,14 @@ export default function MatchResultPage({ kind }: { kind: '1v1' | 'multiplayer' 
             <MatchDetailBody detail={multi.data} highlightUserId={user?.userId ?? 0} />
           )}
         </div>
+
+        {sharing && detail && (
+          <ShareCardDialog
+            data={buildMatchCard(detail, user?.userId ?? 0)}
+            title="ผลการแข่งขัน CubeDuel"
+            onClose={() => setSharing(false)}
+          />
+        )}
 
         <Link
           to="/"

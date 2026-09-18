@@ -1,6 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { useNarrowScreen } from '@/hooks/useNarrowScreen';
 import { apiFetch } from '@/lib/api';
 import { errorMessage } from '@/lib/errors';
+import { BottomSheet } from './BottomSheet';
 
 const MIN_REASON = 10;
 const MAX_REASON = 1000;
@@ -31,6 +33,7 @@ export function ReportPlayerDialog({
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
+  const narrow = useNarrowScreen();
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -57,6 +60,83 @@ export function ReportPlayerDialog({
     }
   }
 
+  const subtitle = (
+    <p className="mt-0.5 truncate text-xs text-slate-500">
+      ผู้ถูกรายงาน: {reportedName}
+      {matchId ? ` · แมตช์ #${matchId}` : ''}
+      {multiplayerMatchId ? ` · แมตช์หลายคน #${multiplayerMatchId}` : ''}
+    </p>
+  );
+
+  const body = (
+    <>
+      {sent ? (
+        <div className="px-5 py-6 text-center">
+          <p className="text-sm text-win">ส่งรายงานเรียบร้อยแล้ว</p>
+          <p className="mt-1 text-xs text-slate-500">
+            ผู้ดูแลระบบจะตรวจสอบให้ · รายงานคนเดิมซ้ำได้อีกครั้งหลังผ่านไป 24 ชั่วโมง
+          </p>
+          <button
+            type="button"
+            onClick={onClose}
+            className="mt-4 rounded-xl border border-line px-5 py-2.5 text-sm text-slate-300 transition hover:bg-navy-800"
+          >
+            ปิด
+          </button>
+        </div>
+      ) : (
+        <form onSubmit={(e) => void submit(e)} className="space-y-3 px-5 py-4">
+          <label className="block">
+            <span className="text-sm text-slate-300">เกิดอะไรขึ้น</span>
+            <textarea
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              rows={5}
+              minLength={MIN_REASON}
+              maxLength={MAX_REASON}
+              required
+              placeholder="เล่าให้ละเอียดพอที่ผู้ดูแลจะตรวจสอบได้ เช่น เวลาที่ทำได้ผิดปกติแค่ไหน ในรูบิคประเภทไหน"
+              className="mt-1 w-full rounded-xl border border-line bg-navy-950/60 px-4 py-2.5 text-sm leading-6 text-slate-100 outline-none placeholder:text-slate-600 focus:border-brand-500"
+            />
+          </label>
+          <p className="text-xs text-slate-500">
+            {reason.trim().length} / {MAX_REASON} ตัวอักษร (อย่างน้อย {MIN_REASON})
+          </p>
+
+          {error && <p className="text-sm text-loss">{error}</p>}
+
+          <div className="flex justify-end gap-3 pt-1">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-xl border border-line px-5 py-2.5 text-sm text-slate-300 transition hover:bg-navy-800"
+            >
+              ยกเลิก
+            </button>
+            <button
+              type="submit"
+              disabled={sending || reason.trim().length < MIN_REASON}
+              className="rounded-xl bg-loss px-5 py-2.5 text-sm font-semibold text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {sending ? 'กำลังส่ง…' : 'ส่งรายงาน'}
+            </button>
+          </div>
+        </form>
+      )}
+    </>
+  );
+
+  // จอแคบ: แผ่นเลื่อนขึ้นจากล่างตัวเดียวของแอป (ADR-083 ข้อ 9) · ฟอร์มเดียวกัน
+  if (narrow) {
+    return (
+      <BottomSheet open onClose={onClose} title="รายงานผู้เล่น">
+        <div className="-mt-3">{subtitle}</div>
+        {/* ฟอร์ม/ข้อความส่งแล้วมีขอบในของตัวเอง — แผ่นมีขอบซ้ายขวาแล้ว */}
+        <div className="-mx-5 -mt-2">{body}</div>
+      </BottomSheet>
+    );
+  }
+
   return (
     <div
       role="dialog"
@@ -71,66 +151,10 @@ export function ReportPlayerDialog({
       >
         <header className="border-b border-line px-5 py-4">
           <h2 className="font-semibold text-slate-100">รายงานผู้เล่น</h2>
-          <p className="mt-0.5 truncate text-xs text-slate-500">
-            ผู้ถูกรายงาน: {reportedName}
-            {matchId ? ` · แมตช์ #${matchId}` : ''}
-            {multiplayerMatchId ? ` · แมตช์หลายคน #${multiplayerMatchId}` : ''}
-          </p>
+          {subtitle}
         </header>
 
-        {sent ? (
-          <div className="px-5 py-6 text-center">
-            <p className="text-sm text-win">ส่งรายงานเรียบร้อยแล้ว</p>
-            <p className="mt-1 text-xs text-slate-500">
-              ผู้ดูแลระบบจะตรวจสอบให้ · รายงานคนเดิมซ้ำได้อีกครั้งหลังผ่านไป 24 ชั่วโมง
-            </p>
-            <button
-              type="button"
-              onClick={onClose}
-              className="mt-4 rounded-xl border border-line px-5 py-2.5 text-sm text-slate-300 transition hover:bg-navy-800"
-            >
-              ปิด
-            </button>
-          </div>
-        ) : (
-          <form onSubmit={(e) => void submit(e)} className="space-y-3 px-5 py-4">
-            <label className="block">
-              <span className="text-sm text-slate-300">เกิดอะไรขึ้น</span>
-              <textarea
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                rows={5}
-                minLength={MIN_REASON}
-                maxLength={MAX_REASON}
-                required
-                placeholder="เล่าให้ละเอียดพอที่ผู้ดูแลจะตรวจสอบได้ เช่น เวลาที่ทำได้ผิดปกติแค่ไหน ในรูบิคประเภทไหน"
-                className="mt-1 w-full rounded-xl border border-line bg-navy-950/60 px-4 py-2.5 text-sm leading-6 text-slate-100 outline-none placeholder:text-slate-600 focus:border-brand-500"
-              />
-            </label>
-            <p className="text-xs text-slate-500">
-              {reason.trim().length} / {MAX_REASON} ตัวอักษร (อย่างน้อย {MIN_REASON})
-            </p>
-
-            {error && <p className="text-sm text-loss">{error}</p>}
-
-            <div className="flex justify-end gap-3 pt-1">
-              <button
-                type="button"
-                onClick={onClose}
-                className="rounded-xl border border-line px-5 py-2.5 text-sm text-slate-300 transition hover:bg-navy-800"
-              >
-                ยกเลิก
-              </button>
-              <button
-                type="submit"
-                disabled={sending || reason.trim().length < MIN_REASON}
-                className="rounded-xl bg-loss px-5 py-2.5 text-sm font-semibold text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {sending ? 'กำลังส่ง…' : 'ส่งรายงาน'}
-              </button>
-            </div>
-          </form>
-        )}
+        {body}
       </div>
     </div>
   );

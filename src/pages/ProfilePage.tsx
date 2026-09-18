@@ -2,14 +2,18 @@ import { useState } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '@/auth/useAuth';
 import { AppHeader } from '@/components/AppHeader';
+import { BottomSheet } from '@/components/BottomSheet';
 import { CubeTypePicker } from '@/components/CubeTypePicker';
+import { CubeTypeSelect } from '@/components/CubeTypeSelect';
 import { ErrorNotice } from '@/components/ErrorScreen';
 import { MatchHistoryList } from '@/components/MatchHistoryList';
 import { PageSpinner } from '@/components/PageSpinner';
 import { ReportPlayerDialog } from '@/components/ReportPlayerDialog';
-import { ShareButton } from '@/components/ShareButton';
+import { ShareCardDialog } from '@/components/share/ShareCardDialog';
+import { buildProfileCard } from '@/components/share/share-card-data';
 import { StatCard } from '@/components/StatCard';
 import { useApiData } from '@/hooks/useApiData';
+import { useNarrowScreen } from '@/hooks/useNarrowScreen';
 import { formatSolveTime, formatWinRate } from '@/lib/format';
 import type { CubeType } from '@/types/cube';
 import { CUBE_TYPE_LABEL, type UserRating } from '@/types/leaderboard';
@@ -26,6 +30,7 @@ export default function ProfilePage() {
   const { userId: userIdParam } = useParams();
   const { user, status } = useAuth();
   const [cubeType, setCubeType] = useState<CubeType>('3x3x3');
+  const narrow = useNarrowScreen();
 
   const userId = Number(userIdParam);
 
@@ -38,17 +43,26 @@ export default function ProfilePage() {
 
   if (!Number.isInteger(userId) || userId <= 0) return <Navigate to="/404" replace />;
 
-  return (
-    <div className="min-h-screen bg-navy-900">
+  const body = (
+    <ProfileBody
+      userId={userId}
+      isOwner={user?.userId === userId}
+      cubeType={cubeType}
+      onCubeTypeChange={setCubeType}
+      narrow={narrow}
+    />
+  );
+
+  // จอแคบ: หน้าไม่เลื่อน ประวัติเลื่อนในกรอบ (ADR-083 ข้อ 7) · `min-h` ของกรอบประวัติดันให้จอเตี้ยเลื่อนทั้งหน้าแทนการบีบ
+  return narrow ? (
+    <div className="flex h-app flex-col bg-navy-900">
       <AppHeader />
-      <main className="page-wide px-4 py-8">
-        <ProfileBody
-          userId={userId}
-          isOwner={user?.userId === userId}
-          cubeType={cubeType}
-          onCubeTypeChange={setCubeType}
-        />
-      </main>
+      <main className="flex min-h-0 flex-1 flex-col gap-3 px-4 pt-3 pb-3">{body}</main>
+    </div>
+  ) : (
+    <div className="min-h-app bg-navy-900">
+      <AppHeader />
+      <main className="page-wide px-4 py-8">{body}</main>
     </div>
   );
 }
@@ -58,15 +72,23 @@ function ProfileBody({
   isOwner,
   cubeType,
   onCubeTypeChange,
+  narrow,
 }: {
   userId: number;
   isOwner: boolean;
   cubeType: CubeType;
   onCubeTypeChange: (value: CubeType) => void;
+  /** จอแคบกว่า `md` — โครงจบในจอเดียว (ADR-083 ข้อ 7) */
+  narrow: boolean;
 }) {
   const { logout, user: viewer } = useAuth();
   const navigate = useNavigate();
   const [reporting, setReporting] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  /** จอแคบ: เมนู ⋯ ของเจ้าของ · แผ่นสถิติเพิ่มเติม · กาง bio เต็ม */
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [bioOpen, setBioOpen] = useState(false);
 
   async function handleLogout() {
     try {
@@ -94,6 +116,184 @@ function ProfileBody({
   }
 
   const name = profile.data ? profile.data.nickname || profile.data.username : '…';
+
+  const dialogs = (
+    <>
+      {/* การ์ดใช้ตัวเลขของประเภทที่เลือกอยู่ตอนกด — โปรไฟล์หนึ่งหน้ามี 4 ชุดตัวเลข */}
+      {sharing && (
+        <ShareCardDialog
+          data={buildProfileCard({
+            userId,
+            profile: profile.data,
+            rating,
+            stats: stats.data,
+            cubeType,
+          })}
+          title={`โปรไฟล์ ${name} บน CubeDuel`}
+          onClose={() => setSharing(false)}
+        />
+      )}
+
+      {reporting && profile.data && (
+        <ReportPlayerDialog
+          reportedUserId={userId}
+          reportedName={name}
+          onClose={() => setReporting(false)}
+        />
+      )}
+    </>
+  );
+
+  const history = (limit: number) => (
+    <MatchHistoryList
+      userId={userId}
+      cubeType={cubeType}
+      limit={limit}
+      emptyHint={`ยังไม่มีแมตช์ประเภท ${CUBE_TYPE_LABEL[cubeType]} ที่บันทึกไว้ (ห้องฝึกซ้อมไม่นับ)`}
+    />
+  );
+
+  if (narrow) {
+    const played = rating !== null && rating.matchesPlayed > 0;
+    const best = stats.data?.best ?? rating?.bestTime;
+    const menuItem =
+      'flex w-full items-center justify-between border-b border-line-soft py-3 text-left text-sm text-slate-200 last:border-b-0';
+
+    return (
+      <>
+        <section className="flex shrink-0 items-center gap-3">
+          <span className="grid h-14 w-14 shrink-0 place-items-center rounded-full border-2 border-brand-400/70 bg-navy-800 text-2xl font-semibold text-slate-200">
+            {name.trim().charAt(0).toUpperCase() || '?'}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="flex items-baseline gap-2">
+              <span className="truncate text-lg font-bold text-white">{name}</span>
+              <span className="tabular shrink-0 text-xs text-brand-400">
+                {rating ? `${rating.eloRating} ELO` : '— ELO'}
+              </span>
+            </p>
+            {profile.data && (
+              <p className="truncate text-xs text-slate-500">@{profile.data.username}</p>
+            )}
+          </div>
+          {/* แชร์ได้ทั้งโปรไฟล์ตัวเองและของคนอื่น (ADR-074) */}
+          <button
+            type="button"
+            onClick={() => setSharing(true)}
+            aria-label="แชร์โปรไฟล์"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-line bg-navy-850 text-base transition hover:bg-navy-800"
+          >
+            🖼
+          </button>
+          {/* รายงานได้เฉพาะโปรไฟล์คนอื่น และต้องล็อกอินก่อน (ADR-051 ข้อ 4) */}
+          {!isOwner && viewer && (
+            <button
+              type="button"
+              onClick={() => setReporting(true)}
+              className="shrink-0 rounded-xl border border-loss/40 px-3 py-2 text-xs font-semibold text-loss transition hover:bg-loss/10"
+            >
+              รายงาน
+            </button>
+          )}
+          {/* ตั้งค่า · แอดมิน · ออกจากระบบ รวมในเมนูเดียว — เมนูบนถูกซ่อนบนจอแคบ (ADR-083 ข้อ 3 + 7) */}
+          {isOwner && (
+            <button
+              type="button"
+              onClick={() => setMenuOpen(true)}
+              aria-label="เมนูโปรไฟล์"
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-line bg-navy-850 text-lg leading-none text-slate-300 transition hover:bg-navy-800"
+            >
+              ⋯
+            </button>
+          )}
+        </section>
+
+        {/* bio ข้อความล้วนเหมือนจอกว้าง (ADR-066 ข้อ 3) · ยาวเกินสองบรรทัดแตะเพื่อกาง */}
+        {profile.data?.bio && (
+          <button
+            type="button"
+            onClick={() => setBioOpen((open) => !open)}
+            aria-expanded={bioOpen}
+            className={`shrink-0 whitespace-pre-line text-left text-sm leading-6 text-slate-300 ${
+              bioOpen ? '' : 'line-clamp-2'
+            }`}
+          >
+            {profile.data.bio}
+          </button>
+        )}
+
+        <div className="flex shrink-0 gap-2">
+          <div className="min-w-0 flex-1">
+            <CubeTypeSelect value={cubeType} onChange={onCubeTypeChange} />
+          </div>
+          <button
+            type="button"
+            onClick={() => setMoreOpen(true)}
+            className="shrink-0 rounded-lg border border-line bg-navy-850 px-3 text-sm text-slate-300 transition hover:bg-navy-800"
+          >
+            สถิติเพิ่มเติม
+          </button>
+        </div>
+
+        {/* 6 ตัวเลขเดียวกับจอกว้าง ตาราง 3×2 (ADR-083 ข้อ 7) */}
+        <dl className="grid shrink-0 grid-cols-3 gap-px overflow-hidden rounded-2xl border border-line bg-line-soft">
+          <MiniStat
+            label="ELO"
+            value={rating ? String(rating.eloRating) : '—'}
+            note={rating ? `อันดับที่ ${rating.rank}` : undefined}
+            accent
+          />
+          <MiniStat
+            label="เล่นไปทั้งหมด"
+            value={rating ? String(rating.matchesPlayed) : '—'}
+            note={played ? `${rating.wins}W ${rating.losses}L` : undefined}
+          />
+          <MiniStat label="เวลาที่ดีที่สุด" value={formatSolveTime(best)} />
+          <MiniStat label="อัตราชนะ" value={played ? formatWinRate(rating.winRate) : '—'} />
+          <MiniStat label="เวลาเฉลี่ย (5)" value={formatSolveTime(stats.data?.ao5)} />
+          <MiniStat label="เวลาเฉลี่ย (12)" value={formatSolveTime(stats.data?.ao12)} />
+        </dl>
+
+        <div className="min-h-48 flex-1 overflow-y-auto overscroll-contain rounded-2xl">
+          {history(10)}
+        </div>
+
+        {dialogs}
+
+        {isOwner && (
+          <BottomSheet open={menuOpen} onClose={() => setMenuOpen(false)} title="เมนูโปรไฟล์">
+            <nav className="-mt-2 flex flex-col">
+              <Link to="/settings" className={menuItem}>
+                ⚙ การตั้งค่า <span className="text-xs text-slate-500">บัญชีและโปรไฟล์</span>
+              </Link>
+              {/* เมนูแอดมินโผล่เฉพาะบัญชีแอดมิน — ตัวกันจริงอยู่ฝั่ง server (`requireAdmin`) */}
+              {viewer?.role === 'admin' && (
+                <Link to="/admin" className={menuItem}>
+                  ผู้ดูแลระบบ <span className="text-xs text-slate-500">ออกแบบไว้ใช้บนจอคอม</span>
+                </Link>
+              )}
+              <button
+                type="button"
+                onClick={() => void handleLogout()}
+                className={`${menuItem} text-loss`}
+              >
+                ออกจากระบบ
+              </button>
+            </nav>
+          </BottomSheet>
+        )}
+
+        <BottomSheet
+          open={moreOpen}
+          onClose={() => setMoreOpen(false)}
+          title={`สถิติเพิ่มเติม · ${CUBE_TYPE_LABEL[cubeType]}`}
+          hideTitle
+        >
+          <ExtraDetails rating={rating} stats={stats.data} createdAt={profile.data?.createdAt} />
+        </BottomSheet>
+      </>
+    );
+  }
 
   return (
     <>
@@ -128,13 +328,14 @@ function ProfileBody({
           </div>
 
           <div className="flex shrink-0 flex-col gap-2">
-            {/* แชร์ได้ทั้งโปรไฟล์ตัวเองและของคนอื่น — เส้นทาง /users/:id เปิดสาธารณะอยู่แล้ว */}
-            <ShareButton
-              path={`/users/${userId}`}
-              title={`โปรไฟล์ ${name} บน CubeDuel`}
-              label="แชร์โปรไฟล์"
+            {/* แชร์ได้ทั้งโปรไฟล์ตัวเองและของคนอื่น — ออกมาเป็นการ์ดรูปภาพ ไม่ใช่ลิงก์เปล่า (ADR-074) */}
+            <button
+              type="button"
+              onClick={() => setSharing(true)}
               className="rounded-xl border border-line bg-navy-800 px-5 py-2.5 text-sm font-semibold text-slate-300 transition hover:bg-navy-700 hover:text-white"
-            />
+            >
+              🖼 แชร์โปรไฟล์
+            </button>
             {/* รายงานได้เฉพาะโปรไฟล์คนอื่น และต้องล็อกอินก่อน — ไม่แนบแมตช์ (ADR-051 ข้อ 4) */}
             {!isOwner && viewer && (
               <button
@@ -153,13 +354,6 @@ function ProfileBody({
                 >
                   ⚙ ตั้งค่า
                 </Link>
-                {/* สกินไม่มีที่ในเมนูหลัก (เต็มแล้ว) — ทางเข้าอยู่ที่โปรไฟล์ตัวเองกับหน้าตั้งค่า (ADR-064 ข้อ 6) */}
-                <Link
-                  to="/skins"
-                  className="rounded-xl border border-line bg-navy-800 px-5 py-2.5 text-center text-sm font-semibold text-slate-300 transition hover:bg-navy-700 hover:text-white"
-                >
-                  🎨 สกินคิวบ์
-                </Link>
                 <button
                   type="button"
                   onClick={() => void handleLogout()}
@@ -173,13 +367,7 @@ function ProfileBody({
         </div>
       </section>
 
-      {reporting && profile.data && (
-        <ReportPlayerDialog
-          reportedUserId={userId}
-          reportedName={name}
-          onClose={() => setReporting(false)}
-        />
-      )}
+      {dialogs}
 
       <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-sm font-semibold text-slate-300">
@@ -235,12 +423,7 @@ function ProfileBody({
         </div>
 
         {/* ---------------- ขวา: ประวัติการเล่นของประเภทนี้ */}
-        <MatchHistoryList
-          userId={userId}
-          cubeType={cubeType}
-          limit={15}
-          emptyHint={`ยังไม่มีแมตช์ประเภท ${CUBE_TYPE_LABEL[cubeType]} ที่บันทึกไว้ (ห้องฝึกซ้อมไม่นับ)`}
-        />
+        {history(15)}
       </div>
     </>
   );
@@ -276,6 +459,31 @@ function ExtraDetails({
         <Detail label="เสมอ" value={rating ? `${rating.draws} ครั้ง` : '—'} />
       </dl>
     </section>
+  );
+}
+
+/** ช่องตัวเลขในตาราง 3×2 ของจอแคบ */
+function MiniStat({
+  label,
+  value,
+  note,
+  accent = false,
+}: {
+  label: string;
+  value: string;
+  note?: string;
+  accent?: boolean;
+}) {
+  return (
+    <div className="min-w-0 bg-navy-850 px-2.5 py-2">
+      <dt className="truncate text-[10.5px] text-slate-500">{label}</dt>
+      <dd
+        className={`tabular truncate text-base font-semibold ${accent ? 'text-brand-400' : 'text-slate-100'}`}
+      >
+        {value}
+      </dd>
+      {note && <dd className="tabular truncate text-[10px] text-slate-500">{note}</dd>}
+    </div>
   );
 }
 

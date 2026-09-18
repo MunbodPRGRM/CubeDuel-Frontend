@@ -128,11 +128,11 @@ function HistoryRow({ row, onOpen }: { row: MatchHistoryRow; onOpen: () => void 
           )}
         </span>
 
-        {/* ไอคอนคิวบ์ในดีไซน์ = ดูสูตรกวนของรอบนั้น (hover แล้วเห็นเต็ม ๆ) */}
+        {/* ไอคอนคิวบ์ในดีไซน์ = ดู scramble ของรอบนั้น (hover แล้วเห็นเต็ม ๆ) */}
         <span
           className="hidden shrink-0 text-slate-500 sm:block"
-          title={`สูตรกวน: ${row.scramble}`}
-          aria-label={`สูตรกวน ${row.scramble}`}
+          title={`scramble: ${row.scramble}`}
+          aria-label={`scramble ${row.scramble}`}
         >
           <ScrambleIcon />
         </span>
