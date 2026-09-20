@@ -150,6 +150,7 @@ export function PlayerCubePanel({
       <MirrorCube
         snapshot={snapshot}
         userId={player.userId}
+        cubeSkin={player.cubeSkin}
         status={progress?.status}
         serverMoveCount={progress?.moveCount ?? 0}
         pip={pip}
@@ -457,6 +458,13 @@ function SelfCube({ snapshot, match, status, canTurn, onMoveCount }: SelfCubePro
 interface MirrorCubeProps {
   snapshot: RoomSnapshot;
   userId: number;
+  /**
+   * สกินของเจ้าของลูกนี้ (ADR-089) — **ไม่ใช่สกินของเรา**
+   *
+   * ค่านี้ห้ามเปลี่ยนระหว่างรอบ: `CubeCanvas` สร้าง view ใหม่ทั้งลูกเมื่อ `skinId` เปลี่ยน
+   * แล้วท่าที่สะท้อนไว้จะหายหมด — server อ่านสกินตอนเขาเข้าห้องครั้งเดียวจึงนิ่งอยู่แล้ว
+   */
+  cubeSkin: string;
   /** สถานะรอบนี้ของคนนี้ตาม server — ใช้กับ `useSolveWhenServerSaysSolved` */
   status: SolveStatus | undefined;
   /** จำนวน move ที่ server บอกว่าคนนี้หมุนไปแล้ว — ใช้จับว่าภาพของเราตกหล่นหรือยัง */
@@ -472,7 +480,7 @@ interface MirrorCubeProps {
  * ผู้ชมเข้าระหว่างแข่ง) จะไม่มีทางรู้ move ที่คู่แข่งหมุนไปก่อนหน้า — snapshot มีแต่ตัวเลข
  * `moveCount` ไม่มี move stream ภาพจึงค้างอยู่ที่ scramble ต้องบอกผู้ใช้ตรง ๆ ว่าไม่ครบ
  */
-function MirrorCube({ snapshot, userId, status, serverMoveCount, pip }: MirrorCubeProps) {
+function MirrorCube({ snapshot, userId, cubeSkin, status, serverMoveCount, pip }: MirrorCubeProps) {
   const { socket } = useSocket();
   const cubeRef = useRef<CubeCanvasHandle>(null);
   useSolveWhenServerSaysSolved(cubeRef, status);
@@ -542,6 +550,7 @@ function MirrorCube({ snapshot, userId, status, serverMoveCount, pip }: MirrorCu
           ref={cubeRef}
           cubeType={snapshot.cubeType}
           scramble={snapshot.scramble}
+          skinId={cubeSkin}
           // คู่แข่งหมุนให้ดูเอง — เราหมุนแทนเขาไม่ได้ · กล้องลากเองได้เฉพาะนอกช่วงที่ตามมุมของเขา
           turnsEnabled={false}
         />
